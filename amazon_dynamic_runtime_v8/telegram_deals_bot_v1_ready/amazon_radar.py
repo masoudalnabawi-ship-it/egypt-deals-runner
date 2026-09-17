@@ -86,7 +86,7 @@ async def _send_amazon_independent_review(payload):
 
     try:
         r = await asyncio.to_thread(_post)
-        print("☁️ AMAZON CLOUD REVIEW", payload.get("asin") or payload.get("fingerprint"), "|", r.status_code, flush=True)
+        print("☁️ AMAZON CLOUD REVIEW", payload.get("asin") or payload.get("fingerprint"), "|", r.status_code, "|", str(r.text)[:300], flush=True)
         return r
     except Exception as exc:
         print("❌ AMAZON CLOUD REVIEW ERROR", repr(exc), flush=True)
