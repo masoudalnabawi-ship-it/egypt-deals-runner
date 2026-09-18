@@ -140,6 +140,11 @@ amazon_radar = start_process(
     "amazon_radar.py",
 )
 
+amazon_native_scout = start_process(
+    "AMAZON NATIVE SCOUT",
+    "scripts/amazon_native_scout.py",
+)
+
 # This is the ONLY Telegram getUpdates process.
 moderation = start_process(
     "UNIFIED TELEGRAM MODERATION",
@@ -158,6 +163,10 @@ children = {
         "amazon_dynamic_runtime_v8/"
         "telegram_deals_bot_v1_ready/"
         "amazon_radar.py",
+    ),
+    "amazon_native_scout": (
+        amazon_native_scout,
+        "scripts/amazon_native_scout.py",
     ),
     "moderation": (
         moderation,

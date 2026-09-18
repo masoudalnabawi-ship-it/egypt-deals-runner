@@ -5263,7 +5263,128 @@ EXTRA_STORE_INTERVALS = {
 
 extra_store_last = {}
 # AMAZON_PRIORITY_ZERO_MANUAL_V1
-manual_processed = set()
+MANUAL_PROCESSED_FILE = (
+    ROOT.parent.parent
+    / ".runtime_state"
+    / "amazon_manual_processed.txt"
+)
+
+
+def _load_manual_processed():
+    try:
+        return {
+            x.strip().upper()
+            for x in MANUAL_PROCESSED_FILE.read_text(
+                encoding="utf-8"
+            ).splitlines()
+            if re.fullmatch(
+                r"[A-Z0-9]{10}",
+                x.strip().upper(),
+            )
+        }
+    except Exception:
+        return set()
+
+
+manual_processed = _load_manual_processed()
+
+
+# أول تشغيل فقط:
+# اعتبر الـASINs القديمة الموجودة في manual watch تاريخية
+# حتى لا يعاد تشغيلها كلها بعد Restart.
+if not MANUAL_PROCESSED_FILE.exists():
+    try:
+        existing_manual = set()
+
+        if MANUAL_FILE.exists():
+            for raw in MANUAL_FILE.read_text(
+                encoding="utf-8"
+            ).splitlines():
+
+                m = re.search(
+                    r"\b([A-Z0-9]{10})\b",
+                    raw.strip().upper(),
+                )
+
+                if m:
+                    existing_manual.add(
+                        m.group(1)
+                    )
+
+        manual_processed.update(
+            existing_manual
+        )
+
+        MANUAL_PROCESSED_FILE.parent.mkdir(
+            parents=True,
+            exist_ok=True,
+        )
+
+        MANUAL_PROCESSED_FILE.write_text(
+            (
+                "\n".join(
+                    sorted(manual_processed)
+                )
+                + (
+                    "\n"
+                    if manual_processed
+                    else ""
+                )
+            ),
+            encoding="utf-8",
+        )
+
+        print(
+            "🌱 MANUAL PROCESSED BASELINE"
+            f" | count={len(manual_processed)}",
+            flush=True,
+        )
+
+    except Exception as exc:
+        print(
+            "⚠️ MANUAL PROCESSED BASELINE ERROR",
+            repr(exc),
+            flush=True,
+        )
+
+
+def mark_manual_processed(asin):
+    asin = str(
+        asin or ""
+    ).strip().upper()
+
+    if (
+        not re.fullmatch(
+            r"[A-Z0-9]{10}",
+            asin,
+        )
+        or asin in manual_processed
+    ):
+        return
+
+    manual_processed.add(asin)
+
+    try:
+        MANUAL_PROCESSED_FILE.parent.mkdir(
+            parents=True,
+            exist_ok=True,
+        )
+
+        with MANUAL_PROCESSED_FILE.open(
+            "a",
+            encoding="utf-8",
+        ) as fh:
+            fh.write(
+                asin + "\n"
+            )
+
+    except Exception as exc:
+        print(
+            "⚠️ MANUAL PROCESSED SAVE ERROR",
+            asin,
+            repr(exc),
+            flush=True,
+        )
 manual_retry_after = {}
 
 PRIORITY_ZERO_ASINS = {
@@ -5452,7 +5573,7 @@ async def manual_watch_loop():
                                     flush=True,
                                 )
 
-                                manual_processed.add(asin)
+                                mark_manual_processed(asin)
                                 manual_retry_after.pop(asin, None)
 
                                 async with lock:
@@ -5549,7 +5670,7 @@ async def manual_watch_loop():
                 async with lock:
                     save_files()
 
-                manual_processed.add(asin)
+                mark_manual_processed(asin)
                 manual_retry_after.pop(asin, None)
 
                 print(
