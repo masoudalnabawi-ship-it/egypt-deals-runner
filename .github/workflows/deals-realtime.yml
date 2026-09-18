@@ -6,7 +6,7 @@ on:
 jobs:
   realtime:
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 5
 
     env:
       CLOUD_API_URL: ${{ secrets.CLOUD_API_URL }}
@@ -19,111 +19,55 @@ jobs:
         with:
           python-version: "3.13"
 
-      - name: Install dependencies
-        run: |
-          python -m pip install --upgrade pip
-          pip install -r telegram_deals_bot_v7_dev/requirements.txt
+      - name: Install httpx
+        run: pip install httpx
 
-      - name: Noon deep diagnostic
+      - name: Test Cloud store proxy
         run: |
           python - <<'PY'
-          import asyncio
           import os
-          import sys
-          from pathlib import Path
+          import httpx
 
-          ROOT = Path.cwd()
-          sys.path.insert(
-              0,
-              str(ROOT / "telegram_deals_bot_v7_dev")
+          base = os.environ["CLOUD_API_URL"].strip().rstrip("/")
+
+          if base.endswith("/api/deals"):
+              base = base[:-len("/api/deals")]
+
+          endpoint = base + "/api/store-proxy"
+
+          target = (
+              "https://www.noon.com/"
+              "egypt-en/daily-deals-eg/"
           )
 
-          from stores.noon import NoonConnector
+          print("CLOUD_URL_PRESENT:", bool(base))
+          print("CLOUD_KEY_PRESENT:", bool(os.environ.get("CLOUD_API_KEY")))
+          print("ENDPOINT_PATH: /api/store-proxy")
 
-          print("================================")
-          print("NOON ACTIONS DIAGNOSTIC")
-          print("================================")
+          try:
+              r = httpx.get(
+                  endpoint,
+                  params={"url": target},
+                  headers={
+                      "x-api-key": os.environ["CLOUD_API_KEY"],
+                      "Accept": "text/html",
+                  },
+                  timeout=40,
+                  follow_redirects=True,
+              )
 
-          print(
-              "CLOUD_API_URL:",
-              "PRESENT" if os.getenv("CLOUD_API_URL") else "MISSING"
-          )
+              print("STATUS:", r.status_code)
+              print("CONTENT_TYPE:", r.headers.get("content-type"))
+              print("BODY_SIZE:", len(r.content))
+              print("BODY_START:")
+              print(r.text[:1500])
 
-          print(
-              "CLOUD_API_KEY:",
-              "PRESENT" if os.getenv("CLOUD_API_KEY") else "MISSING"
-          )
+          except Exception as exc:
+              print(
+                  "REQUEST_ERROR:",
+                  type(exc).__name__,
+                  str(exc),
+              )
 
-          c = NoonConnector(
-              25,
-              "Mozilla/5.0",
-          )
-
-          async def main():
-              total = 0
-
-              for index, url in enumerate(
-                  c.DEAL_URLS,
-                  1,
-              ):
-                  print()
-                  print(f"PAGE {index}: {url}")
-
-                  try:
-                      soup = await asyncio.wait_for(
-                          c.get_soup(url),
-                          timeout=50,
-                      )
-
-                      html = str(soup)
-
-                      print(
-                          "HTML_SIZE:",
-                          len(html),
-                      )
-
-                      print(
-                          "TITLE:",
-                          (
-                              soup.title.get_text(
-                                  " ",
-                                  strip=True
-                              )[:150]
-                              if soup.title
-                              else "-"
-                          )
-                      )
-
-                      deals = c._parse_page(soup)
-
-                      print(
-                          "PARSED:",
-                          len(deals),
-                      )
-
-                      total += len(deals)
-
-                      for d in deals[:2]:
-                          print(
-                              "SAMPLE:",
-                              str(d.title)[:90],
-                              "| now=",
-                              d.current_price,
-                              "| old=",
-                              d.old_price,
-                          )
-
-                  except Exception as exc:
-                      print(
-                          "ERROR:",
-                          type(exc).__name__,
-                          str(exc)[:600],
-                      )
-
-              print()
-              print("TOTAL_PARSED:", total)
-
-          asyncio.run(main())
-
-          print("✅ NOON ACTIONS DIAGNOSTIC COMPLETE")
+          print("✅ PROXY DIAGNOSTIC COMPLETE")
           PY
