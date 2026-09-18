@@ -2,8 +2,6 @@ name: Egypt Deals Scan
 
 on:
   workflow_dispatch:
-  schedule:
-    - cron: "*/5 * * * *"
 
 permissions:
   contents: read

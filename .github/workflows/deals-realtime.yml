@@ -1,0 +1,130 @@
+name: Egypt Deals Realtime
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - ".github/realtime-trigger.txt"
+
+permissions:
+  contents: read
+  actions: write
+
+concurrency:
+  group: egypt-deals-realtime
+  cancel-in-progress: false
+
+jobs:
+  realtime:
+    runs-on: ubuntu-latest
+    timeout-minutes: 350
+
+    env:
+      CLOUD_API_URL: ${{ secrets.CLOUD_API_URL }}
+      CLOUD_API_KEY: ${{ secrets.CLOUD_API_KEY }}
+
+      TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+      TELEGRAM_MEDIA_STAGE_CHAT_ID: ${{ secrets.TELEGRAM_MEDIA_STAGE_CHAT_ID }}
+      ADMIN_CHAT_ID: ${{ secrets.TELEGRAM_MEDIA_STAGE_CHAT_ID }}
+
+      AMAZON_REVIEW_GROUP_ID: ${{ secrets.AMAZON_REVIEW_GROUP_ID }}
+      AMAZON_CHANNEL_ID: ${{ secrets.AMAZON_CHANNEL_ID }}
+      AMAZON_NORMAL_REVIEW_CHAT_ID: ${{ secrets.AMAZON_NORMAL_REVIEW_CHAT_ID }}
+
+      DIRECT_FLASH_REVIEW: "false"
+
+      V11_ENABLED_STORES: "noon,btech"
+      ENABLED_STORES: "noon,btech"
+
+      MIN_DISCOUNT_PERCENT: "5"
+      MIN_SAVING_EGP: "0"
+      MAX_POSTS_PER_CYCLE: "10"
+      MAX_VERIFY_CANDIDATES: "20"
+      REQUEST_TIMEOUT_SECONDS: "20"
+      STRICT_VERIFICATION: "true"
+      STORE_SCREENSHOT_REVIEWS: "1"
+
+      COMPETITOR_INTERVAL: "20"
+      AMAZON_INTERVAL: "45"
+      STORES_INTERVAL: "120"
+      STATE_SYNC_INTERVAL: "60"
+
+    steps:
+
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+          cache: pip
+          cache-dependency-path: |
+            telegram_deals_bot_v7_dev/requirements.txt
+            amazon_dynamic_runtime_v8/telegram_deals_bot_v1_ready/requirements.txt
+            amazon_dynamic_runtime_v8/requirements_ready.txt
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+
+          pip install \
+            -r telegram_deals_bot_v7_dev/requirements.txt
+
+          pip install \
+            -r amazon_dynamic_runtime_v8/telegram_deals_bot_v1_ready/requirements.txt
+
+          pip install \
+            -r amazon_dynamic_runtime_v8/requirements_ready.txt
+
+          pip install playwright==1.63.0
+
+          python -m playwright install --with-deps chromium
+
+      - name: Restore runtime state
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          bash scripts/state.sh hydrate || \
+          echo "STATE HYDRATE WARNING"
+
+      - name: Run realtime worker
+        shell: bash
+        run: |
+          set +e
+
+          timeout \
+            -s TERM \
+            -k 30s \
+            320m \
+            python3 scripts/run_realtime_worker.py
+
+          RC=$?
+
+          echo "REALTIME_WORKER_RC=$RC"
+
+          if [ "$RC" -ne 0 ] && [ "$RC" -ne 124 ]; then
+            false
+          fi
+
+      - name: Collect runtime state
+        if: always()
+        run: |
+          bash scripts/state.sh collect || \
+          echo "STATE COLLECT WARNING"
+
+      - name: Persist runtime state
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: runtime-state
+          path: .runtime_state/
+          retention-days: 1
+          if-no-files-found: warn
+          include-hidden-files: true
+          compression-level: 6
+
+      - name: Start next realtime session
+        if: ${{ always() && !cancelled() }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh workflow run deals-realtime.yml --ref main
