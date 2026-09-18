@@ -99,7 +99,16 @@ async def main():
     # WIDE AMAZON COVERAGE V3
     # Priority surfaces first, then more discovery/watchlist rotations so a
     # large 8k+ watchlist is not sampled only a handful of products per run.
-    await safe("priority_surface", radar.direct_surface_once("priority"), 70)
+    # Faster consumer/deal coverage.
+    # Four rotations normally cover coupons/grocery/food or
+    # the next four persisted priority surfaces.
+    for n in range(4):
+        await safe(
+            f"priority_surface_{n+1}",
+            radar.direct_surface_once("priority"),
+            70
+        )
+
     # ALL AMAZON DEPARTMENTS — fast round-robin coverage
     # Each call advances to another department while preserving its page.
     for n in range(6):
@@ -110,6 +119,12 @@ async def main():
         )
 
     await safe("deep_discovery", radar.deep_discovery(), 25)
+
+    # Process the first discovery groups BEFORE V5.
+    # Grocery is inside this first batch, so newly discovered
+    # consumer products can be verified in the SAME run.
+    await drain_queue(8)
+
     await safe("hot_watch", radar.hot_watch_once(), 80)
     await safe("ultra_hot", radar.ultra_hot_once(), 90)
 
@@ -118,7 +133,9 @@ async def main():
     await safe("full_v5", radar.full_v5_watchlist_once(), 70)
 
     await safe("competitor_trigger", radar.competitor_trigger_once(), 30)
-    await drain_queue(12)
+
+    # Keep four queue slots for late competitor/trigger work.
+    await drain_queue(4)
     print("AMAZON_ONCE_COMPLETE", flush=True)
 
 if __name__ == "__main__":

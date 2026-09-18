@@ -6334,6 +6334,68 @@ async def ingest_amazon_direct_surface(name, items):
                 * 100.0
             )
 
+        # AMAZON CONSUMER DEAL FAST LANE V1
+        # A visible Amazon old/current price difference of 5%+
+        # is NOT published directly. It only gets priority for an
+        # exact product-page verification by V5.
+        if old > current > 0 and drop >= 5.0:
+            rec["listing_deal_candidate"] = True
+
+            rec["listing_deal_percent"] = max(
+                to_float(
+                    rec.get(
+                        "listing_deal_percent"
+                    )
+                ),
+                drop,
+            )
+
+            rec["listing_deal_old_price"] = max(
+                to_float(
+                    rec.get(
+                        "listing_deal_old_price"
+                    )
+                ),
+                old,
+            )
+
+            fast_priority = (
+                220
+                if name in premium_surfaces
+                else 180
+            )
+
+            rec["global_deep_v95_priority"] = max(
+                int(
+                    rec.get(
+                        "global_deep_v95_priority",
+                        0
+                    ) or 0
+                ),
+                fast_priority,
+            )
+
+            rec["priority_boost_until"] = max(
+                int(
+                    rec.get(
+                        "priority_boost_until",
+                        0
+                    ) or 0
+                ),
+                now + 1800,
+            )
+
+            print(
+                "🛒 AMAZON LISTED DEAL FAST",
+                asin,
+                "|",
+                round(drop, 1),
+                "%",
+                "| SURFACE =",
+                name,
+                flush=True,
+            )
+
         rec[
             "direct_surface"
         ] = name
