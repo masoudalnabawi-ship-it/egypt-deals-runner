@@ -18,6 +18,11 @@ CHANNELS = [
     "Sal7lyEgypt",
     "yahiaashry1",
     "WMTMSM6",
+    "Deals3alMashy",
+    "Mego_Reviews",
+    "ba3bou3_deals",
+    "Belnos",
+    "OffersCommunityEG",
 ]
 
 UA = "Mozilla/5.0"
@@ -182,6 +187,13 @@ def main():
     new_posts = []
 
     for ch in CHANNELS:
+        channel_has_history = any(
+            str(k).lower().startswith(
+                ch.lower() + "/"
+            )
+            for k in known
+        )
+
         try:
             posts = fetch_channel(ch)
             print(
@@ -209,7 +221,7 @@ def main():
                     ).isoformat(),
             }
 
-            if not first_run:
+            if not first_run and channel_has_history:
                 new_posts.append(p)
 
     state["initialized"] = True

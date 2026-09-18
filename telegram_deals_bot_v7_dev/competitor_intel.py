@@ -21,11 +21,16 @@ DB = ROOT / "competitor_intel.db"
 QUEUE = ROOT / "competitor_signal_queue.jsonl"
 
 CHANNELS = [
-    "Belnos",
     "Yo_Ayman",
-    "yahiaashry1",
     "deals_me",
     "Sal7lyEgypt",
+    "yahiaashry1",
+    "WMTMSM6",
+    "Deals3alMashy",
+    "Mego_Reviews",
+    "ba3bou3_deals",
+    "Belnos",
+    "OffersCommunityEG",
 ]
 
 BASE_INTERVAL = 75
