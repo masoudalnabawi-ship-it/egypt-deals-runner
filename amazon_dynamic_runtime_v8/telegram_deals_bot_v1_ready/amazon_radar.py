@@ -3212,7 +3212,7 @@ async def process_queue_item(client, job):
 
 
 async def unified_queue_loop():
-    await asyncio.sleep(20)
+    await asyncio.sleep(5)
 
     async with httpx.AsyncClient() as client:
 
@@ -3273,11 +3273,13 @@ async def unified_queue_loop():
             # Important external/competitor models are
             # processed faster than broad Amazon discovery.
             if job.get("priority", 0) >= 85:
-                queue_delay = 5
+                queue_delay = 4
+            elif job.get("priority", 0) >= 70:
+                queue_delay = 7
             elif job.get("priority", 0) >= 50:
                 queue_delay = 12
             else:
-                queue_delay = 45
+                queue_delay = 25
 
             await asyncio.sleep(
                 queue_delay
@@ -3327,10 +3329,32 @@ async def deep_discovery():
         "other",
     ]
 
+    try:
+        native_group_index = int(
+            state.get("native_group_index", 0)
+        ) % len(group_order)
+    except Exception:
+        native_group_index = 0
+
+    active_groups = [
+        group_order[
+            (native_group_index + i)
+            % len(group_order)
+        ]
+        for i in range(
+            min(4, len(group_order))
+        )
+    ]
+
+    state["native_group_index"] = (
+        native_group_index
+        + len(active_groups)
+    ) % len(group_order)
+
     stats = {}
     pages = {}
 
-    for group in group_order:
+    for group in active_groups:
         terms = [
             t for t in EXTRA_AMAZON_SEARCH_TERMS
             if amazon_discovery_group(t) == group
@@ -3362,8 +3386,8 @@ async def deep_discovery():
             source="amazon_v7:" + group,
             query=term,
             url=url,
-            priority=30,
-            boost_seconds=600,
+            priority=80,
+            boost_seconds=900,
             kind="discovery",
         )
 
@@ -5380,7 +5404,8 @@ async def manual_watch_loop():
 
                 priority_zero = asin in PRIORITY_ZERO_ASINS
 
-                # Already discovered: no Amazon Search required.
+                # COMPETITOR FAST LANE:
+                # known ASIN -> verify the exact Amazon product NOW.
                 if asin in watch:
                     watch[asin]["manual_watch"] = True
 
@@ -5390,17 +5415,67 @@ async def manual_watch_loop():
                     else:
                         watch[asin]["priority_boost_until"] = int(time.time()) + 86400
 
-                    async with lock:
-                        save_files()
+                    now_mono = time.monotonic()
 
-                    manual_processed.add(asin)
+                    if now_mono < manual_retry_after.get(asin, 0):
+                        continue
+
+                    try:
+                        async with httpx.AsyncClient() as client:
+                            current = await live_price(
+                                client,
+                                asin_url(asin)
+                            )
+
+                            current = to_float(current)
+
+                            if current > 0:
+                                sent, verified_price = (
+                                    await maybe_send_v5_review(
+                                        client,
+                                        watch[asin],
+                                        current,
+                                    )
+                                )
+
+                                print(
+                                    "⚡ COMPETITOR DIRECT AMAZON CHECK",
+                                    asin,
+                                    "| PRICE =",
+                                    round(
+                                        to_float(verified_price)
+                                        or current,
+                                        2
+                                    ),
+                                    "| REVIEW =",
+                                    bool(sent),
+                                    flush=True,
+                                )
+
+                                manual_processed.add(asin)
+                                manual_retry_after.pop(asin, None)
+
+                                async with lock:
+                                    save_files()
+
+                                continue
+
+                    except Exception as exc:
+                        print(
+                            "⚠️ COMPETITOR DIRECT CHECK ERROR",
+                            asin,
+                            repr(exc),
+                            flush=True,
+                        )
+
+                    manual_retry_after[asin] = (
+                        time.monotonic() + 20
+                    )
 
                     print(
-                        "🚨 PRIORITY ZERO -> ULTRA HOT:"
-                        if priority_zero
-                        else "📌 MANUAL -> ULTRA HOT:",
+                        "⏱️ COMPETITOR FAST RETRY 20s:",
                         asin,
-                        flush=True
+                        flush=True,
                     )
                     continue
 
@@ -5413,7 +5488,7 @@ async def manual_watch_loop():
                     continue
 
                 # Conservative retry if the product page temporarily fails.
-                manual_retry_after[asin] = now_mono + 180
+                manual_retry_after[asin] = now_mono + 20
 
                 direct_url = asin_url(asin)
 
@@ -5427,7 +5502,7 @@ async def manual_watch_loop():
 
                 if current <= 0:
                     print(
-                        "📌 MANUAL DIRECT FAILED; RETRY 3m:",
+                        "📌 MANUAL DIRECT FAILED; FAST RETRY 20s:",
                         asin,
                         flush=True
                     )
@@ -5511,8 +5586,9 @@ async def discovery_loop():
                 flush=True
             )
 
-        # اكتشاف شامل كل 3 دقائق
-        await asyncio.sleep(180)
+        # Native Amazon discovery is the PRIMARY source.
+        # Competitor channels are backup signals only.
+        await asyncio.sleep(30)
 
 
 async def hot_loop():
