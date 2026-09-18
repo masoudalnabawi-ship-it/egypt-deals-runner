@@ -68,10 +68,61 @@ jobs:
       # AMAZON ALWAYS GOES FIRST.
       - name: Amazon — priority scan + real product screenshot
         run: |
+          set -e
+
           python scripts/prepare_amazon_review_config.py
+
+          echo "🤖 STARTING AMAZON REVIEW BUTTON LISTENER"
+
+          python amazon_dynamic_runtime_v8/amazon_deals_bot_ready/bot.py             > /tmp/amazon_review_listener.log 2>&1 &
+
+          AMAZON_LISTENER_PID=$!
+
+          echo "🤖 AMAZON LISTENER PID=$AMAZON_LISTENER_PID"
+
+          # Wait until Telegram polling is really active
+          for i in $(seq 1 20); do
+            if grep -q "TELEGRAM POLLING ON" /tmp/amazon_review_listener.log 2>/dev/null; then
+              echo "✅ TELEGRAM POLLING IS ACTIVE"
+              break
+            fi
+
+            if ! kill -0 "$AMAZON_LISTENER_PID" 2>/dev/null; then
+              echo "❌ AMAZON LISTENER DIED BEFORE SCAN"
+              cat /tmp/amazon_review_listener.log || true
+              exit 1
+            fi
+
+            sleep 1
+          done
+
+          if ! grep -q "TELEGRAM POLLING ON" /tmp/amazon_review_listener.log 2>/dev/null; then
+            echo "❌ TELEGRAM POLLING DID NOT START"
+            cat /tmp/amazon_review_listener.log || true
+            kill "$AMAZON_LISTENER_PID" 2>/dev/null || true
+            exit 1
+          fi
+
+          echo "🚀 STARTING AMAZON SCAN"
           python scripts/run_amazon_once.py
-          echo "🤖 AMAZON REVIEW BUTTON LISTENER ACTIVE"
-          timeout 180s python amazon_dynamic_runtime_v8/amazon_deals_bot_ready/bot.py || true
+
+          echo "✅ AMAZON SCAN FINISHED"
+          echo "🤖 REVIEW BUTTONS ACTIVE FOR 10 MORE MINUTES"
+
+          for i in $(seq 1 60); do
+            if ! kill -0 "$AMAZON_LISTENER_PID" 2>/dev/null; then
+              echo "❌ AMAZON LISTENER STOPPED"
+              cat /tmp/amazon_review_listener.log || true
+              exit 1
+            fi
+            sleep 10
+          done
+
+          echo "========== AMAZON REVIEW LISTENER LOG =========="
+          cat /tmp/amazon_review_listener.log || true
+
+          kill "$AMAZON_LISTENER_PID" 2>/dev/null || true
+          wait "$AMAZON_LISTENER_PID" 2>/dev/null || true
       - name: Noon then B.TECH — verified scan + screenshots
         run: python scripts/run_v11_once.py
 
