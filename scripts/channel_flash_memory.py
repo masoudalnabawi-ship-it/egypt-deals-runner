@@ -295,6 +295,17 @@ def main():
                 "attempts": 0,
             }
 
+            # Every NEW Telegram competitor Amazon ASIN
+            # goes immediately to the permanent Amazon Fast Lane.
+            # Competitor price is only a hint; Amazon verifies it.
+            add_manual_asin(asin)
+
+            print(
+                "⚡ TELEGRAM -> AMAZON FAST LANE"
+                f" | {asin}"
+                f" | channel={post.get('channel')}"
+            )
+
             print(
                 "🎯 COMPETITOR AMAZON PENDING"
                 f" | {asin}"
