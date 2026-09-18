@@ -62,8 +62,11 @@ async def _send_amazon_independent_review(payload):
             return self._data
 
     # Capture the verified Amazon product page only when a review is actually
-    # about to be sent. Stage it briefly through Telegram to obtain a reusable
-    # file_id, then let Cloudflare attach that exact screenshot to the review.
+    # about to be sent. A REAL Amazon screenshot is mandatory.
+    # If capture/staging fails we HOLD the deal for a later retry rather than
+    # sending an incomplete text/product-image review.
+    _screenshot_file_id = ""
+
     try:
         import asyncio as _asyncio
         import sys as _sys
@@ -82,12 +85,31 @@ async def _send_amazon_independent_review(payload):
             if (_cap or {}).get("ok") and _shot:
                 _file_id = await stage_photo_for_cloudflare(_shot)
                 if _file_id:
+                    _screenshot_file_id = str(_file_id)
                     payload = dict(payload)
                     payload["image_url"] = _file_id
                     payload["telegram_photo_file_id"] = _file_id
                     payload["review_media_source"] = "amazon_page_screenshot"
     except Exception as _media_exc:
-        print("⚠️ AMAZON REVIEW SCREENSHOT FALLBACK", repr(_media_exc), flush=True)
+        print("⚠️ AMAZON REVIEW SCREENSHOT ERROR", repr(_media_exc), flush=True)
+
+    # STRICT REVIEW QUALITY GATE:
+    # Never send incomplete Amazon review cards.
+    if not _screenshot_file_id:
+        print(
+            "⏸️ AMAZON REVIEW HELD — REAL SCREENSHOT REQUIRED |",
+            payload.get("asin") or payload.get("fingerprint"),
+            flush=True,
+        )
+        return _CloudReviewResponse(
+            503,
+            "real_amazon_screenshot_required",
+            {
+                "ok": False,
+                "held": True,
+                "error": "real_amazon_screenshot_required",
+            },
+        )
 
     url = CLOUD_BASE.rstrip("/") + "/api/deals"
     body = _json.dumps(payload, ensure_ascii=False, default=str).encode("utf-8")
