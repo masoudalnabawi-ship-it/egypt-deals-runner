@@ -108,10 +108,8 @@ async def send_deal(token, channel_id, deal, is_historical_low=False, featured=F
     )
     if sent:
         return sent
-    return await _post(token, "sendMessage", {
-        "chat_id": channel_id, "text": text, "parse_mode": "HTML",
-        "disable_web_page_preview": False,
-    })
+
+    raise RuntimeError("PUBLICATION_MEDIA_REQUIRED")
 
 
 async def send_admin_review(token, admin_chat_id, deal, short_fp, comparison_text=""):
@@ -220,9 +218,4 @@ async def send_custom_post(token, channel_id, deal, text, image_url=None, media_
     if sent:
         return sent
 
-    return await _post(token, "sendMessage", {
-        "chat_id": channel_id,
-        "text": text[:4000],
-        "parse_mode": "HTML",
-        "disable_web_page_preview": False,
-    })
+    raise RuntimeError("PUBLICATION_MEDIA_REQUIRED")

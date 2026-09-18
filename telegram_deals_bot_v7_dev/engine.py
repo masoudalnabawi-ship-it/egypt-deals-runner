@@ -7,6 +7,7 @@ import os
 import sys
 import urllib.request
 import time
+from pathlib import Path
 
 
 from config import settings

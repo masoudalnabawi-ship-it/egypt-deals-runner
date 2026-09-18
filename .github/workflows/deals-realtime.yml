@@ -39,8 +39,8 @@ jobs:
       TELEGRAM_CHANNEL_ID: ${{ secrets.AMAZON_CHANNEL_ID }}
       REVIEW_CHAT_ID: ${{ secrets.AMAZON_NORMAL_REVIEW_CHAT_ID }}
 
-      V11_ENABLED_STORES: "noon,btech,2b"
-      ENABLED_STORES: "noon,btech,2b"
+      V11_ENABLED_STORES: "btech,2b"
+      ENABLED_STORES: "btech,2b"
 
       MIN_DISCOUNT_PERCENT: "5"
       MIN_SAVING_EGP: "0"

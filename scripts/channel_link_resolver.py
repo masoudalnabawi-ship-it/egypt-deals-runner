@@ -40,7 +40,7 @@ def simple_resolve(url):
             },
         )
 
-        with urlopen(req, timeout=20) as r:
+        with urlopen(req, timeout=8) as r:
             return r.geturl()
 
     except Exception:
@@ -56,10 +56,10 @@ def browser_resolve(url, browser):
         page.goto(
             url,
             wait_until="domcontentloaded",
-            timeout=45000,
+            timeout=12000,
         )
 
-        page.wait_for_timeout(4500)
+        page.wait_for_timeout(1000)
 
         return page.url
 

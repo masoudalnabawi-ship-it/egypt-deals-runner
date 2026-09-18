@@ -3,6 +3,7 @@
 from urllib.request import Request, urlopen
 from html import unescape
 from pathlib import Path
+from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timezone
 import json
 import re
@@ -104,7 +105,7 @@ def fetch_channel(ch):
         headers={"User-Agent": UA},
     )
 
-    with urlopen(req, timeout=20) as r:
+    with urlopen(req, timeout=12) as r:
         page = r.read().decode(
             "utf-8",
             errors="ignore",
@@ -172,6 +173,13 @@ def fetch_channel(ch):
 
     return out
 
+
+def fetch_channel_safe(ch):
+    try:
+        return ch, fetch_channel(ch), None
+    except Exception as exc:
+        return ch, [], exc
+
 def main():
     state = load_state()
 
@@ -186,7 +194,15 @@ def main():
 
     new_posts = []
 
-    for ch in CHANNELS:
+    with ThreadPoolExecutor(max_workers=5) as pool:
+        results = list(
+            pool.map(
+                fetch_channel_safe,
+                CHANNELS,
+            )
+        )
+
+    for ch, posts, error in results:
         channel_has_history = any(
             str(k).lower().startswith(
                 ch.lower() + "/"
@@ -194,18 +210,17 @@ def main():
             for k in known
         )
 
-        try:
-            posts = fetch_channel(ch)
-            print(
-                f"✅ CHANNEL {ch} "
-                f"| posts={len(posts)}"
-            )
-        except Exception as e:
+        if error is not None:
             print(
                 f"❌ CHANNEL {ch} "
-                f"| {repr(e)}"
+                f"| {repr(error)}"
             )
             continue
+
+        print(
+            f"✅ CHANNEL {ch} "
+            f"| posts={len(posts)}"
+        )
 
         for p in posts:
             key = p["post"]
