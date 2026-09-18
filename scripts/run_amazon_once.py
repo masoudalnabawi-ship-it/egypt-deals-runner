@@ -3,6 +3,7 @@ import json
 import os
 import subprocess
 import sys
+import time
 import types
 from pathlib import Path
 
@@ -83,16 +84,87 @@ async def safe(name, coro, timeout=90):
     except Exception as exc:
         print(f"AMAZON_ONCE {name}=ERROR {exc!r}", flush=True)
 
+def surface_backoff_active():
+    try:
+        return (
+            time.monotonic()
+            < float(
+                getattr(
+                    radar,
+                    "AMAZON_SURFACE_BACKOFF_UNTIL",
+                    0
+                ) or 0
+            )
+        )
+    except Exception:
+        return False
+
+
 async def drain_queue(limit=8):
     async with httpx.AsyncClient() as client:
         for i in range(limit):
+
+            # Do NOT pop discovery work while Search is paused.
+            if radar.amazon_search_backoff_active():
+                print(
+                    "⏳ AMAZON_ONCE QUEUE PAUSED"
+                    " | SEARCH BACKOFF ACTIVE"
+                    " | QUEUE =",
+                    len(radar.UNIFIED_AMAZON_QUEUE),
+                    flush=True
+                )
+                break
+
             job = radar.pop_amazon_candidate()
+
             if not job:
                 break
+
             try:
-                await asyncio.wait_for(radar.process_queue_item(client, job), timeout=55)
+                ok = await asyncio.wait_for(
+                    radar.process_queue_item(
+                        client,
+                        job
+                    ),
+                    timeout=55
+                )
+
+                # If this request itself triggered a block/503,
+                # put it back so the late drain can retry it.
+                if ok is False:
+                    job["attempts"] = int(
+                        job.get("attempts", 0) or 0
+                    ) + 1
+
+                    job["ready_at"] = (
+                        time.time() + 15
+                    )
+
+                    radar.UNIFIED_AMAZON_QUEUE.append(
+                        job
+                    )
+
+                    radar.UNIFIED_AMAZON_QUEUE.sort(
+                        key=lambda x: (
+                            -x.get("priority", 0),
+                            x.get("ready_at", 0),
+                        )
+                    )
+
+                    print(
+                        "↩️ AMAZON_ONCE QUEUE REQUEUED",
+                        job.get("source"),
+                        "| QUEUE =",
+                        len(radar.UNIFIED_AMAZON_QUEUE),
+                        flush=True
+                    )
+                    break
+
             except Exception as exc:
-                print(f"AMAZON_ONCE queue[{i}]={exc!r}", flush=True)
+                print(
+                    f"AMAZON_ONCE queue[{i}]={exc!r}",
+                    flush=True
+                )
 
 async def main():
     # Progressive discovery + priority checks. Every invocation advances persisted state.
@@ -103,20 +175,54 @@ async def main():
     # Four rotations normally cover coupons/grocery/food or
     # the next four persisted priority surfaces.
     for n in range(4):
+
+        if surface_backoff_active():
+            print(
+                "⏳ PRIORITY SURFACE ROTATION PAUSED"
+                " | AMAZON SURFACE BACKOFF",
+                flush=True
+            )
+            break
+
         await safe(
             f"priority_surface_{n+1}",
             radar.direct_surface_once("priority"),
             70
         )
 
+        if surface_backoff_active():
+            print(
+                "⏳ PRIORITY SURFACE ROTATION STOPPED"
+                " | BACKOFF TRIGGERED",
+                flush=True
+            )
+            break
+
     # ALL AMAZON DEPARTMENTS — fast round-robin coverage
     # Each call advances to another department while preserving its page.
     for n in range(6):
+
+        if surface_backoff_active():
+            print(
+                "⏳ GENERAL SURFACE ROTATION PAUSED"
+                " | AMAZON SURFACE BACKOFF",
+                flush=True
+            )
+            break
+
         await safe(
             f"general_surface_{n+1}",
             radar.direct_surface_once("general"),
             45
         )
+
+        if surface_backoff_active():
+            print(
+                "⏳ GENERAL SURFACE ROTATION STOPPED"
+                " | BACKOFF TRIGGERED",
+                flush=True
+            )
+            break
 
     await safe("deep_discovery", radar.deep_discovery(), 25)
 
