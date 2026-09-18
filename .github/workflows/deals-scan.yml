@@ -23,6 +23,9 @@ jobs:
       TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
       TELEGRAM_MEDIA_STAGE_CHAT_ID: ${{ secrets.TELEGRAM_MEDIA_STAGE_CHAT_ID }}
       ADMIN_CHAT_ID: ${{ secrets.TELEGRAM_MEDIA_STAGE_CHAT_ID }}
+      AMAZON_REVIEW_GROUP_ID: ${{ secrets.AMAZON_REVIEW_GROUP_ID }}
+      AMAZON_CHANNEL_ID: ${{ secrets.AMAZON_CHANNEL_ID }}
+      AMAZON_NORMAL_REVIEW_CHAT_ID: ${{ secrets.AMAZON_NORMAL_REVIEW_CHAT_ID }}
 
       # TEMP STORE POLICY: Amazon first in its dedicated radar, then Noon, then B.TECH only.
       DIRECT_FLASH_REVIEW: "false"
@@ -64,8 +67,11 @@ jobs:
 
       # AMAZON ALWAYS GOES FIRST.
       - name: Amazon — priority scan + real product screenshot
-        run: python scripts/run_amazon_once.py
-
+        run: |
+          python scripts/prepare_amazon_review_config.py
+          python scripts/run_amazon_once.py
+          echo "🤖 AMAZON REVIEW BUTTON LISTENER ACTIVE"
+          timeout 180s python amazon_dynamic_runtime_v8/amazon_deals_bot_ready/bot.py || true
       - name: Noon then B.TECH — verified scan + screenshots
         run: python scripts/run_v11_once.py
 

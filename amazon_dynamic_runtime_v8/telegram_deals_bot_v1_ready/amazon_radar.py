@@ -45,102 +45,78 @@ class _AmazonLocalReviewResponse:
         }
 
 async def _send_amazon_independent_review(payload):
-    """Send Amazon review candidates to the existing Cloudflare moderation API.
+    """Send Amazon candidate through the ORIGINAL full review-card system.
 
-    GitHub Actions has no always-on local review bot, so Cloudflare owns
-    Telegram delivery, approval/rejection callbacks, and D1 persistence.
+    GitHub performs the scan, while the existing Amazon review bot creates:
+    real Amazon screenshot + full details + moderation buttons.
     """
-    import json as _json
-    import urllib.request as _urlreq
 
-    class _CloudReviewResponse:
+    class _DirectReviewResponse:
         def __init__(self, status_code, text, data=None):
             self.status_code = status_code
-            self.text = text
+            self.text = str(text)
             self._data = data or {}
+
         def json(self):
             return self._data
 
-    # Capture the verified Amazon product page only when a review is actually
-    # about to be sent. A REAL Amazon screenshot is mandatory.
-    # If capture/staging fails we HOLD the deal for a later retry rather than
-    # sending an incomplete text/product-image review.
-    _screenshot_file_id = ""
-
     try:
-        import asyncio as _asyncio
+        import importlib
         import sys as _sys
         from pathlib import Path as _Path
-        _review_dir = _Path(__file__).resolve().parent.parent / "amazon_deals_bot_ready"
-        if str(_review_dir) not in _sys.path:
-            _sys.path.insert(0, str(_review_dir))
-        from amazon_page_capture import capture_amazon_page
-        from cloud_review_media import stage_photo_for_cloudflare
 
-        _key = str(payload.get("asin") or payload.get("fingerprint") or "amazon")
-        _url = str(payload.get("url") or "")
-        if _url:
-            _cap = await _asyncio.to_thread(capture_amazon_page, _url, _key)
-            _shot = str((_cap or {}).get("screenshot") or "")
-            if (_cap or {}).get("ok") and _shot:
-                _file_id = await stage_photo_for_cloudflare(_shot)
-                if _file_id:
-                    _screenshot_file_id = str(_file_id)
-                    payload = dict(payload)
-                    payload["image_url"] = _file_id
-                    payload["telegram_photo_file_id"] = _file_id
-                    payload["review_media_source"] = "amazon_page_screenshot"
-    except Exception as _media_exc:
-        print("⚠️ AMAZON REVIEW SCREENSHOT ERROR", repr(_media_exc), flush=True)
+        review_dir = (
+            _Path(__file__).resolve().parent.parent
+            / "amazon_deals_bot_ready"
+        )
 
-    # STRICT REVIEW QUALITY GATE:
-    # Never send incomplete Amazon review cards.
-    if not _screenshot_file_id:
+        if str(review_dir) not in _sys.path:
+            _sys.path.insert(0, str(review_dir))
+
+        review_bot = importlib.import_module("bot")
+        review_bot.db_init()
+
+        result = await asyncio.to_thread(
+            review_bot.send_review,
+            dict(payload),
+        )
+
+        ok = result in ("sent", "updated", "duplicate")
+
         print(
-            "⏸️ AMAZON REVIEW HELD — REAL SCREENSHOT REQUIRED |",
-            payload.get("asin") or payload.get("fingerprint"),
+            "📨 AMAZON FULL REVIEW",
+            payload.get("asin"),
+            "| RESULT =", result,
             flush=True,
         )
-        return _CloudReviewResponse(
+
+        return _DirectReviewResponse(
+            200 if ok else 503,
+            result,
+            {
+                "ok": ok,
+                "telegram": ok,
+                "full_review_card": True,
+                "result": result,
+            },
+        )
+
+    except Exception as exc:
+        print(
+            "❌ AMAZON FULL REVIEW ERROR",
+            payload.get("asin"),
+            repr(exc),
+            flush=True,
+        )
+
+        return _DirectReviewResponse(
             503,
-            "real_amazon_screenshot_required",
+            repr(exc),
             {
                 "ok": False,
-                "held": True,
-                "error": "real_amazon_screenshot_required",
+                "error": "amazon_full_review_failed",
             },
         )
-
-    url = CLOUD_BASE.rstrip("/") + "/api/deals"
-    body = _json.dumps(payload, ensure_ascii=False, default=str).encode("utf-8")
-
-    def _post():
-        req = _urlreq.Request(
-            url,
-            data=body,
-            headers={
-                "Content-Type": "application/json",
-                "Accept": "application/json",
-                "User-Agent": "EgyptDealsAmazonRadar-GitHub/1.0",
-                "x-api-key": API_KEY,
-            },
-            method="POST",
-        )
-        with _urlreq.urlopen(req, timeout=35) as resp:
-            text = resp.read().decode("utf-8", "replace")
-            try:
-                data = _json.loads(text)
-            except Exception:
-                data = {}
-            return _CloudReviewResponse(int(resp.status), text, data)
-
-    try:
-        r = await asyncio.to_thread(_post)
-        print("☁️ AMAZON CLOUD REVIEW", payload.get("asin") or payload.get("fingerprint"), "|", r.status_code, flush=True)
-        return r
-    except Exception as exc:
-        print("❌ AMAZON CLOUD REVIEW ERROR", repr(exc), flush=True)
-        raise
 
 load_dotenv(".env")
 

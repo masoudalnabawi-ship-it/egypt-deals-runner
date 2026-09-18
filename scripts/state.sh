@@ -52,3 +52,28 @@ case "${1:-}" in
   collect) collect ;;
   *) echo "usage: $0 hydrate|collect" >&2; exit 2 ;;
 esac
+
+
+# AMAZON_REVIEW_PERSIST_V1
+REVIEW_DIR="amazon_dynamic_runtime_v8/amazon_deals_bot_ready"
+
+case "${1:-}" in
+  hydrate)
+    [ -f .runtime_state/amazon_bot.db ] && \
+      cp -f .runtime_state/amazon_bot.db "$REVIEW_DIR/amazon_bot.db"
+
+    [ -f .runtime_state/amazon_poll_state.json ] && \
+      cp -f .runtime_state/amazon_poll_state.json "$REVIEW_DIR/poll_state.json"
+    ;;
+
+  collect)
+    mkdir -p .runtime_state
+
+    [ -f "$REVIEW_DIR/amazon_bot.db" ] && \
+      cp -f "$REVIEW_DIR/amazon_bot.db" .runtime_state/amazon_bot.db
+
+    [ -f "$REVIEW_DIR/poll_state.json" ] && \
+      cp -f "$REVIEW_DIR/poll_state.json" \
+      .runtime_state/amazon_poll_state.json
+    ;;
+esac

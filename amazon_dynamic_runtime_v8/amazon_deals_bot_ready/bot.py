@@ -607,6 +607,25 @@ def _send_review_card(p, c, did):
         lines.append(f'💰 السعر الآن: <b>{live_price:,.2f} ج.م</b>')
     if radar_price > 0:
         lines.append(f'📡 سعر الرادار: <b>{radar_price:,.2f} ج.م</b>')
+
+    shown_price = live_price or radar_price
+    ref_price = float(
+        c.get('reference')
+        or p.get('reference_price')
+        or p.get('amazon_old_price')
+        or p.get('old_price')
+        or 0
+    )
+
+    if ref_price > shown_price > 0:
+        real_discount = (ref_price - shown_price) / ref_price * 100
+        lines.append(
+            f'💵 السعر السابق/المرجعي: <b>{ref_price:,.2f} ج.م</b>'
+        )
+        lines.append(
+            f'📉 نسبة الخصم: <b>{real_discount:.1f}%</b>'
+        )
+
     promo_type = str(p.get('promo_type') or 'none').lower()
     promo_percent = num(p.get('promo_percent'))
     coupon_value = num(p.get('coupon_value'))
@@ -636,7 +655,12 @@ def _send_review_card(p, c, did):
             p['_review_media_kind'] = 'store_page_screenshot'
             return send_photo_file(API, _route_chat, screenshot, caption, markup, timeout=45)
         except Exception as e:
-            log('REAL SCREENSHOT SEND FALLBACK: ' + str(e))
+            log('REAL SCREENSHOT SEND FAILED: ' + str(e))
+            raise RuntimeError('REAL_AMAZON_SCREENSHOT_SEND_FAILED')
+
+    # Do not send a fake card or text-only review.
+    raise RuntimeError('REAL_AMAZON_SCREENSHOT_REQUIRED')
+
     try:
         import tempfile
         if build_review_card is None or send_photo_file is None:
