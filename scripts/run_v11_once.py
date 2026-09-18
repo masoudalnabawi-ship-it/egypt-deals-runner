@@ -10,7 +10,7 @@ os.chdir(ROOT)
 
 # Cloudflare handles Telegram moderation; scanner only discovers/verifies/submits.
 os.environ.setdefault("DIRECT_FLASH_REVIEW", "false")
-os.environ.setdefault("V11_ENABLED_STORES", "noon,btech")
+os.environ.setdefault("V11_ENABLED_STORES", "noon,btech,2b")
 os.environ.setdefault("ENABLED_STORES", os.environ["V11_ENABLED_STORES"])
 os.environ.setdefault("MIN_DISCOUNT_PERCENT", "5")
 os.environ.setdefault("MIN_SAVING_EGP", "0")

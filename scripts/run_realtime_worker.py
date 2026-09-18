@@ -88,8 +88,8 @@ def amazon_cycle():
 
 def stores_cycle():
     run_script(
-        "NOON + BTECH SCAN",
-        "scripts/run_v11_once.py",
+        "NOON + BTECH + 2B SCAN",
+        "scripts/run_v11_status.py",
         180,
     )
 
