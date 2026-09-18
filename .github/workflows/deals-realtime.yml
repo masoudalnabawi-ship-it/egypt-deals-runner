@@ -6,11 +6,7 @@ on:
 jobs:
   realtime:
     runs-on: ubuntu-latest
-    timeout-minutes: 5
-
-    env:
-      CLOUD_API_URL: ${{ secrets.CLOUD_API_URL }}
-      CLOUD_API_KEY: ${{ secrets.CLOUD_API_KEY }}
+    timeout-minutes: 8
 
     steps:
       - uses: actions/checkout@v4
@@ -19,55 +15,106 @@ jobs:
         with:
           python-version: "3.13"
 
-      - name: Install httpx
-        run: pip install httpx
+      - name: Install Playwright
+        run: |
+          pip install playwright
+          playwright install chromium
 
-      - name: Test Cloud store proxy
+      - name: Test Noon with real browser
         run: |
           python - <<'PY'
-          import os
-          import httpx
+          import asyncio
+          from playwright.async_api import async_playwright
 
-          base = os.environ["CLOUD_API_URL"].strip().rstrip("/")
+          URL = "https://www.noon.com/egypt-en/daily-deals-eg/"
 
-          if base.endswith("/api/deals"):
-              base = base[:-len("/api/deals")]
+          async def main():
+              async with async_playwright() as p:
+                  browser = await p.chromium.launch(
+                      headless=True,
+                      args=[
+                          "--no-sandbox",
+                          "--disable-dev-shm-usage",
+                      ],
+                  )
 
-          endpoint = base + "/api/store-proxy"
+                  context = await browser.new_context(
+                      locale="en-EG",
+                      timezone_id="Africa/Cairo",
+                      viewport={
+                          "width": 1365,
+                          "height": 900,
+                      },
+                      user_agent=(
+                          "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+                          "AppleWebKit/537.36 (KHTML, like Gecko) "
+                          "Chrome/140.0.0.0 Safari/537.36"
+                      ),
+                  )
 
-          target = (
-              "https://www.noon.com/"
-              "egypt-en/daily-deals-eg/"
-          )
+                  page = await context.new_page()
 
-          print("CLOUD_URL_PRESENT:", bool(base))
-          print("CLOUD_KEY_PRESENT:", bool(os.environ.get("CLOUD_API_KEY")))
-          print("ENDPOINT_PATH: /api/store-proxy")
+                  response = await page.goto(
+                      URL,
+                      wait_until="domcontentloaded",
+                      timeout=60000,
+                  )
 
-          try:
-              r = httpx.get(
-                  endpoint,
-                  params={"url": target},
-                  headers={
-                      "x-api-key": os.environ["CLOUD_API_KEY"],
-                      "Accept": "text/html",
-                  },
-                  timeout=40,
-                  follow_redirects=True,
-              )
+                  await page.wait_for_timeout(6000)
 
-              print("STATUS:", r.status_code)
-              print("CONTENT_TYPE:", r.headers.get("content-type"))
-              print("BODY_SIZE:", len(r.content))
-              print("BODY_START:")
-              print(r.text[:1500])
+                  print(
+                      "STATUS:",
+                      response.status if response else "NONE",
+                  )
 
-          except Exception as exc:
-              print(
-                  "REQUEST_ERROR:",
-                  type(exc).__name__,
-                  str(exc),
-              )
+                  print(
+                      "FINAL_URL:",
+                      page.url,
+                  )
 
-          print("✅ PROXY DIAGNOSTIC COMPLETE")
+                  print(
+                      "TITLE:",
+                      await page.title(),
+                  )
+
+                  html = await page.content()
+
+                  print(
+                      "HTML_SIZE:",
+                      len(html),
+                  )
+
+                  print(
+                      "ACCESS_DENIED:",
+                      "Access Denied" in html,
+                  )
+
+                  print(
+                      "NOON_PRESENT:",
+                      "noon" in html.lower(),
+                  )
+
+                  print(
+                      "PRICE_PRESENT:",
+                      "price" in html.lower(),
+                  )
+
+                  print(
+                      "PRODUCT_PRESENT:",
+                      "product" in html.lower(),
+                  )
+
+                  text = (
+                      await page.locator("body")
+                      .inner_text()
+                  )
+
+                  print("BODY_START:")
+                  print(text[:2000])
+
+                  await browser.close()
+
+          asyncio.run(main())
+
+          print("✅ NOON BROWSER TEST COMPLETE")
           PY
