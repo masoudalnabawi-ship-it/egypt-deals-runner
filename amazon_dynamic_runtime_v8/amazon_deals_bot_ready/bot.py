@@ -26,54 +26,78 @@ REVIEW = int(CFG["review_group_id"])
 # NORMAL_REVIEW_ROUTING_V93
 NORMAL_REVIEW = int(CFG.get("normal_review_chat_id") or REVIEW)
 
-def review_chat_for(p, c):
-    try:
-        rank = int((c or {}).get("rank") or 0)
-    except Exception:
-        rank = 0
-
-    label = str((c or {}).get("label") or "").upper()
-
-    public_50 = bool(
-        p.get("general_50_plus")
-        or p.get("public_coupon_50_plus")
-    )
-
-    is_ultra = (
-        public_50
-        or rank >= 3
-        or "ULTRA" in label
-    )
-
-    return REVIEW if is_ultra else NORMAL_REVIEW
-
-
-def review_chat_for_deal(did, p, c):
+def review_discount_percent(p, c):
     """
-    Preserve the original review chat for existing deals.
-    New deals use the new Normal/Ultra routing.
+    STRICT ROUTER:
+    < 50%  -> normal review bot/chat
+    >=50%  -> SUPER ULTRA group
+
+    Channel/competitor labels do not decide routing.
+    The strongest current Amazon price/reference evidence does.
     """
+    values = []
+
     try:
-        with sqlite3.connect(DB) as db:
-            row = db.execute(
-                "SELECT payload FROM deals WHERE deal_id=?",
-                (did,),
-            ).fetchone()
-
-        if row and row[0]:
-            old = json.loads(row[0])
-            saved = old.get("_review_chat_id")
-
-            if saved:
-                return int(saved)
-
-            # Legacy deal created before split-routing:
-            # its old message belongs to the Ultra review group.
-            return REVIEW
-
+        values.append(
+            float((c or {}).get("verified_discount") or 0)
+        )
     except Exception:
         pass
 
+    try:
+        values.append(
+            float((c or {}).get("claimed_discount") or 0)
+        )
+    except Exception:
+        pass
+
+    try:
+        current = float(
+            (c or {}).get("effective_current")
+            or (c or {}).get("current")
+            or p.get("current_price")
+            or p.get("live_price")
+            or 0
+        )
+    except Exception:
+        current = 0.0
+
+    refs = [
+        (c or {}).get("reference"),
+        p.get("reference_price"),
+        p.get("amazon_old_price"),
+        p.get("old_price"),
+        p.get("search_old_price"),
+    ]
+
+    if current > 0:
+        for ref in refs:
+            try:
+                ref = float(ref or 0)
+
+                if ref > current:
+                    values.append(
+                        (ref - current) / ref * 100.0
+                    )
+            except Exception:
+                pass
+
+    return max(values or [0.0])
+
+
+def review_chat_for(p, c):
+    discount = review_discount_percent(p, c)
+
+    return (
+        REVIEW
+        if discount >= 50.0
+        else NORMAL_REVIEW
+    )
+
+
+def review_chat_for_deal(did, p, c):
+    # Routing is always recalculated from the latest verified deal.
+    # Old rank/ULTRA labels never override the strict 50% boundary.
     return review_chat_for(p, c)
 
 CHANNEL = int(CFG["channel_id"])
@@ -553,9 +577,6 @@ def _send_review_card(p, c, did):
     No CAPTCHA bypass.
     No auto publish.
     """
-    _route_chat = review_chat_for_deal(did, p, c)
-    p['_review_chat_id'] = _route_chat
-    log('REVIEW ROUTING | ' + ('ULTRA_GROUP' if _route_chat == REVIEW else 'PRIVATE_NORMAL') + ' | asin=' + str(p.get('asin') or ''))
     url = str(p.get('url') or 'https://www.amazon.eg/')
     asin = str(p.get('asin') or did or 'product')
     radar_price = float(c.get('effective_current') or p.get('current_price') or p.get('last_price') or 0)
@@ -777,6 +798,35 @@ def _send_review_card(p, c, did):
     if live_price > 0 and radar_price > 0 and (mismatch > 0.02):
         lines.append(f'🔄 فرق السعر: <b>{mismatch * 100:.1f}%</b>')
     lines += ['', '🔗 <b>رابط المنتج:</b>', f'<code>{html.escape(url)}</code>', '', '🔒 للمراجعة فقط — لن يُنشر تلقائيًا.']
+    # Route only AFTER the live Amazon page has updated
+    # current price + reference discount.
+    _route_chat = review_chat_for_deal(
+        did,
+        p,
+        c,
+    )
+
+    p['_review_chat_id'] = _route_chat
+
+    route_discount = review_discount_percent(
+        p,
+        c,
+    )
+
+    log(
+        'REVIEW ROUTING STRICT50'
+        + ' | '
+        + (
+            'ULTRA_GROUP'
+            if _route_chat == REVIEW
+            else 'PRIVATE_NORMAL'
+        )
+        + ' | discount='
+        + f'{route_discount:.1f}'
+        + ' | asin='
+        + str(p.get('asin') or '')
+    )
+
     caption = '\n'.join(lines)
     if safe_publish:
         markup = keyboard(p, did)

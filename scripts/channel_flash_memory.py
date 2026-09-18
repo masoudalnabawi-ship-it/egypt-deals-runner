@@ -13,6 +13,7 @@ ROOT = Path(__file__).resolve().parents[1]
 STATE_DIR = ROOT / ".runtime_state"
 NEW_FILE = STATE_DIR / "channel_new_posts.json"
 MEMORY_FILE = STATE_DIR / "channel_flash_memory.json"
+PENDING_FILE = STATE_DIR / "channel_amazon_pending.json"
 
 RADAR_WATCH = (
     STATE_DIR / "amazon_radar_watch.json"
@@ -196,6 +197,27 @@ def main():
         },
     )
 
+    pending = load_json(
+        PENDING_FILE,
+        [],
+    )
+
+    if not isinstance(pending, list):
+        pending = []
+
+    pending_by_asin = {}
+
+    for item in pending:
+        if not isinstance(item, dict):
+            continue
+
+        key = str(
+            item.get("asin") or ""
+        ).strip().upper()
+
+        if key:
+            pending_by_asin[key] = item
+
     print(
         f"📡 FLASH INPUT POSTS = {len(posts)}"
     )
@@ -253,6 +275,31 @@ def main():
             asin = (
                 amazon_result["asin"]
                 .upper()
+            )
+
+            # Every NEW competitor Amazon product gets
+            # exact Amazon verification in the scanner.
+            # Competitor price/discount is ONLY a hint.
+            pending_by_asin[asin] = {
+                "asin": asin,
+                "channel": post.get("channel"),
+                "post": post.get("post"),
+                "channel_time": post.get("time"),
+                "channel_price_hint": current,
+                "final_url": amazon_result.get(
+                    "final_url"
+                ),
+                "queued_at": datetime.now(
+                    timezone.utc
+                ).isoformat(),
+                "attempts": 0,
+            }
+
+            print(
+                "🎯 COMPETITOR AMAZON PENDING"
+                f" | {asin}"
+                f" | channel={post.get('channel')}"
+                f" | hint={current:.2f}"
             )
 
             rec = radar.get(
@@ -420,6 +467,24 @@ def main():
             indent=2,
         ),
         encoding="utf-8",
+    )
+
+    pending_out = list(
+        pending_by_asin.values()
+    )[-100:]
+
+    PENDING_FILE.write_text(
+        json.dumps(
+            pending_out,
+            ensure_ascii=False,
+            indent=2,
+        ),
+        encoding="utf-8",
+    )
+
+    print(
+        "🎯 AMAZON COMPETITOR PENDING =",
+        len(pending_out)
     )
 
     print(

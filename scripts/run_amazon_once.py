@@ -1,6 +1,8 @@
 import asyncio
+import hashlib
 import json
 import os
+import sqlite3
 import subprocess
 import sys
 import time
@@ -74,6 +76,410 @@ async def _cloud_review_with_diag(payload):
     return r
 
 radar._send_amazon_independent_review = _cloud_review_with_diag
+
+STATE_DIR = Path(__file__).resolve().parents[1] / ".runtime_state"
+COMPETITOR_PENDING_FILE = (
+    STATE_DIR / "channel_amazon_pending.json"
+)
+
+
+async def process_competitor_pending(limit=4):
+    """
+    Competitor channels are discovery only.
+
+    We NEVER trust their claimed discount.
+    Each ASIN is opened directly on Amazon,
+    then V5 performs the normal exact verification.
+    """
+    STATE_DIR.mkdir(
+        parents=True,
+        exist_ok=True
+    )
+
+    try:
+        pending = json.loads(
+            COMPETITOR_PENDING_FILE.read_text(
+                encoding="utf-8"
+            )
+        )
+    except Exception:
+        pending = []
+
+    if not isinstance(pending, list):
+        pending = []
+
+    if not pending:
+        print(
+            "🎯 COMPETITOR AMAZON PENDING = 0",
+            flush=True
+        )
+        return 0
+
+    remaining = []
+    attempted = 0
+    verified = 0
+    watch_changed = False
+
+    async with httpx.AsyncClient() as client:
+
+        for item in pending:
+
+            if not isinstance(item, dict):
+                continue
+
+            if attempted >= limit:
+                remaining.append(item)
+                continue
+
+            asin = str(
+                item.get("asin") or ""
+            ).strip().upper()
+
+            if (
+                len(asin) != 10
+                or not asin.isalnum()
+            ):
+                continue
+
+            attempted += 1
+
+            direct_url = radar.asin_url(asin)
+
+            try:
+                current = await radar.live_price(
+                    client,
+                    direct_url
+                )
+            except Exception as exc:
+                current = 0
+
+                print(
+                    "⚠️ COMPETITOR DIRECT ERROR",
+                    asin,
+                    repr(exc),
+                    flush=True
+                )
+
+            current = radar.to_float(current)
+
+            if current <= 0:
+                item["attempts"] = (
+                    int(
+                        item.get(
+                            "attempts",
+                            0
+                        ) or 0
+                    )
+                    + 1
+                )
+
+                item["last_attempt_at"] = int(
+                    time.time()
+                )
+
+                remaining.append(item)
+
+                print(
+                    "⏳ COMPETITOR AMAZON RETRY",
+                    asin,
+                    "| attempt=",
+                    item["attempts"],
+                    flush=True
+                )
+
+                continue
+
+            meta = (
+                radar.AMAZON_PRODUCT_META_CACHE.get(
+                    asin,
+                    {}
+                )
+            )
+
+            exact = {
+                "asin": asin,
+                "url": direct_url,
+                "title": (
+                    meta.get("title_ar")
+                    or meta.get("title")
+                    or asin
+                ),
+                "title_ar": (
+                    meta.get("title_ar")
+                    or ""
+                ),
+                "current_price": current,
+                "old_price": (
+                    meta.get("old_price")
+                ),
+                "image_url": (
+                    meta.get("image_url")
+                    or ""
+                ),
+            }
+
+            radar.add_product(
+                exact,
+                "competitor_channel_direct"
+            )
+
+            rec = radar.watch.get(asin)
+
+            if not isinstance(rec, dict):
+                item["attempts"] = (
+                    int(
+                        item.get(
+                            "attempts",
+                            0
+                        ) or 0
+                    )
+                    + 1
+                )
+
+                remaining.append(item)
+                continue
+
+            # Highest temporary lane.
+            # V5 still decides whether it is a real deal.
+            rec[
+                "global_deep_v95_priority"
+            ] = max(
+                int(
+                    rec.get(
+                        "global_deep_v95_priority",
+                        0
+                    ) or 0
+                ),
+                400,
+            )
+
+            rec[
+                "priority_boost_until"
+            ] = max(
+                int(
+                    rec.get(
+                        "priority_boost_until",
+                        0
+                    ) or 0
+                ),
+                int(time.time()) + 3600,
+            )
+
+            rec["manual_watch"] = True
+            rec[
+                "competitor_fast_candidate"
+            ] = True
+
+            rec[
+                "competitor_channel"
+            ] = item.get("channel")
+
+            # Keep competitor price only as context.
+            # NEVER use it as Amazon reference.
+            rec[
+                "competitor_price_hint"
+            ] = radar.to_float(
+                item.get(
+                    "channel_price_hint"
+                )
+            )
+
+            verified += 1
+            watch_changed = True
+
+            # Do NOT remove from pending yet.
+            # V5 + real Amazon review card must finish first.
+            item["attempts"] = (
+                int(
+                    item.get(
+                        "attempts",
+                        0
+                    ) or 0
+                )
+                + 1
+            )
+
+            item[
+                "amazon_direct_verified_at"
+            ] = int(time.time())
+
+            remaining.append(item)
+
+            print(
+                "🎯 COMPETITOR AMAZON EXACT",
+                asin,
+                "| AMAZON PRICE =",
+                round(current, 2),
+                "| AMAZON OLD =",
+                meta.get("old_price"),
+                "| V5 PRIORITY = 400",
+                flush=True
+            )
+
+    if watch_changed:
+        async with radar.lock:
+            radar.save_files()
+
+    COMPETITOR_PENDING_FILE.write_text(
+        json.dumps(
+            remaining[-100:],
+            ensure_ascii=False,
+            indent=2,
+        ),
+        encoding="utf-8",
+    )
+
+    print(
+        "🎯 COMPETITOR FAST VERIFY"
+        " | ATTEMPTED =",
+        attempted,
+        "| VERIFIED =",
+        verified,
+        "| REMAINING =",
+        len(remaining),
+        flush=True
+    )
+
+    return verified
+
+
+def prune_competitor_pending_after_review():
+    """
+    Remove competitor ASIN only after the Amazon review
+    system has actually created/retained a review card.
+
+    If review failed (CAPTCHA/503/etc), keep it for retry.
+    """
+    try:
+        pending = json.loads(
+            COMPETITOR_PENDING_FILE.read_text(
+                encoding="utf-8"
+            )
+        )
+    except Exception:
+        pending = []
+
+    if not isinstance(pending, list):
+        pending = []
+
+    if not pending:
+        return 0
+
+    db_path = REVIEW_DIR / "amazon_bot.db"
+
+    if not db_path.exists():
+        print(
+            "⏳ COMPETITOR PENDING KEPT"
+            " | REVIEW DB NOT FOUND",
+            flush=True
+        )
+        return 0
+
+    kept = []
+    removed = 0
+
+    try:
+        db = sqlite3.connect(str(db_path))
+
+        for item in pending:
+
+            if not isinstance(item, dict):
+                continue
+
+            asin = str(
+                item.get("asin") or ""
+            ).strip().upper()
+
+            if (
+                len(asin) != 10
+                or not asin.isalnum()
+            ):
+                continue
+
+            did = hashlib.sha1(
+                ("asin:" + asin).encode()
+            ).hexdigest()[:24]
+
+            row = db.execute(
+                """
+                SELECT status, review_message_id
+                FROM deals
+                WHERE deal_id=?
+                """,
+                (did,),
+            ).fetchone()
+
+            if row and row[1]:
+                removed += 1
+
+                print(
+                    "✅ COMPETITOR REVIEW CONFIRMED",
+                    asin,
+                    "| status=",
+                    row[0],
+                    "| message_id=",
+                    row[1],
+                    flush=True
+                )
+
+                continue
+
+            attempts = int(
+                item.get(
+                    "attempts",
+                    0
+                ) or 0
+            )
+
+            # Give transient Amazon/CAPTCHA failures
+            # several future runs before retiring.
+            if attempts >= 4:
+                removed += 1
+
+                print(
+                    "🧹 COMPETITOR PENDING RETIRED",
+                    asin,
+                    "| attempts=",
+                    attempts,
+                    "| no review card",
+                    flush=True
+                )
+
+                continue
+
+            kept.append(item)
+
+        db.close()
+
+    except Exception as exc:
+        print(
+            "⚠️ COMPETITOR PENDING PRUNE ERROR",
+            repr(exc),
+            flush=True
+        )
+
+        return 0
+
+    COMPETITOR_PENDING_FILE.write_text(
+        json.dumps(
+            kept[-100:],
+            ensure_ascii=False,
+            indent=2,
+        ),
+        encoding="utf-8",
+    )
+
+    print(
+        "🎯 COMPETITOR PENDING FINAL"
+        " | CONFIRMED/RETIRED =",
+        removed,
+        "| KEPT =",
+        len(kept),
+        flush=True
+    )
+
+    return removed
+
 
 async def safe(name, coro, timeout=90):
     try:
@@ -167,6 +573,25 @@ async def drain_queue(limit=8):
                 )
 
 async def main():
+
+    # COMPETITOR FAST VERIFY FIRST.
+    # Do this before Search/direct surfaces can trigger
+    # Amazon backoff and delay a newly spotted deal.
+    competitor_verified = await process_competitor_pending(
+        4
+    )
+
+    if competitor_verified > 0:
+        await safe(
+            "competitor_pending_v5",
+            radar.full_v5_watchlist_once(),
+            70
+        )
+
+    # Delete competitor pending only when the full
+    # Amazon review card actually exists.
+    prune_competitor_pending_after_review()
+
     # Progressive discovery + priority checks. Every invocation advances persisted state.
     # WIDE AMAZON COVERAGE V3
     # Priority surfaces first, then more discovery/watchlist rotations so a
