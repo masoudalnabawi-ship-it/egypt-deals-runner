@@ -213,6 +213,16 @@ def scan_cycle(state):
         )
     ]
 
+    # Fresh discoveries ALWAYS jump ahead of the
+    # historical baseline backlog.
+    urgent_backlog = [
+        str(x).upper()
+        for x in state.get(
+            "urgent_backlog",
+            [],
+        )
+    ]
+
     categories = list(
         state.get(
             "categories",
@@ -294,8 +304,9 @@ def scan_cycle(state):
         batch = pending[:6]
 
     elif categories:
+        # Faster live rotation after baseline.
         count = min(
-            6,
+            8,
             len(categories),
         )
 
@@ -388,32 +399,63 @@ def scan_cycle(state):
                 f" | total_scan={len(discovered)}"
             )
 
+            # NEW Amazon ASINs bypass the old baseline queue.
+            # We cannot know the anomaly level until the exact
+            # product page is checked, so fresh products are
+            # verified first. Radar then promotes HOT/ULTRA/
+            # CRITICAL and 50%+ deals automatically.
             for asin in new_asins:
-                if asin not in backlog:
-                    backlog.append(asin)
+                if (
+                    asin not in urgent_backlog
+                    and asin not in backlog
+                ):
+                    urgent_backlog.append(asin)
 
             known.update(
                 new_asins
             )
 
-    # Feed Fast Lane gradually so Amazon is not flooded.
-    # Keep product-page verification gentle:
-    # max 8 ASINs are handed to the existing radar per cycle.
-    feed_count = min(
+    # =====================================================
+    # PRIORITY FEED
+    # 1) Fresh discoveries first.
+    # 2) Historical baseline only uses spare capacity.
+    # =====================================================
+    fed = 0
+    urgent_fed = 0
+    background_fed = 0
+
+    urgent_count = min(
         8,
+        len(urgent_backlog),
+    )
+
+    for _ in range(urgent_count):
+        asin = urgent_backlog.pop(0)
+
+        if add_watch_asin(asin):
+            fed += 1
+            urgent_fed += 1
+
+            log(
+                "🚨 FRESH AMAZON -> FAST LANE"
+                f" | {asin}"
+            )
+
+    # Old baseline must NEVER block a fresh anomaly.
+    background_count = min(
+        2,
         len(backlog),
     )
 
-    fed = 0
-
-    for _ in range(feed_count):
+    for _ in range(background_count):
         asin = backlog.pop(0)
 
         if add_watch_asin(asin):
             fed += 1
+            background_fed += 1
 
             log(
-                "⚡ AMAZON NATIVE -> FAST LANE"
+                "📦 AMAZON BASELINE -> BACKGROUND"
                 f" | {asin}"
             )
 
@@ -422,6 +464,7 @@ def scan_cycle(state):
     )
 
     state["backlog"] = backlog
+    state["urgent_backlog"] = urgent_backlog
     state["categories"] = categories
     state["cursor"] = cursor
     state["last_scan_at"] = int(
@@ -438,8 +481,10 @@ def scan_cycle(state):
         "✅ AMAZON NATIVE SCAN"
         f" | discovered={len(discovered)}"
         f" | known={len(known)}"
+        f" | urgent={len(urgent_backlog)}"
         f" | backlog={len(backlog)}"
-        f" | fed={fed}"
+        f" | urgent_fed={urgent_fed}"
+        f" | background_fed={background_fed}"
         f" | categories={len(categories)}"
     )
 
@@ -461,7 +506,7 @@ def main():
                 f" | {repr(exc)}"
             )
 
-        time.sleep(30)
+        time.sleep(15)
 
 
 if __name__ == "__main__":
