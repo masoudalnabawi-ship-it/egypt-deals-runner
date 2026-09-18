@@ -3273,11 +3273,11 @@ async def unified_queue_loop():
             # Important external/competitor models are
             # processed faster than broad Amazon discovery.
             if job.get("priority", 0) >= 85:
-                queue_delay = 45
+                queue_delay = 5
             elif job.get("priority", 0) >= 50:
-                queue_delay = 75
+                queue_delay = 12
             else:
-                queue_delay = 120
+                queue_delay = 45
 
             await asyncio.sleep(
                 queue_delay
@@ -5492,7 +5492,7 @@ async def manual_watch_loop():
                 flush=True
             )
 
-        await asyncio.sleep(20)
+        await asyncio.sleep(5)
 
 
 
@@ -5817,11 +5817,11 @@ async def full_v5_watchlist_loop():
         # Adaptive speed.
         # Healthy Amazon -> faster complete catalogue rotation.
         if AMAZON_SUCCESS_STREAK >= 8:
-            delay = 8
+            delay = 5
         elif AMAZON_SUCCESS_STREAK >= 3:
-            delay = 12
+            delay = 8
         else:
-            delay = 20
+            delay = 12
 
         await asyncio.sleep(delay)
 
@@ -7035,7 +7035,7 @@ async def priority_surface_loop():
 
         # Faster only while Amazon is healthy.
         await asyncio.sleep(
-            35 if AMAZON_SUCCESS_STREAK >= 8 else 55
+            15 if AMAZON_SUCCESS_STREAK >= 8 else 25
         )
 
 
