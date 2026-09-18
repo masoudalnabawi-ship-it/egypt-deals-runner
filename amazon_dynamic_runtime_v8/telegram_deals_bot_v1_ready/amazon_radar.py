@@ -4443,6 +4443,7 @@ async def send_v5_review(
         "live_rechecked": True,
         "asin": rec["asin"],
         "deal_engine": "V5.1",
+        "v5_review_candidate": True,
         "deal_score": score,
         "reference_price": reference,
         "market_reference": market or None,

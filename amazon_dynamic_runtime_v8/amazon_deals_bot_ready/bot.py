@@ -227,8 +227,16 @@ def classify(p):
         label = "👀 مرشح Amazon مهم"
         rank = 0
 
+    v5_review_candidate = bool(
+        p.get("v5_review_candidate")
+        and p.get("verified")
+        and p.get("live_rechecked")
+        and str(p.get("deal_engine") or "").upper().startswith("V5")
+    )
+
     important = (
-        public_50_plus
+        v5_review_candidate
+        or public_50_plus
         or (independent and verified_discount >= 40)
         or claimed >= 40
         or (promo_verified and score >= 70)
