@@ -61,6 +61,34 @@ async def _send_amazon_independent_review(payload):
         def json(self):
             return self._data
 
+    # Capture the verified Amazon product page only when a review is actually
+    # about to be sent. Stage it briefly through Telegram to obtain a reusable
+    # file_id, then let Cloudflare attach that exact screenshot to the review.
+    try:
+        import asyncio as _asyncio
+        import sys as _sys
+        from pathlib import Path as _Path
+        _review_dir = _Path(__file__).resolve().parent.parent / "amazon_deals_bot_ready"
+        if str(_review_dir) not in _sys.path:
+            _sys.path.insert(0, str(_review_dir))
+        from amazon_page_capture import capture_amazon_page
+        from cloud_review_media import stage_photo_for_cloudflare
+
+        _key = str(payload.get("asin") or payload.get("fingerprint") or "amazon")
+        _url = str(payload.get("url") or "")
+        if _url:
+            _cap = await _asyncio.to_thread(capture_amazon_page, _url, _key)
+            _shot = str((_cap or {}).get("screenshot") or "")
+            if (_cap or {}).get("ok") and _shot:
+                _file_id = await stage_photo_for_cloudflare(_shot)
+                if _file_id:
+                    payload = dict(payload)
+                    payload["image_url"] = _file_id
+                    payload["telegram_photo_file_id"] = _file_id
+                    payload["review_media_source"] = "amazon_page_screenshot"
+    except Exception as _media_exc:
+        print("⚠️ AMAZON REVIEW SCREENSHOT FALLBACK", repr(_media_exc), flush=True)
+
     url = CLOUD_BASE.rstrip("/") + "/api/deals"
     body = _json.dumps(payload, ensure_ascii=False, default=str).encode("utf-8")
 
@@ -86,7 +114,7 @@ async def _send_amazon_independent_review(payload):
 
     try:
         r = await asyncio.to_thread(_post)
-        print("☁️ AMAZON CLOUD REVIEW", payload.get("asin") or payload.get("fingerprint"), "|", r.status_code, "|", str(r.text)[:300], flush=True)
+        print("☁️ AMAZON CLOUD REVIEW", payload.get("asin") or payload.get("fingerprint"), "|", r.status_code, flush=True)
         return r
     except Exception as exc:
         print("❌ AMAZON CLOUD REVIEW ERROR", repr(exc), flush=True)

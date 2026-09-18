@@ -16,19 +16,25 @@ concurrency:
 jobs:
   scan:
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 20
     env:
       CLOUD_API_URL: ${{ secrets.CLOUD_API_URL }}
       CLOUD_API_KEY: ${{ secrets.CLOUD_API_KEY }}
+      TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+      TELEGRAM_MEDIA_STAGE_CHAT_ID: ${{ secrets.TELEGRAM_MEDIA_STAGE_CHAT_ID }}
+      ADMIN_CHAT_ID: ${{ secrets.TELEGRAM_MEDIA_STAGE_CHAT_ID }}
+
+      # TEMP STORE POLICY: Amazon first in its dedicated radar, then Noon, then B.TECH only.
       DIRECT_FLASH_REVIEW: "false"
-      V11_ENABLED_STORES: "noon,noon_minutes,jumia,2b,btech,raya,dream2000,carrefour,raneen,kenzz"
-      ENABLED_STORES: "noon,noon_minutes,jumia,2b,btech,raya,dream2000,carrefour,raneen,kenzz"
+      V11_ENABLED_STORES: "noon,btech"
+      ENABLED_STORES: "noon,btech"
       MIN_DISCOUNT_PERCENT: "5"
       MIN_SAVING_EGP: "0"
       MAX_POSTS_PER_CYCLE: "10"
-      MAX_VERIFY_CANDIDATES: "20"
+      MAX_VERIFY_CANDIDATES: "12"
       REQUEST_TIMEOUT_SECONDS: "20"
       STRICT_VERIFICATION: "true"
+      STORE_SCREENSHOT_REVIEWS: "1"
 
     steps:
       - uses: actions/checkout@v4
@@ -40,23 +46,28 @@ jobs:
           cache-dependency-path: |
             telegram_deals_bot_v7_dev/requirements.txt
             amazon_dynamic_runtime_v8/telegram_deals_bot_v1_ready/requirements.txt
+            amazon_dynamic_runtime_v8/requirements_ready.txt
 
-      - name: Install dependencies
+      - name: Install dependencies + screenshot browser
         run: |
           python -m pip install --upgrade pip
           pip install -r telegram_deals_bot_v7_dev/requirements.txt
           pip install -r amazon_dynamic_runtime_v8/telegram_deals_bot_v1_ready/requirements.txt
+          pip install -r amazon_dynamic_runtime_v8/requirements_ready.txt
+          pip install playwright
+          python -m playwright install --with-deps chromium
 
       - name: Restore runtime state
         env:
           GITHUB_TOKEN: ${{ github.token }}
         run: bash scripts/state.sh hydrate
 
-      - name: Non-Amazon stores — one verified scan
-        run: python scripts/run_v11_once.py
-
-      - name: Amazon — bounded priority scan
+      # AMAZON ALWAYS GOES FIRST.
+      - name: Amazon — priority scan + real product screenshot
         run: python scripts/run_amazon_once.py
+
+      - name: Noon then B.TECH — verified scan + screenshots
+        run: python scripts/run_v11_once.py
 
       - name: Collect runtime state
         if: always()
@@ -70,5 +81,4 @@ jobs:
           path: .runtime_state/
           retention-days: 1
           if-no-files-found: error
-          include-hidden-files: true
           compression-level: 6

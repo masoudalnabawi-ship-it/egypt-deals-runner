@@ -16,7 +16,3 @@ inbox.jsonl
 poll_state.json
 queue_state.json
 config.json
-
-.wrangler/
-*.db-wal
-*.db-shm

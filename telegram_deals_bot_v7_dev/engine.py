@@ -42,6 +42,7 @@ from telegram_client import (
 )
 from flash_review_v9 import build_flash_review_card
 from review_media import prepare_review_media
+from cloud_review_media import stage_photo_for_cloudflare
 
 log = logging.getLogger("deals-bot")
 AMAZON_READY_HOME = os.getenv("AMAZON_READY_HOME", os.path.expanduser("~/amazon_dynamic_runtime_v8"))
@@ -85,30 +86,16 @@ _V7_DETECTION_KINDS = {}
 V11_STORE_PRIORITY = {
     "amazon": 100,
     "noon": 90,
-    "noon_minutes": 88,
-    "jumia": 80,
-    "2b": 60,
-    "btech": 58,
-    "raya": 56,
-    "dream2000": 54,
-    "carrefour": 52,
-    "raneen": 50,
-    "kenzz": 5,
+    "btech": 80,
 }
 
+
 V11_STORE_VERIFY_QUOTA = {
-    "amazon": 4,
-    "noon": 3,
-    "noon_minutes": 1,
-    "jumia": 3,
-    "2b": 1,
-    "btech": 1,
-    "raya": 1,
-    "dream2000": 1,
-    "carrefour": 1,
-    "raneen": 1,
-    "kenzz": 1,
+    "amazon": 6,
+    "noon": 4,
+    "btech": 3,
 }
+
 
 
 def _v11_store_key(deal):
@@ -382,6 +369,11 @@ async def send_cloud_review(deal, fp, report, signal=None):
             getattr(deal, "live_rechecked", None),
         )
 
+    media_meta = await prepare_review_media(deal, fp[:16])
+    telegram_photo_file_id = await stage_photo_for_cloudflare(
+        media_meta.get("media_path", "")
+    )
+
     payload = {
         "fingerprint": fp,
         "store": getattr(deal, "store", "Unknown"),
@@ -393,7 +385,12 @@ async def send_cloud_review(deal, fp, report, signal=None):
         "old_price": float(effective_old) if effective_old else None,
         "discount_percent": effective_discount,
         "url": deal.url,
-        "image_url": getattr(deal, "image_url", None),
+        # Prefer the real store-page screenshot. Telegram file_id is reusable
+        # by the same bot and lets Cloudflare send the photo without public
+        # image hosting. Fall back to the store product image when capture fails.
+        "image_url": telegram_photo_file_id or getattr(deal, "image_url", None),
+        "telegram_photo_file_id": telegram_photo_file_id or None,
+        "review_media_source": media_meta.get("media_source"),
         "live_rechecked": getattr(deal, "live_rechecked", None),
         "live_recheck_price": getattr(deal, "live_recheck_price", None),
         "live_recheck_source": getattr(deal, "live_recheck_source", None),
@@ -414,7 +411,6 @@ async def send_cloud_review(deal, fp, report, signal=None):
                 report is not None
                 and bool(getattr(report, "verified", False))
             )
-            or direct_store_evidence(deal)
             or getattr(deal, "live_rechecked", None) is True
             or bool(signal.get("history_verified"))
             or bool(signal.get("market_verified"))
@@ -1396,15 +1392,7 @@ async def scan_once():
     preferred_order = [
         "amazon",
         "noon",
-        "noon_minutes",
-        "jumia",
-        "2b",
         "btech",
-        "raya",
-        "dream2000",
-        "carrefour",
-        "raneen",
-        "kenzz",
     ]
     preferred_order += sorted(set(by_store) - set(preferred_order))
 
