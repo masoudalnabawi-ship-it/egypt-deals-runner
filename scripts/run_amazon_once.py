@@ -11,6 +11,11 @@ REVIEW_DIR = Path(__file__).resolve().parents[1] / "amazon_dynamic_runtime_v8" /
 sys.path.insert(0, str(ROOT))
 os.chdir(ROOT)
 
+# Initialize Amazon intelligence + price history database.
+import db as amazon_db
+amazon_db.init_db()
+print("✅ AMAZON PRICE INTELLIGENCE DB READY", flush=True)
+
 def _capture_in_subprocess(url, key="product"):
     code = r"""
 import json, sys

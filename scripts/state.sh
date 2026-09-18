@@ -35,6 +35,9 @@ hydrate() {
   cp "$STATE/amazon_radar_watch.json" "$AMZ/.amazon_radar_watch.json"
   cp "$STATE/amazon_radar_state.json" "$AMZ/.amazon_radar_state.json"
   cp "$STATE/amazon_manual_watch.txt" "$AMZ/.amazon_manual_watch.txt"
+
+  # Amazon historical prices + market observations
+  [ ! -s "$STATE/amazon_deals.db" ] ||     cp "$STATE/amazon_deals.db" "$AMZ/deals.db"
   [ ! -s "$STATE/v11_deals.db" ] || cp "$STATE/v11_deals.db" "$V11/deals.db"
   [ ! -s "$STATE/v11_state.db" ] || cp "$STATE/v11_state.db" "$V11/v11_state.db"
 }
@@ -43,6 +46,8 @@ collect() {
   cp "$AMZ/.amazon_radar_watch.json" "$STATE/amazon_radar_watch.json"
   cp "$AMZ/.amazon_radar_state.json" "$STATE/amazon_radar_state.json"
   cp "$AMZ/.amazon_manual_watch.txt" "$STATE/amazon_manual_watch.txt"
+
+  [ ! -f "$AMZ/deals.db" ] ||     cp "$AMZ/deals.db" "$STATE/amazon_deals.db"
   [ ! -f "$V11/deals.db" ] || cp "$V11/deals.db" "$STATE/v11_deals.db"
   [ ! -f "$V11/v11_state.db" ] || cp "$V11/v11_state.db" "$STATE/v11_state.db"
 }
