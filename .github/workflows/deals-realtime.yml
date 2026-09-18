@@ -31,7 +31,13 @@ jobs:
       AMAZON_CHANNEL_ID: ${{ secrets.AMAZON_CHANNEL_ID }}
       AMAZON_NORMAL_REVIEW_CHAT_ID: ${{ secrets.AMAZON_NORMAL_REVIEW_CHAT_ID }}
 
-      DIRECT_FLASH_REVIEW: "false"
+      # ONE REVIEW PIPELINE
+      DIRECT_FLASH_REVIEW: "true"
+      AMAZON_REVIEW_QUEUE_ONLY: "1"
+
+      # V11 uses the same Telegram bot/channel as Amazon.
+      TELEGRAM_CHANNEL_ID: ${{ secrets.AMAZON_CHANNEL_ID }}
+      REVIEW_CHAT_ID: ${{ secrets.AMAZON_NORMAL_REVIEW_CHAT_ID }}
 
       V11_ENABLED_STORES: "noon,btech,2b"
       ENABLED_STORES: "noon,btech,2b"
@@ -46,7 +52,7 @@ jobs:
 
       COMPETITOR_INTERVAL: "20"
       AMAZON_INTERVAL: "45"
-      STORES_INTERVAL: "120"
+      STORES_INTERVAL: "60"
       STATE_SYNC_INTERVAL: "60"
 
     steps:

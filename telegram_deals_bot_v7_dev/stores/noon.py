@@ -1,3 +1,4 @@
+import asyncio
 import json
 from urllib.parse import quote_plus, urljoin
 
@@ -196,21 +197,38 @@ class NoonConnector(StoreConnector):
             unique.append(deal)
         return unique
 
+    async def _fetch_one(self, url):
+        try:
+            soup = await self.get_soup(url)
+            return self._parse_page(soup)
+        except Exception:
+            return []
+
+
     async def fetch_deals(self):
+        batches = await asyncio.gather(
+            *[
+                self._fetch_one(url)
+                for url in self.DEAL_URLS
+            ]
+        )
+
         all_deals = []
         seen = set()
 
-        for url in self.DEAL_URLS:
-            try:
-                soup = await self.get_soup(url)
-            except Exception:
-                continue
+        for batch in batches:
+            for deal in batch:
+                key = (
+                    deal.title.lower().strip(),
+                    round(deal.current_price, 2),
+                    deal.url,
+                )
 
-            for deal in self._parse_page(soup):
-                key = (deal.title.lower().strip(), round(deal.current_price, 2), deal.url)
-                if key not in seen:
-                    seen.add(key)
-                    all_deals.append(deal)
+                if key in seen:
+                    continue
+
+                seen.add(key)
+                all_deals.append(deal)
 
         return all_deals
 

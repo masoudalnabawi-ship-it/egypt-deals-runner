@@ -245,9 +245,6 @@ def main():
                 post.get("price")
             )
 
-            if current <= 0:
-                continue
-
             links = (
                 post.get("links")
                 or []
@@ -255,19 +252,35 @@ def main():
 
             amazon_result = None
 
-            for link in links[:4]:
-                result = resolve_one(
-                    link,
-                    browser,
-                )
+            direct_asin = str(
+                post.get("asin") or ""
+            ).strip().upper()
 
-                if (
-                    result.get("store")
-                    == "amazon"
-                    and result.get("asin")
-                ):
-                    amazon_result = result
-                    break
+            if direct_asin:
+                amazon_result = {
+                    "original_url": "",
+                    "final_url": (
+                        "https://www.amazon.eg/dp/"
+                        + direct_asin
+                    ),
+                    "asin": direct_asin,
+                    "store": "amazon",
+                }
+
+            if not amazon_result:
+                for link in links[:6]:
+                    result = resolve_one(
+                        link,
+                        browser,
+                    )
+
+                    if (
+                        result.get("store")
+                        == "amazon"
+                        and result.get("asin")
+                    ):
+                        amazon_result = result
+                        break
 
             if not amazon_result:
                 continue
@@ -322,9 +335,13 @@ def main():
                 radar_reference(rec)
             )
 
-            old_ref = explicit_old_price(
-                post.get("text"),
-                current,
+            old_ref = (
+                explicit_old_price(
+                    post.get("text"),
+                    current,
+                )
+                if current > 0
+                else 0.0
             )
 
             reference = 0.0
@@ -340,7 +357,10 @@ def main():
 
             drop = 0.0
 
-            if reference > current:
+            if (
+                current > 0
+                and reference > current
+            ):
                 drop = (
                     reference - current
                 ) / reference * 100.0

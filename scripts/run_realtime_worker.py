@@ -1,12 +1,12 @@
 #!/usr/bin/env python3
 
-from pathlib import Path
 from concurrent.futures import ThreadPoolExecutor
-import subprocess
+from pathlib import Path
+import os
 import signal
+import subprocess
 import sys
 import time
-import os
 
 ROOT = Path(__file__).resolve().parents[1]
 os.chdir(ROOT)
@@ -14,9 +14,15 @@ os.chdir(ROOT)
 PYTHON = sys.executable
 STOP = False
 
-COMPETITOR_INTERVAL = int(os.getenv("COMPETITOR_INTERVAL", "20"))
-AMAZON_INTERVAL = int(os.getenv("AMAZON_INTERVAL", "45"))
-STORES_INTERVAL = int(os.getenv("STORES_INTERVAL", "120"))
+COMPETITOR_INTERVAL = int(
+    os.getenv("COMPETITOR_INTERVAL", "20")
+)
+STORES_INTERVAL = int(
+    os.getenv("STORES_INTERVAL", "120")
+)
+STATE_SYNC_INTERVAL = int(
+    os.getenv("STATE_SYNC_INTERVAL", "60")
+)
 
 
 def log(msg):
@@ -28,14 +34,14 @@ def log(msg):
     )
 
 
-def stop_worker(*_):
+def request_stop(*_):
     global STOP
     STOP = True
-    log("🛑 REALTIME WORKER STOP REQUESTED")
+    log("🛑 UNIFIED RUNTIME STOP REQUESTED")
 
 
-signal.signal(signal.SIGTERM, stop_worker)
-signal.signal(signal.SIGINT, stop_worker)
+signal.signal(signal.SIGTERM, request_stop)
+signal.signal(signal.SIGINT, request_stop)
 
 
 def run_script(label, script, timeout):
@@ -64,72 +70,41 @@ def run_script(label, script, timeout):
         return 1
 
 
+def start_process(label, script):
+    log(f"🚀 START {label}")
+
+    return subprocess.Popen(
+        [PYTHON, script],
+        cwd=ROOT,
+    )
+
+
 def competitor_cycle():
-    run_script(
-        "COMPETITOR BENCHMARK",
+    rc = run_script(
+        "COMPETITOR DISCOVERY",
         "scripts/channel_benchmark.py",
-        60,
+        70,
     )
 
-    run_script(
-        "COMPETITOR FLASH MEMORY",
-        "scripts/channel_flash_memory.py",
-        60,
-    )
-
-
-def amazon_cycle():
-    run_script(
-        "AMAZON REALTIME SCAN",
-        "scripts/run_amazon_once.py",
-        180,
-    )
+    if rc == 0:
+        run_script(
+            "COMPETITOR AMAZON ROUTER",
+            "scripts/channel_flash_memory.py",
+            70,
+        )
 
 
 def stores_cycle():
     run_script(
-        "NOON + BTECH + 2B SCAN",
+        "NOON + BTECH + 2B",
         "scripts/run_v11_status.py",
         180,
     )
 
 
-def start_listener():
-    run_script(
-        "AMAZON REVIEW CONFIG",
-        "scripts/prepare_amazon_review_config.py",
-        60,
-    )
-
-    log("🤖 STARTING PERMANENT TELEGRAM LISTENER")
-
-    return subprocess.Popen(
-        [
-            PYTHON,
-            "amazon_dynamic_runtime_v8/"
-            "amazon_deals_bot_ready/bot.py",
-        ],
-        cwd=ROOT,
-    )
-
-
-
-def start_radar():
-    log("🚀 STARTING PERMANENT AMAZON RADAR")
-
-    return subprocess.Popen(
-        [
-            PYTHON,
-            "amazon_dynamic_runtime_v8/"
-            "telegram_deals_bot_v1_ready/"
-            "amazon_radar.py",
-        ],
-        cwd=ROOT,
-    )
-
-
-# Restore persisted watchlists, price history and review state
-# before starting the permanent worker.
+# --------------------------------------------
+# Restore ONE persisted runtime state
+# --------------------------------------------
 try:
     subprocess.run(
         ["bash", "scripts/state.sh", "hydrate"],
@@ -137,12 +112,59 @@ try:
         timeout=60,
         check=False,
     )
-    log("📦 RUNTIME STATE HYDRATED")
+    log("📦 STATE HYDRATED")
 except Exception as exc:
-    log(f"⚠️ STATE HYDRATE ERROR {exc!r}")
+    log(f"⚠️ STATE HYDRATE {exc!r}")
 
-listener = start_listener()
-radar_proc = start_radar()
+
+# Prepare Amazon review DB/config.
+run_script(
+    "AMAZON REVIEW CONFIG",
+    "scripts/prepare_amazon_review_config.py",
+    60,
+)
+
+
+# Amazon bot is QUEUE-ONLY.
+# It sends Amazon review cards but NEVER calls getUpdates.
+amazon_review = start_process(
+    "AMAZON REVIEW QUEUE",
+    "amazon_dynamic_runtime_v8/"
+    "amazon_deals_bot_ready/bot.py",
+)
+
+amazon_radar = start_process(
+    "AMAZON RADAR",
+    "amazon_dynamic_runtime_v8/"
+    "telegram_deals_bot_v1_ready/"
+    "amazon_radar.py",
+)
+
+# This is the ONLY Telegram getUpdates process.
+moderation = start_process(
+    "UNIFIED TELEGRAM MODERATION",
+    "scripts/unified_moderation.py",
+)
+
+
+children = {
+    "amazon_review": (
+        amazon_review,
+        "amazon_dynamic_runtime_v8/"
+        "amazon_deals_bot_ready/bot.py",
+    ),
+    "amazon_radar": (
+        amazon_radar,
+        "amazon_dynamic_runtime_v8/"
+        "telegram_deals_bot_v1_ready/"
+        "amazon_radar.py",
+    ),
+    "moderation": (
+        moderation,
+        "scripts/unified_moderation.py",
+    ),
+}
+
 
 jobs = {}
 next_run = {
@@ -155,40 +177,51 @@ intervals = {
     "stores": STORES_INTERVAL,
 }
 
-STATE_SYNC_INTERVAL = int(
-    os.getenv("STATE_SYNC_INTERVAL", "60")
-)
-next_state_sync = 0.0
-
 functions = {
     "competitor": competitor_cycle,
     "stores": stores_cycle,
 }
 
+next_state_sync = 0.0
+
 log(
-    "🚀 REALTIME WORKER ON"
-    f" | competitor={COMPETITOR_INTERVAL}s"
-    f" | amazon={AMAZON_INTERVAL}s"
-    f" | noon+btech={STORES_INTERVAL}s"
+    "✅ UNIFIED DEALS RUNTIME ONLINE"
+    f" | competitors={COMPETITOR_INTERVAL}s"
+    f" | stores={STORES_INTERVAL}s"
+    " | telegram_pollers=1"
 )
 
-with ThreadPoolExecutor(max_workers=3) as pool:
+
+with ThreadPoolExecutor(max_workers=2) as pool:
 
     while not STOP:
 
-        if listener.poll() is not None:
-            log("⚠️ TELEGRAM LISTENER STOPPED — RESTARTING")
-            time.sleep(3)
-            listener = start_listener()
+        # Restart permanent child only if it actually died.
+        for name, (proc, script) in list(
+            children.items()
+        ):
+            if proc.poll() is None:
+                continue
 
-        if radar_proc.poll() is not None:
-            log("⚠️ AMAZON RADAR STOPPED — RESTARTING")
-            time.sleep(3)
-            radar_proc = start_radar()
+            log(
+                f"⚠️ {name.upper()} STOPPED"
+                " — RESTARTING"
+            )
+
+            time.sleep(2)
+
+            new_proc = start_process(
+                name.upper(),
+                script,
+            )
+
+            children[name] = (
+                new_proc,
+                script,
+            )
 
         now = time.monotonic()
 
-        # Persist watchlists, price history and Telegram state.
         if now >= next_state_sync:
             try:
                 subprocess.run(
@@ -197,23 +230,34 @@ with ThreadPoolExecutor(max_workers=3) as pool:
                     timeout=30,
                     check=False,
                 )
-                log("💾 RUNTIME STATE SYNCED")
+                log("💾 STATE SYNCED")
             except Exception as exc:
-                log(f"⚠️ STATE SYNC ERROR {exc!r}")
+                log(
+                    f"⚠️ STATE SYNC ERROR {exc!r}"
+                )
 
-            next_state_sync = now + STATE_SYNC_INTERVAL
+            next_state_sync = (
+                now + STATE_SYNC_INTERVAL
+            )
 
-        for name in ("competitor", "stores"):
-
+        for name in (
+            "competitor",
+            "stores",
+        ):
             future = jobs.get(name)
 
-            if future is not None and not future.done():
+            if (
+                future is not None
+                and not future.done()
+            ):
                 continue
 
             if now < next_run[name]:
                 continue
 
-            jobs[name] = pool.submit(functions[name])
+            jobs[name] = pool.submit(
+                functions[name]
+            )
 
             next_run[name] = (
                 now + intervals[name]
@@ -222,7 +266,27 @@ with ThreadPoolExecutor(max_workers=3) as pool:
         time.sleep(1)
 
 
-# Final state snapshot before shutdown.
+# --------------------------------------------
+# Clean shutdown: NO orphan pollers/processes
+# --------------------------------------------
+log("🧹 STOPPING UNIFIED RUNTIME")
+
+for name, (proc, _) in children.items():
+    try:
+        log(f"🧹 STOP {name}")
+        proc.terminate()
+    except Exception:
+        pass
+
+for name, (proc, _) in children.items():
+    try:
+        proc.wait(timeout=10)
+    except Exception:
+        try:
+            proc.kill()
+        except Exception:
+            pass
+
 try:
     subprocess.run(
         ["bash", "scripts/state.sh", "collect"],
@@ -230,19 +294,7 @@ try:
         timeout=30,
         check=False,
     )
-    log("💾 FINAL RUNTIME STATE SYNCED")
-except Exception as exc:
-    log(f"⚠️ FINAL STATE SYNC ERROR {exc!r}")
-
-log("🧹 STOPPING TELEGRAM LISTENER")
-
-try:
-    listener.terminate()
-    listener.wait(timeout=10)
 except Exception:
-    try:
-        listener.kill()
-    except Exception:
-        pass
+    pass
 
-log("✅ REALTIME WORKER STOPPED")
+log("✅ UNIFIED RUNTIME STOPPED")

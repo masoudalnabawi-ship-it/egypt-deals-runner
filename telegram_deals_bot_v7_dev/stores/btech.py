@@ -1,3 +1,4 @@
+import asyncio
 import json
 
 from models import Deal
@@ -73,10 +74,16 @@ class BtechConnector(StoreConnector):
 
         return None
 
-    URL = (
-        "https://btech.com/ar/collection/"
-        "91342e36-259c-4ba7-b204-fbfbb217e5d1"
-    )
+    DEAL_URLS = [
+        "https://btech.com/ar/collection/LIVE",
+        (
+            "https://btech.com/ar/collection/"
+            "91342e36-259c-4ba7-b204-fbfbb217e5d1"
+        ),
+        "https://btech.com/ar/collection/flash-sale-tvs",
+    ]
+
+    URL = DEAL_URLS[0]
 
     def _extract_items(self, soup):
         items = []
@@ -194,55 +201,68 @@ class BtechConnector(StoreConnector):
         )
 
 
-    async def fetch_observations(self):
-        soup = await self.get_soup(self.URL)
-        raw_items = self._extract_items(soup)
+    async def _fetch_one(
+        self,
+        url,
+        discounts_only,
+    ):
+        try:
+            soup = await self.get_soup(url)
+        except Exception:
+            return []
+
+        deals = []
+
+        for item in self._extract_items(soup):
+            deal = self._make_deal(
+                item,
+                discounts_only=discounts_only,
+            )
+
+            if deal:
+                deals.append(deal)
+
+        return deals
+
+
+    async def _fetch_many(self, discounts_only):
+        batches = await asyncio.gather(
+            *[
+                self._fetch_one(
+                    url,
+                    discounts_only,
+                )
+                for url in self.DEAL_URLS
+            ]
+        )
 
         deals = []
         seen = set()
 
-        for item in raw_items:
-            deal = self._make_deal(item, discounts_only=False)
-            if not deal:
-                continue
+        for batch in batches:
+            for deal in batch:
+                key = (
+                    deal.title.lower().strip(),
+                    round(deal.current_price, 2),
+                    deal.url,
+                )
 
-            key = (
-                deal.title.lower().strip(),
-                deal.current_price,
-                deal.url,
-            )
-            if key in seen:
-                continue
+                if key in seen:
+                    continue
 
-            seen.add(key)
-            deals.append(deal)
+                seen.add(key)
+                deals.append(deal)
 
         return deals
+
+
+    async def fetch_observations(self):
+        return await self._fetch_many(
+            discounts_only=False
+        )
+
 
     async def fetch_deals(self):
-        soup = await self.get_soup(self.URL)
-
-        raw_items = self._extract_items(soup)
-
-        deals = []
-        seen = set()
-
-        for item in raw_items:
-            deal = self._make_deal(item)
-
-            if not deal:
-                continue
-
-            key = (
-                deal.title.lower().strip(),
-                deal.current_price,
-                deal.url
-            )
-
-            if key in seen:
-                continue
-
-            seen.add(key)
-            deals.append(deal)
-
-        return deals
+        return await self._fetch_many(
+            discounts_only=True
+        )

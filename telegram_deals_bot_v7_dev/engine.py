@@ -4,6 +4,7 @@ import json
 import logging
 import re
 import os
+import sys
 import urllib.request
 import time
 
@@ -45,15 +46,21 @@ from review_media import prepare_review_media
 from cloud_review_media import stage_photo_for_cloudflare
 
 log = logging.getLogger("deals-bot")
-AMAZON_READY_HOME = os.getenv("AMAZON_READY_HOME", os.path.expanduser("~/amazon_dynamic_runtime_v8"))
+AMAZON_READY_HOME = os.getenv(
+    "AMAZON_READY_HOME",
+    str(
+        Path(__file__).resolve().parents[1]
+        / "amazon_dynamic_runtime_v8"
+    ),
+)
 
 # V11 FAST SAFE: bounded store fetches + in-process circuit breakers.
 V11_FAST_STORE_TIMEOUTS = {
-    "noon": 18,
-    "noon_minutes": 14,
+    "noon": 35,
+    "noon_minutes": 30,
     "jumia": 45,
-    "2b": 22,
-    "btech": 22,
+    "2b": 35,
+    "btech": 35,
     "raya": 22,
     "dream2000": 20,
     "carrefour": 20,
@@ -87,13 +94,15 @@ V11_STORE_PRIORITY = {
     "amazon": 100,
     "noon": 90,
     "btech": 80,
+    "2b": 80,
 }
 
 
 V11_STORE_VERIFY_QUOTA = {
     "amazon": 6,
-    "noon": 4,
-    "btech": 3,
+    "noon": 5,
+    "btech": 5,
+    "2b": 5,
 }
 
 
@@ -1248,11 +1257,9 @@ async def scan_once():
         for store in settings.enabled_stores
     ]
 
-    # Campaign pages run beside normal scans so Fast Lane is not blocked.
-    tasks.extend(
-        asyncio.create_task(run_store_campaign(store))
-        for store in settings.enabled_stores
-    )
+    # UNIFIED SOURCE ARCHITECTURE:
+    # each connector owns all of its offer/campaign pages.
+    # No second parallel discovery path is allowed here.
 
     for completed in asyncio.as_completed(tasks):
         batch = await completed
@@ -1651,7 +1658,7 @@ async def handle_callback(cb):
     # continues to work normally when the ID is not an Amazon deal.
     if action in ("u", "n", "x"):
         proc = await asyncio.create_subprocess_exec(
-            os.path.join(AMAZON_READY_HOME, ".venv", "bin", "python"),
+            sys.executable,
             os.path.join(AMAZON_READY_HOME, "amazon_deals_bot_ready", "amazon_callback_action.py"),
             action,
             short_fp,
