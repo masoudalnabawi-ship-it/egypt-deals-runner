@@ -4422,7 +4422,12 @@ async def send_v5_review(
         "title": rec["title"],
         "url": rec["url"],
         "current_price": live,
-        "old_price": None,
+        "old_price": deal.get("amazon_old_price") or None,
+        "amazon_old_price": deal.get("amazon_old_price") or None,
+        "amazon_old_price_verified": bool(
+            deal.get("amazon_old_price")
+            and deal.get("amazon_direct_discount", 0) >= 5
+        ),
         "discount_percent": round(discount, 1),
         "promo_discount_percent": round(promo_percent, 1),
         "promo_saving": round(promo_saving, 2),

@@ -113,6 +113,21 @@ def start_listener():
     )
 
 
+
+def start_radar():
+    log("🚀 STARTING PERMANENT AMAZON RADAR")
+
+    return subprocess.Popen(
+        [
+            PYTHON,
+            "amazon_dynamic_runtime_v8/"
+            "telegram_deals_bot_v1_ready/"
+            "amazon_radar.py",
+        ],
+        cwd=ROOT,
+    )
+
+
 # Restore persisted watchlists, price history and review state
 # before starting the permanent worker.
 try:
@@ -127,17 +142,16 @@ except Exception as exc:
     log(f"⚠️ STATE HYDRATE ERROR {exc!r}")
 
 listener = start_listener()
+radar_proc = start_radar()
 
 jobs = {}
 next_run = {
     "competitor": 0.0,
-    "amazon": 0.0,
     "stores": 0.0,
 }
 
 intervals = {
     "competitor": COMPETITOR_INTERVAL,
-    "amazon": AMAZON_INTERVAL,
     "stores": STORES_INTERVAL,
 }
 
@@ -148,7 +162,6 @@ next_state_sync = 0.0
 
 functions = {
     "competitor": competitor_cycle,
-    "amazon": amazon_cycle,
     "stores": stores_cycle,
 }
 
@@ -168,6 +181,11 @@ with ThreadPoolExecutor(max_workers=3) as pool:
             time.sleep(3)
             listener = start_listener()
 
+        if radar_proc.poll() is not None:
+            log("⚠️ AMAZON RADAR STOPPED — RESTARTING")
+            time.sleep(3)
+            radar_proc = start_radar()
+
         now = time.monotonic()
 
         # Persist watchlists, price history and Telegram state.
@@ -185,7 +203,7 @@ with ThreadPoolExecutor(max_workers=3) as pool:
 
             next_state_sync = now + STATE_SYNC_INTERVAL
 
-        for name in ("competitor", "amazon", "stores"):
+        for name in ("competitor", "stores"):
 
             future = jobs.get(name)
 

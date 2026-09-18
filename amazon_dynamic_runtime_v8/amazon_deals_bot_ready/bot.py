@@ -517,8 +517,21 @@ def channel_text(p, c, urgent=False):
         head,
         "",
         f"📦 <b>{title}</b>",
-        f"💰 السعر: <b>{money(c['effective_current'])}</b>",
+        f"💰 السعر الآن: <b>{money(c['effective_current'])}</b>",
     ]
+
+    amazon_old = num(
+        p.get("amazon_old_price")
+        or p.get("old_price")
+    )
+
+    if (
+        bool(p.get("amazon_old_price_verified"))
+        and amazon_old > c["effective_current"] > 0
+    ):
+        lines.append(
+            f"💵 السعر قبل الخصم على Amazon: <b>{money(amazon_old)}</b>"
+        )
     if c["independent"]:
         lines += [
             f"📊 المرجع: {money(c['reference'])}",
@@ -1194,15 +1207,8 @@ def publish(did, urgent):
             log(f"channel photo fallback: {e}")
 
     if not sent_photo:
-        api(
-            "sendMessage",
-            {
-                "chat_id": CHANNEL,
-                "text": text,
-                "parse_mode": "HTML",
-                "disable_web_page_preview": False,
-            },
-            timeout=30,
+        raise RuntimeError(
+            "CHANNEL_MEDIA_REQUIRED"
         )
 
     with sqlite3.connect(DB) as db:
