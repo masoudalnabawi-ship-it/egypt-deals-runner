@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 
 from urllib.request import Request, urlopen
-from urllib.parse import unquote
+from urllib.parse import unquote, urlsplit
 import re
 
 
@@ -96,11 +96,40 @@ def resolve_one(url, browser=None):
 
     asin = extract_asin(final)
 
-    # Amazon short links often stop at /ax/claim
-    # and reveal the real ASIN only after JS execution.
+    # Affiliate/redirect links may reveal Amazon only
+    # after browser-side navigation.
+    origin_host = urlsplit(
+        original
+    ).netloc.lower()
+
+    final_host = urlsplit(
+        final
+    ).netloc.lower() if final else ""
+
+    redirect_hosts = (
+        "3rrood.com",
+        "link.amazon",
+        "bit.ly",
+        "cutt.ly",
+        "tinyurl.com",
+        "rb.gy",
+        "shorturl",
+    )
+
     needs_browser = (
-        "link.amazon" in original.lower()
-        or "/ax/claim" in final.lower()
+        not asin
+        and browser is not None
+        and (
+            "/ax/claim" in final.lower()
+            or any(
+                host in origin_host
+                for host in redirect_hosts
+            )
+            or any(
+                host in final_host
+                for host in redirect_hosts
+            )
+        )
     )
 
     if (

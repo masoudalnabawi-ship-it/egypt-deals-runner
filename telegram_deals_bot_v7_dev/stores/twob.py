@@ -1,3 +1,4 @@
+import asyncio
 from urllib.parse import urljoin, quote_plus
 from models import Deal
 from stores.base import StoreConnector, parse_price
@@ -5,6 +6,16 @@ from stores.base import StoreConnector, parse_price
 class TwoBConnector(StoreConnector):
     name = "2b"
     URL = "https://2b.com.eg/ar/offer.html"
+
+    DEAL_URLS = [
+        "https://2b.com.eg/ar/offer.html",
+        *[
+            f"https://2b.com.eg/ar/offer.html?p={page}"
+            for page in range(2, 8)
+        ],
+        "https://2b.com.eg/ar/offers/recommended-offers.html",
+        "https://2b.com.eg/ar/offers/elaraby-offers.html",
+    ]
 
     def _value(self, el):
         if not el:
@@ -91,12 +102,48 @@ class TwoBConnector(StoreConnector):
             ))
         return deals
 
+    async def _fetch_one(self, url):
+        try:
+            soup = await self.get_soup(url)
+            return self._parse_cards(soup)
+        except Exception:
+            return []
+
+
+    async def _fetch_many(self):
+        batches = await asyncio.gather(
+            *[
+                self._fetch_one(url)
+                for url in self.DEAL_URLS
+            ]
+        )
+
+        deals = []
+        seen = set()
+
+        for batch in batches:
+            for deal in batch:
+                key = (
+                    deal.title.lower().strip(),
+                    round(deal.current_price, 2),
+                    deal.url,
+                )
+
+                if key in seen:
+                    continue
+
+                seen.add(key)
+                deals.append(deal)
+
+        return deals
+
+
     async def fetch_deals(self) -> list[Deal]:
-        return self._parse_cards(await self.get_soup(self.URL))
+        return await self._fetch_many()
 
 
     async def fetch_observations(self) -> list[Deal]:
-        return self._parse_cards(await self.get_soup(self.URL))
+        return await self._fetch_many()
 
     async def search_products(self, query: str) -> list[Deal]:
         url = "https://2b.com.eg/ar/catalogsearch/result/?q=" + quote_plus(query)

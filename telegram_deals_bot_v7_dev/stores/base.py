@@ -64,27 +64,79 @@ class StoreConnector(ABC):
             timeout=self.timeout,
             follow_redirects=True,
         ) as client:
+
+            proxy_first = bool(
+                getattr(
+                    self,
+                    "prefer_cloud_proxy",
+                    False,
+                )
+            )
+
+            proxy_attempted = False
+
+            if proxy_first:
+                proxy_attempted = True
+
+                try:
+                    return await self._cloud_proxy_soup(
+                        client,
+                        url,
+                    )
+                except Exception as exc:
+                    logger.warning(
+                        "%s proxy-first failed; trying direct | %s",
+                        self.name,
+                        type(exc).__name__,
+                    )
+
             try:
                 response = await client.get(url)
                 response.raise_for_status()
-                return BeautifulSoup(response.text, "html.parser")
+
+                return BeautifulSoup(
+                    response.text,
+                    "html.parser",
+                )
 
             except httpx.HTTPStatusError as exc:
-                if exc.response.status_code not in (403, 429):
+                if (
+                    exc.response.status_code
+                    not in (403, 429)
+                ):
                     raise
+
+                if proxy_attempted:
+                    raise
+
                 logger.warning(
-                    "%s direct access returned %s; trying cloud proxy",
+                    "%s direct returned %s; trying proxy",
                     self.name,
                     exc.response.status_code,
                 )
-                return await self._cloud_proxy_soup(client, url)
 
-            except (httpx.ReadTimeout, httpx.ConnectTimeout, httpx.ConnectError):
+                return await self._cloud_proxy_soup(
+                    client,
+                    url,
+                )
+
+            except (
+                httpx.ReadTimeout,
+                httpx.ConnectTimeout,
+                httpx.ConnectError,
+            ):
+                if proxy_attempted:
+                    raise
+
                 logger.warning(
-                    "%s direct access timed out/failed; trying cloud proxy",
+                    "%s direct timed out; trying proxy",
                     self.name,
                 )
-                return await self._cloud_proxy_soup(client, url)
+
+                return await self._cloud_proxy_soup(
+                    client,
+                    url,
+                )
 
     @abstractmethod
     async def fetch_deals(self) -> list[Deal]:
