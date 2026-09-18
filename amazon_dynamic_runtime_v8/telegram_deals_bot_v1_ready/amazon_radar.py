@@ -1139,6 +1139,15 @@ async def fetch_html(client, url):
         url
     )
 
+    # Respect the dedicated Amazon Search backoff.
+    # A Search 503 pauses discovery only; exact product/ASIN
+    # verification remains available.
+    if (
+        not priority
+        and amazon_search_backoff_active()
+    ):
+        return ""
+
     # No requests during hard circuit.
     if amazon_circuit_open():
         return ""
