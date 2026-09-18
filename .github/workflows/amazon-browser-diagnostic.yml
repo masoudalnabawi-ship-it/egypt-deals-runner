@@ -1,0 +1,112 @@
+name: Amazon Browser Diagnostic
+
+on:
+  workflow_dispatch:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install Playwright
+        run: |
+          pip install playwright
+          playwright install --with-deps chromium
+
+      - name: Test Amazon Egypt Search
+        run: |
+          python - <<'PY'
+          from playwright.sync_api import sync_playwright
+
+          tests = [
+              ("ELECTRONICS", "https://www.amazon.eg/s?k=electronics+deals"),
+              ("GROCERY", "https://www.amazon.eg/s?k=grocery+deals"),
+          ]
+
+          with sync_playwright() as p:
+              browser = p.chromium.launch(
+                  headless=True,
+                  args=["--no-sandbox"]
+              )
+
+              context = browser.new_context(
+                  locale="ar-EG",
+                  user_agent=(
+                      "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+                      "AppleWebKit/537.36 "
+                      "(KHTML, like Gecko) "
+                      "Chrome/140.0.0.0 Safari/537.36"
+                  ),
+              )
+
+              for name, url in tests:
+                  page = context.new_page()
+
+                  try:
+                      response = page.goto(
+                          url,
+                          wait_until="domcontentloaded",
+                          timeout=25000,
+                      )
+
+                      page.wait_for_timeout(2500)
+
+                      cards = page.locator(
+                          "div.s-result-item[data-asin]"
+                      ).count()
+
+                      valid = 0
+
+                      for i in range(min(cards, 50)):
+                          card = page.locator(
+                              "div.s-result-item[data-asin]"
+                          ).nth(i)
+
+                          asin = card.get_attribute(
+                              "data-asin"
+                          ) or ""
+
+                          if asin.strip():
+                              valid += 1
+
+                      print(
+                          f"{name}"
+                          f" | HTTP={response.status if response else 'NONE'}"
+                          f" | CARDS={cards}"
+                          f" | VALID={valid}"
+                          f" | TITLE={page.title()}"
+                      )
+
+                      body = page.locator("body").inner_text()[:1000]
+
+                      if "Robot Check" in body:
+                          print("❌ ROBOT CHECK")
+
+                      if "Sorry" in body and valid == 0:
+                          print("⚠️ AMAZON ERROR PAGE")
+
+                      if valid > 0:
+                          print(
+                              f"✅ {name} BROWSER DISCOVERY WORKS"
+                          )
+                      else:
+                          print(
+                              f"❌ {name} BROWSER DISCOVERY BLOCKED"
+                          )
+
+                  except Exception as exc:
+                      print(
+                          f"❌ {name} ERROR | {repr(exc)}"
+                      )
+
+                  finally:
+                      page.close()
+
+              browser.close()
+          PY
