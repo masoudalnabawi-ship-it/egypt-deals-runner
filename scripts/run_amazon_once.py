@@ -667,6 +667,10 @@ async def main():
 
     # Keep four queue slots for late competitor/trigger work.
     await drain_queue(4)
+
+    # Final confirmation after ultra/V5/late processing.
+    prune_competitor_pending_after_review()
+
     print("AMAZON_ONCE_COMPLETE", flush=True)
 
 if __name__ == "__main__":

@@ -88,9 +88,13 @@ def review_discount_percent(p, c):
 def review_chat_for(p, c):
     discount = review_discount_percent(p, c)
 
+    # Use exactly the same 1-decimal percentage
+    # displayed on the Telegram review card.
+    visible_discount = float(f"{discount:.1f}")
+
     return (
         REVIEW
-        if discount >= 50.0
+        if visible_discount >= 50.0
         else NORMAL_REVIEW
     )
 
