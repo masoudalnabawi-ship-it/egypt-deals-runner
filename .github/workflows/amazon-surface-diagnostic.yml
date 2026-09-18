@@ -1,0 +1,106 @@
+name: Amazon Surface Diagnostic
+
+on:
+  workflow_dispatch:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Test Amazon surfaces
+        run: |
+          python - <<'PY'
+          import urllib.request
+          import urllib.error
+
+          urls = [
+              (
+                  "DEALS",
+                  "https://www.amazon.eg/deals"
+              ),
+              (
+                  "CATEGORY",
+                  "https://www.amazon.eg/s?i=electronics"
+              ),
+              (
+                  "PRODUCT",
+                  "https://www.amazon.eg/dp/B08WJPNV2N"
+              ),
+          ]
+
+          headers = {
+              "User-Agent":
+                  "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+                  "AppleWebKit/537.36 "
+                  "(KHTML, like Gecko) "
+                  "Chrome/140.0 Safari/537.36",
+              "Accept-Language": "ar-EG,ar;q=0.9,en;q=0.8",
+          }
+
+          for name, url in urls:
+              print()
+              print("=" * 60)
+              print(name, url)
+
+              req = urllib.request.Request(
+                  url,
+                  headers=headers
+              )
+
+              try:
+                  with urllib.request.urlopen(
+                      req,
+                      timeout=20
+                  ) as r:
+
+                      body = r.read(2000)
+
+                      print("HTTP =", r.status)
+                      print(
+                          "CONTENT-TYPE =",
+                          r.headers.get("content-type")
+                      )
+                      print(
+                          "CONTENT-DISPOSITION =",
+                          r.headers.get(
+                              "content-disposition"
+                          )
+                      )
+                      print(
+                          "FINAL URL =",
+                          r.geturl()
+                      )
+                      print(
+                          "BYTES =",
+                          len(body)
+                      )
+
+                      text = body.decode(
+                          "utf-8",
+                          errors="ignore"
+                      ).lower()
+
+                      if "amazon" in text:
+                          print("✅ AMAZON HTML DETECTED")
+                      else:
+                          print("⚠️ NO NORMAL AMAZON HTML")
+
+              except urllib.error.HTTPError as e:
+                  print("HTTP ERROR =", e.code)
+                  print(
+                      "CONTENT-TYPE =",
+                      e.headers.get("content-type")
+                  )
+                  print(
+                      "CONTENT-DISPOSITION =",
+                      e.headers.get(
+                          "content-disposition"
+                      )
+                  )
+
+              except Exception as e:
+                  print("ERROR =", repr(e))
+          PY
