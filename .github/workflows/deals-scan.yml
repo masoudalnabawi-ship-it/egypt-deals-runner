@@ -63,7 +63,7 @@ jobs:
       - name: Restore runtime state
         env:
           GITHUB_TOKEN: ${{ github.token }}
-        run: bash scripts/state.sh hydrate
+        run: bash scripts/state.sh hydrate || echo '⚠️ STATE HYDRATE WARNING — CONTINUING SCAN'
 
       # AMAZON ALWAYS GOES FIRST.
       - name: Amazon — priority scan + real product screenshot
@@ -77,7 +77,7 @@ jobs:
 
       - name: Collect runtime state
         if: always()
-        run: bash scripts/state.sh collect
+        run: bash scripts/state.sh collect || echo '⚠️ STATE COLLECT WARNING — CONTINUING'
 
       - name: Persist runtime state
         if: always()
