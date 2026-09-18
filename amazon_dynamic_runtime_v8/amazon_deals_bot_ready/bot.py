@@ -517,8 +517,38 @@ def channel_text(p, c, urgent=False):
         head,
         "",
         f"📦 <b>{title}</b>",
-        f"💰 السعر الآن: <b>{money(c['effective_current'])}</b>",
     ]
+
+    brand = str(p.get("brand") or "").strip()
+    if brand:
+        lines.append(
+            "🏷️ <b>الماركة:</b> "
+            + html.escape(brand[:120])
+        )
+
+    product_info = p.get("product_info") or []
+    if isinstance(product_info, list) and product_info:
+        info_text = " | ".join(
+            str(x).strip()
+            for x in product_info[:3]
+            if str(x).strip()
+        )
+        if info_text:
+            lines.append(
+                "ℹ️ <b>المواصفات:</b> "
+                + html.escape(info_text[:320])
+            )
+
+    if p.get("asin"):
+        lines.append(
+            "🆔 <b>ASIN:</b> <code>"
+            + html.escape(str(p.get("asin")))
+            + "</code>"
+        )
+
+    lines.append(
+        f"💰 السعر الآن: <b>{money(c['effective_current'])}</b>"
+    )
 
     amazon_old = num(
         p.get("amazon_old_price")
@@ -684,6 +714,29 @@ def _send_review_card(p, c, did):
         live_price = float(result.get('live_price') or 0)
         available = result.get('availability')
         screenshot = str(result.get('screenshot') or '')
+
+        live_title = str(
+            result.get('product_title') or ''
+        ).strip()
+
+        if live_title:
+            p['title'] = live_title
+
+        live_brand = str(
+            result.get('brand') or ''
+        ).strip()
+
+        if live_brand:
+            p['brand'] = live_brand
+
+        live_info = result.get('product_info') or []
+
+        if isinstance(live_info, list) and live_info:
+            p['product_info'] = [
+                str(x).strip()
+                for x in live_info[:4]
+                if str(x).strip()
+            ]
     mismatch = 0.0
     if live_price > 0:
         if radar_price > 0:
@@ -773,7 +826,39 @@ def _send_review_card(p, c, did):
         state_line = '⚠️ <b>السعر تغير عن رصد الرادار</b>'
     else:
         state_line = '⚠️ <b>يحتاج مراجعة يدوية</b>'
-    lines = ['🛒 <b>Amazon Egypt</b>', '', f'📦 <b>{title}</b>', state_line]
+    lines = [
+        '🛒 <b>Amazon Egypt</b>',
+        '',
+        f'📦 <b>{title}</b>',
+    ]
+
+    brand = str(p.get('brand') or '').strip()
+    if brand:
+        lines.append(
+            '🏷️ <b>الماركة:</b> '
+            + html.escape(brand[:120])
+        )
+
+    product_info = p.get('product_info') or []
+    if isinstance(product_info, list) and product_info:
+        info_text = ' | '.join(
+            str(x).strip()
+            for x in product_info[:3]
+            if str(x).strip()
+        )
+        if info_text:
+            lines.append(
+                'ℹ️ <b>المواصفات:</b> '
+                + html.escape(info_text[:360])
+            )
+
+    lines.append(
+        '🆔 <b>ASIN:</b> <code>'
+        + html.escape(str(asin))
+        + '</code>'
+    )
+
+    lines.append(state_line)
     if live_price > 0:
         lines.append(f'💰 السعر الآن: <b>{live_price:,.2f} ج.م</b>')
     if radar_price > 0:
@@ -1144,6 +1229,27 @@ def publish(did, urgent):
             "AMAZON_PRICE_INCREASED:"
             + f"{reviewed_price:.2f}:{live_price:.2f}"
         )
+
+    # Use fresh Amazon product metadata at publication too.
+    fresh_title = str(
+        result.get("product_title") or ""
+    ).strip()
+    if fresh_title:
+        p["title"] = fresh_title
+
+    fresh_brand = str(
+        result.get("brand") or ""
+    ).strip()
+    if fresh_brand:
+        p["brand"] = fresh_brand
+
+    fresh_info = result.get("product_info") or []
+    if isinstance(fresh_info, list) and fresh_info:
+        p["product_info"] = [
+            str(x).strip()
+            for x in fresh_info[:4]
+            if str(x).strip()
+        ]
 
     # Use the newest verified Amazon price and screenshot.
     p["current_price"] = live_price

@@ -90,7 +90,7 @@ def _brand_screenshot(path):
     # WIDE MODE V3: trim the remaining Amazon navigation/header strip.
     try:
         img = Image.open(path)
-        trim_top = 55
+        trim_top = 0
         if img.height > 320 and img.height - trim_top > 240:
             img = img.crop((0, trim_top, img.width, img.height))
             img.save(path, format="JPEG", quality=90, optimize=True)
@@ -250,6 +250,73 @@ def capture_amazon_page(url, key="product"):
 
             live_price = _number(price_text)
 
+            # PRODUCT META FOR REVIEW + CHANNEL
+            product_title = ""
+            brand = ""
+            product_info = []
+
+            try:
+                loc = page.locator("#productTitle")
+                if loc.count():
+                    product_title = re.sub(
+                        r"\\s+",
+                        " ",
+                        loc.first.inner_text(timeout=1500)
+                    ).strip()
+            except Exception:
+                pass
+
+            try:
+                loc = page.locator("#bylineInfo")
+                if loc.count():
+                    brand = re.sub(
+                        r"\\s+",
+                        " ",
+                        loc.first.inner_text(timeout=1000)
+                    ).strip()
+            except Exception:
+                pass
+
+            try:
+                rows = page.locator(
+                    "#productOverview_feature_div tr"
+                )
+
+                for i in range(min(rows.count(), 10)):
+                    row = rows.nth(i)
+                    cells = row.locator("td, th")
+
+                    if cells.count() < 2:
+                        continue
+
+                    key = re.sub(
+                        r"\\s+",
+                        " ",
+                        cells.nth(0).inner_text(timeout=700)
+                    ).strip()
+
+                    value = re.sub(
+                        r"\\s+",
+                        " ",
+                        cells.nth(1).inner_text(timeout=700)
+                    ).strip()
+
+                    if (
+                        key
+                        and value
+                        and len(key) <= 60
+                        and len(value) <= 140
+                    ):
+                        item = f"{key}: {value}"
+
+                        if item not in product_info:
+                            product_info.append(item)
+
+                    if len(product_info) >= 4:
+                        break
+            except Exception:
+                pass
+
             if live_price <= 0:
                 return {
                     "ok": False,
@@ -300,9 +367,13 @@ def capture_amazon_page(url, key="product"):
             boxes = []
 
             for sel in (
-                "#leftCol",
+                "#imgTagWrapperId",
+                "#imageBlock",
                 "#centerCol",
+                "#title",
                 "#rightCol",
+                "#desktop_buybox",
+                "#buybox",
             ):
                 try:
                     loc = page.locator(sel)
@@ -322,9 +393,11 @@ def capture_amazon_page(url, key="product"):
                     min(b["x"] for b in boxes) - 12
                 )
 
+                # Never include Amazon header/search/navigation.
+                # Start directly from the real product area.
                 y1 = max(
-                    0,
-                    min(b["y"] for b in boxes) - 12
+                    120,
+                    min(b["y"] for b in boxes) - 8
                 )
 
                 x2 = min(
@@ -393,6 +466,9 @@ def capture_amazon_page(url, key="product"):
                 "live_price": live_price,
                 "availability": availability,
                 "page_price_text": price_text,
+                "product_title": product_title,
+                "brand": brand,
+                "product_info": product_info,
                 "status": status,
             }
 
