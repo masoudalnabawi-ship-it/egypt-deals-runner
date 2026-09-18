@@ -403,7 +403,10 @@ def parse_search(html):
                 txt = el.get_text(" ", strip=True)
                 if txt and any(k in txt.lower() for k in (
                     "coupon", "discount", "save", "promo",
-                    "كوبون", "قسيمة", "خصم", "وفر", "توفير"
+                    "buy", "get", "free", "bogo",
+                    "كوبون", "قسيمة", "خصم", "وفر", "توفير",
+                    "اشتر", "اشتري", "احصل", "خد", "خذ",
+                    "مجان", "هدية", "هديه"
                 )):
                     promo_parts.append(txt)
             listing_promo_text = " | ".join(dict.fromkeys(promo_parts))[:800]
@@ -538,20 +541,97 @@ def add_product(item, source):
 
     listing_promo_text = str(item.get("listing_promo_text") or "").strip()
     listing_coupon_percent = to_float(item.get("listing_coupon_percent"))
+
     if listing_promo_text:
         rec["listing_promo_text"] = listing_promo_text
-    if listing_coupon_percent > 0:
-        rec["listing_coupon_percent"] = listing_coupon_percent
-        # Listing badges are a discovery hint only. Product-page verification
-        # still decides whether the promotion is real/public. 50%+ coupon
-        # hints jump to the fastest lane so they are not lost in a huge dept.
-        if listing_coupon_percent >= 50:
-            rec["priority_zero"] = True
-            rec["anomaly_priority"] = max(100, int(rec.get("anomaly_priority", 0) or 0))
-            rec["priority_boost_until"] = max(
-                int(time.time()) + 1800,
-                int(rec.get("priority_boost_until", 0) or 0),
-            )
+
+    promo_text = listing_promo_text.lower().translate(
+        str.maketrans("٠١٢٣٤٥٦٧٨٩", "0123456789")
+    )
+
+    detected_percent = listing_coupon_percent
+
+    for m in re.findall(r"(\d+(?:\.\d+)?)\s*%", promo_text):
+        try:
+            v = float(m)
+            if 0 < v <= 100:
+                detected_percent = max(detected_percent, v)
+        except Exception:
+            pass
+
+    buy_1_get_1 = bool(
+        re.search(
+            r"buy\s*(?:1|one).{0,30}get\s*(?:1|one)"
+            r"|bogo"
+            r"|اشتر\w*\s*(?:1|واحد).{0,45}"
+            r"(?:1|واحد|الآخر|الثاني).{0,25}"
+            r"(?:مجان|هدية|هديه|خد|خذ|احصل)",
+            promo_text,
+            re.I,
+        )
+    )
+
+    buy_2_get_1 = bool(
+        re.search(
+            r"buy\s*(?:2|two).{0,30}get\s*(?:1|one)"
+            r"|اشتر\w*\s*(?:2|اثنين|اتنين).{0,45}"
+            r"(?:1|واحد).{0,25}"
+            r"(?:مجان|هدية|هديه|خد|خذ|احصل)",
+            promo_text,
+            re.I,
+        )
+    )
+
+    effective_promo = detected_percent
+
+    if buy_1_get_1:
+        effective_promo = max(effective_promo, 50.0)
+
+    elif buy_2_get_1:
+        effective_promo = max(effective_promo, 33.3)
+
+    promo_priority = 0
+    promo_type = ""
+
+    if effective_promo >= 70:
+        promo_priority = 1500
+        promo_type = "EXTREME_70_PLUS"
+
+    elif effective_promo >= 50:
+        promo_priority = 1400
+        promo_type = (
+            "BUY_1_GET_1"
+            if buy_1_get_1
+            else "STRONG_50_PLUS"
+        )
+
+    elif buy_2_get_1:
+        promo_priority = 1200
+        promo_type = "BUY_2_GET_1"
+
+    if detected_percent > 0:
+        rec["listing_coupon_percent"] = detected_percent
+
+    if promo_priority:
+        rec["promo_type"] = promo_type
+        rec["promo_effective_discount_percent"] = round(
+            effective_promo,
+            1,
+        )
+
+        # Strong promotion -> immediate verification lane.
+        rec["priority_zero"] = True
+        rec["manual_watch"] = True
+
+        rec["global_deep_v95_priority"] = max(
+            int(rec.get("global_deep_v95_priority", 0) or 0),
+            promo_priority,
+        )
+
+        rec["priority_boost_until"] = max(
+            int(time.time()) + 7200,
+            int(rec.get("priority_boost_until", 0) or 0),
+        )
 
     watch[asin] = rec
 
@@ -615,6 +695,23 @@ def add_product(item, source):
             tier,
             70
         )
+
+        anomaly_fast_priority = {
+            "HOT": 1250,
+            "ULTRA": 1550,
+            "CRITICAL": 1800,
+        }.get(
+            tier,
+            1100,
+        )
+
+        rec["global_deep_v95_priority"] = max(
+            int(rec.get("global_deep_v95_priority", 0) or 0),
+            anomaly_fast_priority,
+        )
+
+        if tier in ("ULTRA", "CRITICAL"):
+            rec["priority_zero"] = True
 
         is_verified = bool(
             anomaly.get("verified")
