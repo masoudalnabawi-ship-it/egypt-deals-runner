@@ -27,8 +27,8 @@ jobs:
 
       # TEMP STORE POLICY: Amazon first in its dedicated radar, then Noon, then B.TECH only.
       DIRECT_FLASH_REVIEW: "false"
-      V11_ENABLED_STORES: "noon,btech"
-      ENABLED_STORES: "noon,btech"
+      V11_ENABLED_STORES: "noon,btech,2b"
+      ENABLED_STORES: "noon,btech,2b"
       MIN_DISCOUNT_PERCENT: "5"
       MIN_SAVING_EGP: "0"
       MAX_POSTS_PER_CYCLE: "10"
