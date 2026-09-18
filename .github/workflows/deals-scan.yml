@@ -107,9 +107,9 @@ jobs:
           python scripts/run_amazon_once.py
 
           echo "✅ AMAZON SCAN FINISHED"
-          echo "🤖 REVIEW BUTTONS ACTIVE FOR 10 MORE MINUTES"
+          echo "🤖 REVIEW BUTTONS ACTIVE FOR 2 MORE MINUTES"
 
-          for i in $(seq 1 60); do
+          for i in $(seq 1 12); do
             if ! kill -0 "$AMAZON_LISTENER_PID" 2>/dev/null; then
               echo "❌ AMAZON LISTENER STOPPED"
               cat /tmp/amazon_review_listener.log || true
