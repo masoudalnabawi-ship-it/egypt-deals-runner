@@ -65,6 +65,14 @@ jobs:
           GITHUB_TOKEN: ${{ github.token }}
         run: bash scripts/state.sh hydrate || echo '⚠️ STATE HYDRATE WARNING — CONTINUING SCAN'
 
+      - name: Competitor benchmark + flash memory
+        run: |
+          echo "📡 CHECKING DEAL CHANNEL BENCHMARKS"
+          python scripts/channel_benchmark.py || echo "⚠️ CHANNEL BENCHMARK FAILED — CONTINUING"
+
+          echo "🧠 PROCESSING FLASH DEAL MEMORY"
+          python scripts/channel_flash_memory.py || echo "⚠️ FLASH MEMORY FAILED — CONTINUING"
+
       # AMAZON ALWAYS GOES FIRST.
       - name: Amazon — priority scan + real product screenshot
         run: |

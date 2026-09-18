@@ -40,6 +40,10 @@ hydrate() {
   [ ! -s "$STATE/amazon_deals.db" ] ||     cp "$STATE/amazon_deals.db" "$AMZ/deals.db"
   [ ! -s "$STATE/v11_deals.db" ] || cp "$STATE/v11_deals.db" "$V11/deals.db"
   [ ! -s "$STATE/v11_state.db" ] || cp "$STATE/v11_state.db" "$V11/v11_state.db"
+
+  # Telegram competitor benchmark + flash memory
+  [ -s "$STATE/channel_benchmark.json" ] || true
+  [ -s "$STATE/channel_flash_memory.json" ] || true
 }
 
 collect() {
@@ -50,6 +54,10 @@ collect() {
   [ ! -f "$AMZ/deals.db" ] ||     cp "$AMZ/deals.db" "$STATE/amazon_deals.db"
   [ ! -f "$V11/deals.db" ] || cp "$V11/deals.db" "$STATE/v11_deals.db"
   [ ! -f "$V11/v11_state.db" ] || cp "$V11/v11_state.db" "$STATE/v11_state.db"
+
+  # channel_benchmark.py and channel_flash_memory.py
+  # already write directly into .runtime_state,
+  # so no copy is required here.
 }
 
 case "${1:-}" in
