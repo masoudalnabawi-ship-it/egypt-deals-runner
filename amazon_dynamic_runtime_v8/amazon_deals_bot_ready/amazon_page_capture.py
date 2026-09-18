@@ -19,7 +19,7 @@ _CONTEXT = None
 _LAST_REQUEST = 0.0
 
 MIN_GAP = 6.0
-CACHE_SECONDS = 90
+CACHE_SECONDS = 0
 
 
 def _browser():
@@ -184,7 +184,13 @@ def capture_amazon_page(url, key="product"):
                 "robot check",
                 "enter the characters you see below",
                 "captcha",
+                "continue shopping",
+                "click the button below to continue shopping",
+                "service unavailable",
+                "503 - service unavailable",
                 "أدخل الأحرف التي تراها",
+                "متابعة التسوق",
+                "انقر فوق الزر أدناه لمتابعة التسوق",
             )
 
             if any(
@@ -243,6 +249,14 @@ def capture_amazon_page(url, key="product"):
                     pass
 
             live_price = _number(price_text)
+
+            if live_price <= 0:
+                return {
+                    "ok": False,
+                    "blocked": False,
+                    "status": status,
+                    "reason": "amazon_live_price_missing",
+                }
 
             unavailable_terms = (
                 "currently unavailable",
