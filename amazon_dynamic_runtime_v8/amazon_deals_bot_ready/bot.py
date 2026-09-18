@@ -510,45 +510,34 @@ def review_text(p, c):
     return "\n".join(lines)
 
 def channel_text(p, c, urgent=False):
-    title = html.escape(str(p.get("title_ar") or p.get("title") or "عرض Amazon"))
-    url = html.escape(str(p.get("url") or ""))
-    head = "🚨 <b>عرض عاجل من Amazon</b>" if urgent else "🔥 <b>عرض Amazon</b>"
+    title = html.escape(
+        str(
+            p.get("title_ar")
+            or p.get("title")
+            or "عرض Amazon"
+        )[:140]
+    )
+
+    url = html.escape(
+        str(p.get("url") or "")
+    )
+
+    head = (
+        "🚨 <b>عرض عاجل من Amazon</b>"
+        if urgent
+        else "🔥 <b>عرض Amazon</b>"
+    )
+
+    current = num(
+        c.get("effective_current")
+    )
+
     lines = [
         head,
         "",
         f"📦 <b>{title}</b>",
+        f"💰 السعر: <b>{money(current)}</b>",
     ]
-
-    brand = str(p.get("brand") or "").strip()
-    if brand:
-        lines.append(
-            "🏷️ <b>الماركة:</b> "
-            + html.escape(brand[:120])
-        )
-
-    product_info = p.get("product_info") or []
-    if isinstance(product_info, list) and product_info:
-        info_text = " | ".join(
-            str(x).strip()
-            for x in product_info[:3]
-            if str(x).strip()
-        )
-        if info_text:
-            lines.append(
-                "ℹ️ <b>المواصفات:</b> "
-                + html.escape(info_text[:320])
-            )
-
-    if p.get("asin"):
-        lines.append(
-            "🆔 <b>ASIN:</b> <code>"
-            + html.escape(str(p.get("asin")))
-            + "</code>"
-        )
-
-    lines.append(
-        f"💰 السعر الآن: <b>{money(c['effective_current'])}</b>"
-    )
 
     amazon_old = num(
         p.get("amazon_old_price")
@@ -557,37 +546,58 @@ def channel_text(p, c, urgent=False):
 
     if (
         bool(p.get("amazon_old_price_verified"))
-        and amazon_old > c["effective_current"] > 0
+        and amazon_old > current > 0
     ):
         lines.append(
-            f"💵 السعر قبل الخصم على Amazon: <b>{money(amazon_old)}</b>"
+            f"💵 قبل الخصم: <b>{money(amazon_old)}</b>"
         )
-    if c["independent"]:
-        lines += [
-            f"📊 المرجع: {money(c['reference'])}",
-            f"📉 الخصم الحقيقي: <b>{c['verified_discount']:.1f}%</b>",
-        ]
-    elif c["claimed_discount"]:
-        lines.append(f"📉 الخصم الظاهر: {c['claimed_discount']:.1f}%")
 
-    promo_type = str(p.get("promo_type") or "none").lower()
-    promo_percent = num(p.get("promo_percent"))
-    coupon_value = num(p.get("coupon_value"))
+    discount = max(
+        num(c.get("verified_discount")),
+        num(c.get("claimed_discount")),
+        num(p.get("amazon_direct_discount")),
+        num(p.get("discount_percent")),
+    )
+
+    if discount >= 5:
+        lines.append(
+            f"📉 الخصم: <b>{discount:.1f}%</b>"
+        )
+
     if bool(p.get("promo_verified")):
-        if promo_type == "coupon" and promo_percent > 0:
-            lines.append(f"🎟️ كوبون: <b>{promo_percent:.1f}%</b>")
-        elif promo_type == "coupon" and coupon_value > 0:
-            lines.append(f"🎟️ كوبون: <b>{money(coupon_value)}</b>")
-        elif p.get("promo_label"):
-            lines.append("🎁 " + html.escape(str(p.get("promo_label"))))
+        promo_percent = num(
+            p.get("promo_percent")
+        )
 
-    for offer in (p.get("bulk_offers") or [])[:2]:
-        pct_val = num(offer.get("promo_percent")) if isinstance(offer, dict) else 0.0
-        qty_val = int(num(offer.get("minimum_quantity"))) if isinstance(offer, dict) else 0
-        if pct_val > 0 and qty_val > 0:
-            lines.append(f"📦 اشترِ {qty_val}+ ووفر {pct_val:.1f}%")
+        coupon_value = num(
+            p.get("coupon_value")
+        )
 
-    lines += ["", f'🛒 <a href="{url}">فتح العرض على Amazon</a>']
+        promo_type = str(
+            p.get("promo_type") or ""
+        ).lower()
+
+        if (
+            promo_type == "coupon"
+            and promo_percent > 0
+        ):
+            lines.append(
+                f"🎟️ كوبون إضافي: <b>{promo_percent:.1f}%</b>"
+            )
+
+        elif (
+            promo_type == "coupon"
+            and coupon_value > 0
+        ):
+            lines.append(
+                f"🎟️ كوبون: <b>{money(coupon_value)}</b>"
+            )
+
+    lines += [
+        "",
+        f'🛒 <a href="{url}">فتح العرض على Amazon</a>',
+    ]
+
     return "\n".join(lines)
 
 def keyboard(p, did):
