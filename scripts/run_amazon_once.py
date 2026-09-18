@@ -1,14 +1,73 @@
 import asyncio
+import json
 import os
+import subprocess
 import sys
+import types
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1] / "amazon_dynamic_runtime_v8" / "telegram_deals_bot_v1_ready"
+REVIEW_DIR = Path(__file__).resolve().parents[1] / "amazon_dynamic_runtime_v8" / "amazon_deals_bot_ready"
 sys.path.insert(0, str(ROOT))
 os.chdir(ROOT)
 
+def _capture_in_subprocess(url, key="product"):
+    code = r"""
+import json, sys
+from amazon_page_capture import capture_amazon_page
+print(json.dumps(capture_amazon_page(sys.argv[1], sys.argv[2]), ensure_ascii=False))
+"""
+    try:
+        cp = subprocess.run(
+            [sys.executable, "-c", code, str(url), str(key)],
+            cwd=str(REVIEW_DIR),
+            text=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            timeout=50,
+        )
+        if cp.returncode != 0:
+            return {"ok": False, "reason": cp.stderr[-300:]}
+        lines = [x for x in cp.stdout.splitlines() if x.strip()]
+        return json.loads(lines[-1]) if lines else {"ok": False}
+    except Exception as exc:
+        return {"ok": False, "reason": repr(exc)}
+
+_bridge = types.ModuleType("amazon_page_capture")
+_bridge.capture_amazon_page = _capture_in_subprocess
+sys.modules["amazon_page_capture"] = _bridge
+
 import httpx
 import amazon_radar as radar
+
+_orig_cloud_review = radar._send_amazon_independent_review
+
+async def _cloud_review_with_diag(payload):
+    r = await _orig_cloud_review(payload)
+    try:
+        data = r.json()
+    except Exception:
+        data = {}
+
+    if isinstance(data, dict):
+        keys = (
+            "ok", "status", "action", "duplicate",
+            "queued", "telegram", "sent",
+            "error", "id", "deal_id"
+        )
+        safe = {k: data.get(k) for k in keys if k in data}
+    else:
+        safe = {}
+
+    print(
+        "AMAZON_CLOUD_RESULT",
+        payload.get("asin") or payload.get("fingerprint"),
+        safe or str(getattr(r, "text", ""))[:300],
+        flush=True
+    )
+    return r
+
+radar._send_amazon_independent_review = _cloud_review_with_diag
 
 async def safe(name, coro, timeout=90):
     try:

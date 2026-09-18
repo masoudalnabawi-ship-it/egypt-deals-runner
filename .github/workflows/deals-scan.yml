@@ -80,5 +80,6 @@ jobs:
           name: runtime-state
           path: .runtime_state/
           retention-days: 1
-          if-no-files-found: error
+          if-no-files-found: warn
+          include-hidden-files: true
           compression-level: 6
