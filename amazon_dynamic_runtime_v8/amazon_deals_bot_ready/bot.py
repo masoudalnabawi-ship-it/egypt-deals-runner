@@ -587,9 +587,62 @@ def _send_review_card(p, c, did):
             c['verified_discount'] = 0
             c['claimed_discount'] = 0
     title = html.escape(str(p.get('title_ar') or p.get('title') or 'عرض Amazon')[:220])
-    live_capture_safe = result.get('ok') and live_price > 0 and (available is not False) and (mismatch <= 0.15)
-    radar_recheck_safe = bool(result.get('capture_error')) and bool(p.get('verified')) and bool(p.get('live_rechecked')) and (radar_price > 0)
-    safe_publish = bool(live_capture_safe or radar_recheck_safe)
+    live_capture_safe = (
+        bool(result.get('ok'))
+        and live_price > 0
+        and (available is not False)
+        and (mismatch <= 0.15)
+        and bool(screenshot)
+        and os.path.exists(screenshot)
+    )
+
+    # Radar verification is useful intelligence, but is NOT enough to
+    # create an Amazon review card. A real, valid Amazon product-page
+    # capture with a confirmed live price is mandatory.
+    radar_recheck_safe = (
+        bool(result.get('capture_error'))
+        and bool(p.get('verified'))
+        and bool(p.get('live_rechecked'))
+        and (radar_price > 0)
+    )
+
+    safe_publish = bool(live_capture_safe)
+
+    if not live_capture_safe:
+        reason = str(
+            result.get('reason')
+            or result.get('capture_reason')
+            or (
+                'product_unavailable'
+                if available is False
+                else 'live_price_missing'
+                if live_price <= 0
+                else 'price_mismatch'
+                if mismatch > 0.15
+                else 'invalid_amazon_product_capture'
+            )
+        )
+
+        log(
+            'AMAZON REVIEW BLOCKED'
+            + ' | asin=' + str(asin)
+            + ' | reason=' + reason
+            + ' | live=' + str(live_price)
+            + ' | radar=' + str(radar_price)
+            + ' | mismatch=' + f'{mismatch:.3f}'
+        )
+
+        # Never keep/send a challenge, CAPTCHA, Continue Shopping,
+        # blank page, or otherwise unverified Amazon screenshot.
+        if screenshot and os.path.exists(screenshot):
+            try:
+                os.remove(screenshot)
+            except Exception:
+                pass
+
+        raise RuntimeError(
+            'AMAZON_LIVE_PRODUCT_VERIFICATION_REQUIRED: ' + reason[:160]
+        )
     if live_capture_safe:
         state_line = '✅ <b>تم التحقق حيًا من Amazon</b>'
     elif radar_recheck_safe:
