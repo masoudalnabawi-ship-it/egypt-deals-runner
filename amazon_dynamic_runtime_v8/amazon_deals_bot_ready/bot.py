@@ -552,13 +552,85 @@ def _send_review_card(p, c, did):
     asin = str(p.get('asin') or did or 'product')
     radar_price = float(c.get('effective_current') or p.get('current_price') or p.get('last_price') or 0)
     if capture_amazon_page is not None:
-        try:
-            result = capture_amazon_page(url, asin)
-        except Exception as e:
-            log('LIVE CAPTURE FALLBACK: ' + str(e))
-            result = {'ok': False, 'capture_error': True, 'reason': str(e)}
+        result = {
+            'ok': False,
+            'capture_error': True,
+            'reason': 'capture_not_started',
+        }
+
+        for attempt in range(1, 4):
+            try:
+                result = capture_amazon_page(url, asin)
+            except Exception as e:
+                result = {
+                    'ok': False,
+                    'capture_error': True,
+                    'reason': str(e),
+                }
+
+            if result.get('ok'):
+                log(
+                    'AMAZON CAPTURE VERIFIED'
+                    + ' | asin=' + str(asin)
+                    + ' | attempt=' + str(attempt)
+                )
+                break
+
+            reason = str(result.get('reason') or '').lower()
+            status = result.get('status')
+
+            hard_block = (
+                status == 403
+                or 'captcha' in reason
+                or 'robot check' in reason
+                or 'continue shopping' in reason
+                or 'متابعة التسوق' in reason
+            )
+
+            transient = (
+                status in (429, 503)
+                or 'live_price_missing' in reason
+                or 'timeout' in reason
+                or 'timed out' in reason
+                or 'service unavailable' in reason
+            )
+
+            log(
+                'AMAZON CAPTURE FAILED'
+                + ' | asin=' + str(asin)
+                + ' | attempt=' + str(attempt)
+                + ' | status=' + str(status)
+                + ' | reason=' + str(result.get('reason') or '')
+            )
+
+            # Never retry or bypass Amazon CAPTCHA / Robot Check.
+            if hard_block:
+                log(
+                    'AMAZON CAPTURE HARD BLOCK'
+                    + ' | asin=' + str(asin)
+                )
+                break
+
+            if not transient or attempt >= 3:
+                break
+
+            wait_seconds = 3 if attempt == 1 else 7
+
+            log(
+                'AMAZON CAPTURE RETRY'
+                + ' | asin=' + str(asin)
+                + ' | next_attempt=' + str(attempt + 1)
+                + ' | wait=' + str(wait_seconds)
+            )
+
+            time.sleep(wait_seconds)
+
     else:
-        result = {'ok': False, 'capture_error': True, 'reason': 'Playwright capture unavailable; using product-card fallback'}
+        result = {
+            'ok': False,
+            'capture_error': True,
+            'reason': 'Playwright capture unavailable',
+        }
     live_price = 0.0
     available = None
     screenshot = ''
