@@ -16,3 +16,4 @@ inbox.jsonl
 poll_state.json
 queue_state.json
 config.json
+*.bak_wide_v3

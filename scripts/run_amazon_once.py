@@ -91,14 +91,25 @@ async def drain_queue(limit=8):
 
 async def main():
     # Progressive discovery + priority checks. Every invocation advances persisted state.
+    # WIDE AMAZON COVERAGE V3
+    # Priority surfaces first, then more discovery/watchlist rotations so a
+    # large 8k+ watchlist is not sampled only a handful of products per run.
     await safe("priority_surface", radar.direct_surface_once("priority"), 70)
     await safe("general_surface", radar.direct_surface_once("general"), 70)
-    await safe("deep_discovery", radar.deep_discovery(), 20)
-    await safe("hot_watch", radar.hot_watch_once(), 110)
+
+    for n in range(2):
+        await safe(f"deep_discovery_{n+1}", radar.deep_discovery(), 25)
+
+    for n in range(2):
+        await safe(f"hot_watch_{n+1}", radar.hot_watch_once(), 110)
+
     await safe("ultra_hot", radar.ultra_hot_once(), 130)
-    await safe("full_v5", radar.full_v5_watchlist_once(), 130)
+
+    for n in range(6):
+        await safe(f"full_v5_{n+1}", radar.full_v5_watchlist_once(), 130)
+
     await safe("competitor_trigger", radar.competitor_trigger_once(), 45)
-    await drain_queue(8)
+    await drain_queue(20)
     print("AMAZON_ONCE_COMPLETE", flush=True)
 
 if __name__ == "__main__":

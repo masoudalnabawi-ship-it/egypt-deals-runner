@@ -3,7 +3,7 @@ name: Egypt Deals Scan
 on:
   workflow_dispatch:
   schedule:
-    - cron: "*/10 * * * *"
+    - cron: "*/5 * * * *"
 
 permissions:
   contents: read
@@ -31,7 +31,7 @@ jobs:
       MIN_DISCOUNT_PERCENT: "5"
       MIN_SAVING_EGP: "0"
       MAX_POSTS_PER_CYCLE: "10"
-      MAX_VERIFY_CANDIDATES: "12"
+      MAX_VERIFY_CANDIDATES: "20"
       REQUEST_TIMEOUT_SECONDS: "20"
       STRICT_VERIFICATION: "true"
       STORE_SCREENSHOT_REVIEWS: "1"

@@ -1717,6 +1717,14 @@ def cache_amazon_promo(url, soup):
                 and not restricted
             )
 
+            # WIDE MODE V3: public quantity offers are allowed into review
+            # while bank/member/account offers remain restricted.
+            public_bulk = (
+                promo_type == "bulk_discount"
+                and promo_scope == "bulk"
+                and not restricted
+            )
+
             try:
                 pct = float(
                     promo.get("promo_percent", 0) or 0
@@ -1727,10 +1735,10 @@ def cache_amazon_promo(url, soup):
             public_verified = (
                 promo_verified
                 and not restricted
-                and promo_type != "bulk_discount"
                 and (
                     not conditional
                     or public_coupon
+                    or public_bulk
                 )
             )
 

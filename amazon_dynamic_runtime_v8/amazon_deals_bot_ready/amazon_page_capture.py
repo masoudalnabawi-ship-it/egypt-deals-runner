@@ -87,6 +87,15 @@ def _number(text):
 
 def _brand_screenshot(path):
     # CLEAN MODE: no channel name, no footer, no watermark.
+    # WIDE MODE V3: trim the remaining Amazon navigation/header strip.
+    try:
+        img = Image.open(path)
+        trim_top = 55
+        if img.height > 320 and img.height - trim_top > 240:
+            img = img.crop((0, trim_top, img.width, img.height))
+            img.save(path, format="JPEG", quality=90, optimize=True)
+    except Exception as exc:
+        print("SCREENSHOT HEADER TRIM FALLBACK", repr(exc), flush=True)
     return path
 
 

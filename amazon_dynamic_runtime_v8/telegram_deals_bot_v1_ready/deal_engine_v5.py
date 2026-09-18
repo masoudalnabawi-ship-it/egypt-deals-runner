@@ -194,11 +194,11 @@ def evaluate_deal(
         or promo_type in ("card", "bank_card", "account_offer")
     )
 
-    # Bulk offers such as Buy 5+ are useful metadata,
-    # but must NOT change the normal consumer deal score.
+    # WIDE MODE V3: a verified PUBLIC bulk offer is a valid review candidate.
+    # Keep it conditional and clearly labelled; it still does not boost the
+    # ordinary single-unit Deal Score by itself.
     if promo_type == "bulk_discount":
-        promo_verified = False
-        conditional = False
+        conditional = True
 
     promo_equivalent = 0.0
     promo_note = None
@@ -368,9 +368,20 @@ def evaluate_deal(
         )
     )
 
+    # WIDE MODE V3: public quantity/bulk deals of 5%+ also go to
+    # human review, with their quantity condition preserved in the card.
+    verified_bulk_5 = (
+        bool(promo_verified)
+        and not restricted_promo
+        and promo_type_norm == "bulk_discount"
+        and promo_scope == "bulk"
+        and promo_percent >= 5.0
+    )
+
     five_percent_gate = (
         verified_price_5
         or verified_promo_5
+        or verified_bulk_5
     )
 
     if five_percent_gate and tier == "WATCH":
