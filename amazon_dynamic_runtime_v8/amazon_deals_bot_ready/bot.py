@@ -1231,19 +1231,22 @@ def queue_loop():
 
 
 def initial_offset():
+    """Resume from the last persisted Telegram update.
+
+    If there is no state yet, start from 0 so pending callback buttons
+    are processed instead of silently skipped.
+    """
     s = load_json(STATE, {})
-    if "offset" in s:
-        return int(s["offset"])
+
     try:
-        rows = api("getUpdates", {"offset": -1, "timeout": 0}, timeout=10)
-        if rows:
-            off = int(rows[-1]["update_id"]) + 1
-        else:
-            off = 0
+        if "offset" in s:
+            return int(s["offset"])
     except Exception:
-        off = 0
-    save_json(STATE, {"offset": off})
-    return off
+        pass
+
+    save_json(STATE, {"offset": 0})
+    return 0
+
 
 def updates_loop():
     offset = initial_offset()
