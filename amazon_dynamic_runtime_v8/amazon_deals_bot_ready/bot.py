@@ -979,6 +979,125 @@ def publish(did, urgent):
     if status in ("posted", "rejected"):
         return status, mid
 
+    # FINAL AMAZON CHECK IMMEDIATELY BEFORE PUBLICATION.
+    if capture_amazon_page is None:
+        raise RuntimeError("AMAZON_PUBLISH_RECHECK_UNAVAILABLE")
+
+    url = str(p.get("url") or "")
+    asin = str(p.get("asin") or did or "product")
+    reviewed_price = num(
+        p.get("live_price")
+        or p.get("current_price")
+        or p.get("last_price")
+    )
+
+    result = {
+        "ok": False,
+        "reason": "publish_recheck_not_started",
+    }
+
+    for attempt in range(1, 3):
+        try:
+            result = capture_amazon_page(url, asin)
+        except Exception as e:
+            result = {
+                "ok": False,
+                "reason": str(e),
+            }
+
+        if result.get("ok"):
+            break
+
+        reason = str(result.get("reason") or "").lower()
+        status_code = result.get("status")
+
+        hard_block = (
+            status_code == 403
+            or "captcha" in reason
+            or "robot check" in reason
+            or "continue shopping" in reason
+            or "متابعة التسوق" in reason
+        )
+
+        transient = (
+            status_code in (429, 503)
+            or "live_price_missing" in reason
+            or "timeout" in reason
+            or "timed out" in reason
+            or "service unavailable" in reason
+        )
+
+        log(
+            "AMAZON PUBLISH RECHECK FAILED"
+            + " | asin=" + asin
+            + " | attempt=" + str(attempt)
+            + " | status=" + str(status_code)
+            + " | reason=" + str(result.get("reason") or "")
+        )
+
+        if hard_block or not transient or attempt >= 2:
+            break
+
+        time.sleep(3)
+
+    live_price = num(result.get("live_price"))
+    availability = result.get("availability")
+
+    if (
+        not result.get("ok")
+        or live_price <= 0
+        or availability is False
+    ):
+        raise RuntimeError(
+            "AMAZON_PUBLISH_RECHECK_FAILED:"
+            + str(result.get("reason") or "invalid_live_product")
+        )
+
+    # Price increase above 2% requires another human review.
+    if (
+        reviewed_price > 0
+        and live_price > reviewed_price * 1.02
+    ):
+        log(
+            "AMAZON PRICE INCREASE BLOCKED"
+            + " | asin=" + asin
+            + " | reviewed=" + str(reviewed_price)
+            + " | live=" + str(live_price)
+        )
+
+        raise RuntimeError(
+            "AMAZON_PRICE_INCREASED:"
+            + f"{reviewed_price:.2f}:{live_price:.2f}"
+        )
+
+    # Use the newest verified Amazon price and screenshot.
+    p["current_price"] = live_price
+    p["last_price"] = live_price
+    p["live_price"] = live_price
+    p["live_rechecked"] = True
+    p["live_checked_at"] = int(time.time())
+
+    fresh_media = str(result.get("screenshot") or "").strip()
+
+    if fresh_media and os.path.exists(fresh_media):
+        p["_review_media_path"] = fresh_media
+        p["_review_media_kind"] = "publish_live_screenshot"
+
+    # Persist the final verified payload.
+    with sqlite3.connect(DB) as db:
+        db.execute(
+            "UPDATE deals SET payload=?,updated_at=CURRENT_TIMESTAMP WHERE deal_id=?",
+            (json.dumps(p, ensure_ascii=False), did),
+        )
+        db.commit()
+
+    log(
+        "AMAZON PUBLISH VERIFIED"
+        + " | asin=" + asin
+        + " | reviewed=" + str(reviewed_price)
+        + " | live=" + str(live_price)
+    )
+
     c = classify(p)
     text = channel_text(p, c, urgent=urgent)
     image = str(p.get("image_url") or "").strip()
@@ -1141,10 +1260,34 @@ def handle_callback(q):
             )
 
     except Exception as e:
-        log(f"callback error: {e}")
+        err = str(e)
+        log(f"callback error: {err}")
+
+        if err.startswith("AMAZON_PRICE_INCREASED:"):
+            try:
+                _, old_price, new_price = err.split(":", 2)
+                msg = (
+                    "⚠️ السعر ارتفع من "
+                    + f"{float(old_price):,.2f}"
+                    + " إلى "
+                    + f"{float(new_price):,.2f}"
+                    + " ج.م — تم إيقاف النشر"
+                )
+            except Exception:
+                msg = "⚠️ السعر ارتفع — تم إيقاف النشر"
+
+        elif err.startswith("AMAZON_PUBLISH_RECHECK_FAILED:"):
+            msg = "⚠️ تعذر تأكيد السعر من Amazon الآن — لم يتم النشر"
+
+        elif err == "AMAZON_PUBLISH_RECHECK_UNAVAILABLE":
+            msg = "⚠️ خدمة التحقق من Amazon غير متاحة الآن"
+
+        else:
+            msg = "حدث خطأ — لم يتم النشر"
+
         answer_callback(
             qid,
-            "حدث خطأ — لم يتم النشر",
+            msg,
             True,
         )
 
