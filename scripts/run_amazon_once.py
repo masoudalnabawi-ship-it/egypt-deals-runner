@@ -97,19 +97,15 @@ async def main():
     await safe("priority_surface", radar.direct_surface_once("priority"), 70)
     await safe("general_surface", radar.direct_surface_once("general"), 70)
 
-    for n in range(2):
-        await safe(f"deep_discovery_{n+1}", radar.deep_discovery(), 25)
+    await safe("deep_discovery", radar.deep_discovery(), 25)
+    await safe("hot_watch", radar.hot_watch_once(), 80)
+    await safe("ultra_hot", radar.ultra_hot_once(), 90)
 
     for n in range(2):
-        await safe(f"hot_watch_{n+1}", radar.hot_watch_once(), 110)
+        await safe(f"full_v5_{n+1}", radar.full_v5_watchlist_once(), 80)
 
-    await safe("ultra_hot", radar.ultra_hot_once(), 130)
-
-    for n in range(6):
-        await safe(f"full_v5_{n+1}", radar.full_v5_watchlist_once(), 130)
-
-    await safe("competitor_trigger", radar.competitor_trigger_once(), 45)
-    await drain_queue(20)
+    await safe("competitor_trigger", radar.competitor_trigger_once(), 30)
+    await drain_queue(12)
     print("AMAZON_ONCE_COMPLETE", flush=True)
 
 if __name__ == "__main__":

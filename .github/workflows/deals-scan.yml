@@ -16,7 +16,7 @@ concurrency:
 jobs:
   scan:
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 8
     env:
       CLOUD_API_URL: ${{ secrets.CLOUD_API_URL }}
       CLOUD_API_KEY: ${{ secrets.CLOUD_API_KEY }}
