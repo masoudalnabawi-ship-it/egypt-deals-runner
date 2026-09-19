@@ -34,14 +34,25 @@ def _browser_html(url: str, headers: dict) -> str:
     )
 
     with sync_playwright() as pw:
-        browser = pw.chromium.launch(
-            headless=True,
-            args=[
-                "--no-sandbox",
-                "--disable-dev-shm-usage",
-                "--disable-background-networking",
-            ],
-        )
+        use_firefox = "noon.com" in str(url).lower()
+
+        if use_firefox:
+            print(
+                "🦊 NOON DISCOVERY USING FIREFOX",
+                flush=True,
+            )
+            browser = pw.firefox.launch(
+                headless=True,
+            )
+        else:
+            browser = pw.chromium.launch(
+                headless=True,
+                args=[
+                    "--no-sandbox",
+                    "--disable-dev-shm-usage",
+                    "--disable-background-networking",
+                ],
+            )
 
         context = browser.new_context(
             viewport={"width": 1360, "height": 950},

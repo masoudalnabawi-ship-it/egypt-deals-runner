@@ -92,10 +92,28 @@ def capture(store: str, url: str, key: str, image_url: str = "") -> dict:
         from playwright.sync_api import sync_playwright
 
         with sync_playwright() as pw:
-            browser = pw.chromium.launch(
-                headless=True,
-                args=["--no-sandbox", "--disable-dev-shm-usage", "--disable-background-networking"],
+            use_firefox = str(store).lower() in (
+                "noon",
+                "noon_minutes",
             )
+
+            if use_firefox:
+                print(
+                    "🦊 NOON SCREENSHOT USING FIREFOX",
+                    flush=True,
+                )
+                browser = pw.firefox.launch(
+                    headless=True,
+                )
+            else:
+                browser = pw.chromium.launch(
+                    headless=True,
+                    args=[
+                        "--no-sandbox",
+                        "--disable-dev-shm-usage",
+                        "--disable-background-networking",
+                    ],
+                )
             context = browser.new_context(
                 viewport={"width": VIEWPORT_W, "height": VIEWPORT_H},
                 locale="ar-EG",
