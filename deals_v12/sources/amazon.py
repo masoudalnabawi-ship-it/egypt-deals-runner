@@ -1,0 +1,267 @@
+from __future__ import annotations
+
+import re
+import time
+from urllib.parse import quote_plus
+
+import httpx
+from bs4 import BeautifulSoup
+
+from ..models import DealCandidate
+
+
+BASE = "https://www.amazon.eg"
+
+HEADERS = {
+    "User-Agent": (
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+        "AppleWebKit/537.36 (KHTML, like Gecko) "
+        "Chrome/140.0 Safari/537.36"
+    ),
+    "Accept-Language": "ar-EG,ar;q=0.9,en;q=0.8",
+    "Accept": "text/html,application/xhtml+xml",
+}
+
+
+PRIORITY_SURFACES = [
+    ("deals", BASE + "/deals"),
+    ("limited_time", BASE + "/s?k=" + quote_plus("limited time deals")),
+    ("coupons", BASE + "/s?k=" + quote_plus("coupon deals")),
+    ("electronics", BASE + "/s?k=" + quote_plus("electronics deals")),
+    ("mobiles", BASE + "/s?k=" + quote_plus("mobile phones deals")),
+    ("appliances", BASE + "/s?k=" + quote_plus("home appliances deals")),
+]
+
+
+def _price(text) -> float:
+    text = str(text or "")
+    text = text.replace(",", "")
+
+    m = re.search(
+        r"(\d+(?:\.\d+)?)",
+        text,
+    )
+
+    if not m:
+        return 0.0
+
+    try:
+        return float(m.group(1))
+    except Exception:
+        return 0.0
+
+
+def _clean(text) -> str:
+    return " ".join(
+        str(text or "").split()
+    ).strip()
+
+
+class AmazonSource:
+    name = "amazon"
+
+    def __init__(self):
+        self.last_request_at = 0.0
+        self.min_gap = 2.0
+
+    async def _wait(self):
+        wait = (
+            self.last_request_at
+            + self.min_gap
+            - time.monotonic()
+        )
+
+        if wait > 0:
+            await __import__("asyncio").sleep(wait)
+
+        self.last_request_at = time.monotonic()
+
+    async def fetch(self, client, url):
+        await self._wait()
+
+        r = await client.get(
+            url,
+            headers=HEADERS,
+            timeout=20,
+            follow_redirects=True,
+        )
+
+        body = r.text or ""
+        low = body.lower()
+
+        protected = (
+            "captcha" in low
+            or "robot check" in low
+            or "enter the characters you see below" in low
+        )
+
+        if r.status_code in (403, 429):
+            raise RuntimeError(
+                f"amazon_http_{r.status_code}"
+            )
+
+        if protected:
+            raise RuntimeError(
+                "amazon_protection_page"
+            )
+
+        if r.status_code != 200:
+            raise RuntimeError(
+                f"amazon_http_{r.status_code}"
+            )
+
+        return body
+
+    def parse_items(self, body, surface="amazon"):
+        soup = BeautifulSoup(
+            body,
+            "html.parser",
+        )
+
+        results = {}
+        cards = soup.select(
+            '[data-component-type="s-search-result"][data-asin]'
+        )
+
+        if not cards:
+            cards = soup.select(
+                '[data-asin]'
+            )
+
+        for card in cards:
+            asin = str(
+                card.get("data-asin")
+                or ""
+            ).strip().upper()
+
+            if not re.fullmatch(
+                r"[A-Z0-9]{10}",
+                asin,
+            ):
+                continue
+
+            title_node = (
+                card.select_one("h2 a span")
+                or card.select_one("h2 span")
+            )
+
+            title = _clean(
+                title_node.get_text(" ", strip=True)
+                if title_node
+                else ""
+            )
+
+            link_node = (
+                card.select_one("h2 a[href]")
+                or card.select_one(
+                    'a[href*="/dp/"]'
+                )
+            )
+
+            href = (
+                str(link_node.get("href") or "")
+                if link_node
+                else ""
+            )
+
+            if href.startswith("/"):
+                url = BASE + href.split("?")[0]
+            elif href.startswith("http"):
+                url = href.split("?")[0]
+            else:
+                url = BASE + "/dp/" + asin
+
+            current_node = (
+                card.select_one(
+                    ".a-price:not(.a-text-price) .a-offscreen"
+                )
+                or card.select_one(
+                    ".a-price .a-offscreen"
+                )
+            )
+
+            current = _price(
+                current_node.get_text(" ", strip=True)
+                if current_node
+                else ""
+            )
+
+            old_node = (
+                card.select_one(
+                    ".a-price.a-text-price .a-offscreen"
+                )
+                or card.select_one(
+                    ".a-text-price .a-offscreen"
+                )
+            )
+
+            old = _price(
+                old_node.get_text(" ", strip=True)
+                if old_node
+                else ""
+            )
+
+            image_node = (
+                card.select_one("img.s-image")
+                or card.select_one("img[src]")
+            )
+
+            image_url = (
+                str(image_node.get("src") or "")
+                if image_node
+                else ""
+            )
+
+            if current <= 0:
+                continue
+
+            if old <= current:
+                old = None
+
+            results[asin] = DealCandidate(
+                store="amazon",
+                external_id=asin,
+                title=title or asin,
+                url=url,
+                current_price=current,
+                old_price=old,
+                image_url=image_url,
+                metadata={
+                    "surface": surface,
+                    "source": "amazon_direct",
+                },
+            )
+
+        return list(results.values())
+
+    async def scan_surface(
+        self,
+        client,
+        name,
+        url,
+    ):
+        body = await self.fetch(
+            client,
+            url,
+        )
+
+        return self.parse_items(
+            body,
+            surface=name,
+        )
+
+    async def scan_once(self):
+        found = {}
+
+        async with httpx.AsyncClient() as client:
+            for name, url in PRIORITY_SURFACES:
+                items = await self.scan_surface(
+                    client,
+                    name,
+                    url,
+                )
+
+                for deal in items:
+                    found[deal.fingerprint] = deal
+
+        return list(found.values())

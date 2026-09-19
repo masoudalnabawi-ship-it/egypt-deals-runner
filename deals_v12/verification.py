@@ -1,0 +1,156 @@
+import re
+import asyncio
+
+import httpx
+from bs4 import BeautifulSoup
+
+from .models import DealCandidate
+from .sources.amazon import HEADERS
+
+
+def _price(text):
+    text = str(text or "").replace(",", "")
+
+    m = re.search(
+        r"(\d+(?:\.\d+)?)",
+        text,
+    )
+
+    if not m:
+        return 0.0
+
+    try:
+        return float(m.group(1))
+    except Exception:
+        return 0.0
+
+
+class AmazonVerifier:
+    def __init__(self):
+        self.min_gap = 2.0
+        self._lock = asyncio.Lock()
+
+    async def verify(
+        self,
+        client: httpx.AsyncClient,
+        deal: DealCandidate,
+    ):
+        async with self._lock:
+            await asyncio.sleep(self.min_gap)
+
+        r = await client.get(
+            deal.url,
+            headers=HEADERS,
+            timeout=20,
+            follow_redirects=True,
+        )
+
+        body = r.text or ""
+        low = body.lower()
+
+        if r.status_code in (403, 429):
+            raise RuntimeError(
+                f"amazon_verify_http_{r.status_code}"
+            )
+
+        if (
+            "captcha" in low
+            or "robot check" in low
+            or "enter the characters you see below" in low
+        ):
+            raise RuntimeError(
+                "amazon_verify_protection"
+            )
+
+        if r.status_code != 200:
+            raise RuntimeError(
+                f"amazon_verify_http_{r.status_code}"
+            )
+
+        soup = BeautifulSoup(
+            body,
+            "html.parser",
+        )
+
+        current_selectors = [
+            "#corePrice_feature_div .a-price .a-offscreen",
+            "#corePriceDisplay_desktop_feature_div .a-price .a-offscreen",
+            ".apexPriceToPay .a-offscreen",
+            ".priceToPay .a-offscreen",
+        ]
+
+        old_selectors = [
+            ".basisPrice .a-offscreen",
+            "#corePrice_feature_div .a-text-price .a-offscreen",
+            "#corePriceDisplay_desktop_feature_div .a-text-price .a-offscreen",
+        ]
+
+        current = 0.0
+
+        for selector in current_selectors:
+            node = soup.select_one(selector)
+
+            if not node:
+                continue
+
+            current = _price(
+                node.get_text(" ", strip=True)
+            )
+
+            if current > 0:
+                break
+
+        old = 0.0
+
+        for selector in old_selectors:
+            node = soup.select_one(selector)
+
+            if not node:
+                continue
+
+            value = _price(
+                node.get_text(" ", strip=True)
+            )
+
+            if value > current:
+                old = value
+                break
+
+        if current <= 0:
+            return {
+                "verified": False,
+                "reason": "no_live_price",
+            }
+
+        if old <= current:
+            return {
+                "verified": False,
+                "reason": "no_verified_old_price",
+                "current_price": current,
+            }
+
+        discount = round(
+            ((old - current) / old) * 100,
+            2,
+        )
+
+        if discount < 5:
+            return {
+                "verified": False,
+                "reason": "discount_below_5",
+                "current_price": current,
+                "old_price": old,
+                "discount_percent": discount,
+            }
+
+        return {
+            "verified": True,
+            "reason": "amazon_product_page_verified",
+            "current_price": current,
+            "old_price": old,
+            "discount_percent": discount,
+            "saving": round(
+                old - current,
+                2,
+            ),
+        }
