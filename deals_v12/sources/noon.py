@@ -149,20 +149,50 @@ class NoonConnector(StoreConnector):
                 continue
 
             vals = []
+
             for node in card.select(
                 "[class*='priceNow'], [class*='salePrice'], "
                 "[class*='priceWas'], [class*='oldPrice'], "
                 "[class*='price'], [data-qa='product-price']"
             ):
-                val = parse_price(node.get_text(" ", strip=True))
-                if val:
+                text = node.get_text(" ", strip=True)
+                low = text.lower()
+
+                # Never treat per-piece/unit pricing as product price.
+                if any(
+                    marker in low
+                    for marker in (
+                        "/قطعة",
+                        "جنيه/قطعة",
+                        "per piece",
+                        "/piece",
+                        "per unit",
+                    )
+                ):
+                    continue
+
+                val = parse_price(text)
+
+                if val and val > 0:
                     vals.append(val)
+
+            vals = sorted(
+                set(vals),
+                reverse=True,
+            )
 
             if not vals:
                 continue
 
-            current = min(vals)
-            old = max(vals) if len(vals) > 1 and max(vals) > current else None
+            if len(vals) >= 2:
+                old = vals[0]
+                current = vals[1]
+            else:
+                current = vals[0]
+                old = None
+
+            if old is not None and old <= current:
+                old = None
 
             img = card.select_one("img")
             image = None
@@ -315,14 +345,37 @@ class NoonConnector(StoreConnector):
                     continue
                 self._extract_from_json(data, deals)
 
-        unique = []
-        seen = set()
+        best = {}
+
         for deal in deals:
-            key = (deal.title.lower().strip(), round(deal.current_price, 2), deal.url)
-            if key in seen:
-                continue
-            seen.add(key)
-            unique.append(deal)
+            key = (
+                deal.url
+                or deal.title.lower().strip()
+            )
+
+            previous = best.get(key)
+
+            def score(item):
+                has_discount = int(
+                    bool(
+                        item.old_price
+                        and item.old_price
+                        > item.current_price
+                    )
+                )
+
+                return (
+                    has_discount,
+                    float(item.current_price),
+                )
+
+            if (
+                previous is None
+                or score(deal) > score(previous)
+            ):
+                best[key] = deal
+
+        unique = list(best.values())
         discounted = sum(
             1 for deal in unique
             if deal.old_price

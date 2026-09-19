@@ -136,6 +136,54 @@ def capture(store: str, url: str, key: str, image_url: str = "") -> dict:
             if status in (403, 429, 503) or any(x in body for x in BLOCK_TEXT):
                 raise RuntimeError(f"blocked status={status}")
 
+            # Noon uses a dynamic PDP. Generic element cropping can
+            # capture a blank lazy-loaded area, so capture the actual
+            # rendered browser viewport after the page settles.
+            if str(store).lower() in ("noon", "noon_minutes"):
+                try:
+                    page.evaluate(
+                        "() => window.scrollTo(0, 0)"
+                    )
+                except Exception:
+                    pass
+
+                page.wait_for_timeout(3500)
+
+                try:
+                    page.wait_for_selector(
+                        "img",
+                        state="visible",
+                        timeout=5000,
+                    )
+                except Exception:
+                    pass
+
+                page.screenshot(
+                    path=str(out),
+                    type="jpeg",
+                    quality=90,
+                    full_page=False,
+                )
+
+                context.close()
+                browser.close()
+
+                if (
+                    out.exists()
+                    and out.stat().st_size > 5000
+                ):
+                    return {
+                        "ok": True,
+                        "cached": False,
+                        "screenshot": str(out),
+                        "source": "store_page",
+                    }
+
+                return {
+                    "ok": False,
+                    "reason": "noon_real_screenshot_empty",
+                }
+
             # Remove fixed clutter without touching the actual product content.
             try:
                 page.evaluate("""
