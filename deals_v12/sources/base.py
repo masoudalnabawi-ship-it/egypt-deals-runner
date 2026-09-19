@@ -141,3 +141,39 @@ class StoreConnector(ABC):
     @abstractmethod
     async def fetch_deals(self) -> list[DealCandidate]:
         raise NotImplementedError
+
+
+# V12 compatibility adapter for proven legacy store connectors.
+class Deal(DealCandidate):
+    def __init__(
+        self,
+        store,
+        title,
+        current_price,
+        url,
+        old_price=None,
+        image_url=None,
+        external_id=None,
+        metadata=None,
+        **kwargs,
+    ):
+        key = (
+            external_id
+            or str(url).rstrip("/").split("/")[-1].split("?")[0]
+            or str(title)[:80]
+        )
+
+        super().__init__(
+            store=str(store),
+            external_id=str(key),
+            title=str(title),
+            url=str(url),
+            current_price=float(current_price),
+            old_price=(
+                float(old_price)
+                if old_price is not None
+                else None
+            ),
+            image_url=image_url,
+            metadata=metadata or {},
+        )
