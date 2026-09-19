@@ -9,6 +9,14 @@ def money(v):
     return "-" if v is None else f"{v:,.0f} ج.م"
 
 
+def _block_generic_amazon(deal):
+    store = str(getattr(deal, "store", "") or "").lower()
+    url = str(getattr(deal, "url", "") or "").lower()
+
+    if "amazon" in store or "amazon.eg" in url:
+        raise RuntimeError("AMAZON_FULL_REVIEW_ONLY")
+
+
 def build_message(deal, is_historical_low=False):
     low = "\n📉 <b>أقل سعر مسجل عندنا</b>" if is_historical_low else ""
     old = f"\n❌ السعر السابق: <s>{money(deal.old_price)}</s>" if deal.old_price else ""
@@ -113,6 +121,7 @@ async def send_deal(token, channel_id, deal, is_historical_low=False, featured=F
 
 
 async def send_admin_review(token, admin_chat_id, deal, short_fp, comparison_text=""):
+    _block_generic_amazon(deal)
     text = (
         "🔎 <b>عرض موثّق للمراجعة</b>\n\n"
         f"🛍️ {html.escape(deal.title)}\n"
@@ -169,6 +178,7 @@ async def get_updates(token, offset=None, timeout=25):
 
 async def send_flash_admin_review(token, review_chat_id, deal, short_fp, review_meta):
     """Send one store-page image card. The same media is persisted for publish."""
+    _block_generic_amazon(deal)
     text = str(review_meta.get("review_text") or "🚨 FLASH REVIEW").strip()
     image_url = str(review_meta.get("image_url") or getattr(deal, "image_url", "") or "").strip()
     media_path = str(review_meta.get("media_path") or "").strip()
