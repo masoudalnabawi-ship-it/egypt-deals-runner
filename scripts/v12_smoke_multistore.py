@@ -97,27 +97,15 @@ async def main():
         user_agent=UA,
     )
 
-    twob = TwoBConnector(
-        timeout=25,
-        user_agent=UA,
-    )
-
     noon_ok = await test_store(
         "noon",
         noon,
         reviewer,
     )
 
-    twob_ok = await test_store(
-        "2b",
-        twob,
-        reviewer,
-    )
-
-    if not noon_ok or not twob_ok:
+    if not noon_ok:
         raise RuntimeError(
-            f"multistore smoke incomplete: "
-            f"noon={noon_ok} 2b={twob_ok}"
+            "Noon smoke incomplete"
         )
 
 

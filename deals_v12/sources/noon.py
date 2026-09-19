@@ -1,5 +1,6 @@
 import asyncio
 import json
+import re
 from urllib.parse import quote_plus, urljoin
 
 from .base import Deal
@@ -69,10 +70,13 @@ class NoonConnector(StoreConnector):
                 or obj.get("title")
                 or obj.get("product_name")
                 or obj.get("productName")
+                or obj.get("displayName")
             )
             url = (
                 obj.get("url")
                 or obj.get("productUrl")
+                or obj.get("canonicalUrl")
+                or obj.get("pdpUrl")
                 or obj.get("url_key")
                 or obj.get("urlKey")
             )
@@ -81,6 +85,9 @@ class NoonConnector(StoreConnector):
                 or obj.get("salePrice")
                 or obj.get("offer_price")
                 or obj.get("offerPrice")
+                or obj.get("sellingPrice")
+                or obj.get("finalPrice")
+                or obj.get("bestPrice")
                 or obj.get("price")
                 or obj.get("priceNow")
             )
@@ -90,6 +97,11 @@ class NoonConnector(StoreConnector):
                 or obj.get("was_price")
                 or obj.get("regular_price")
                 or obj.get("regularPrice")
+                or obj.get("originalPrice")
+                or obj.get("listPrice")
+                or obj.get("strikePrice")
+                or obj.get("strikedPrice")
+                or obj.get("crossedPrice")
                 or obj.get("priceWas")
             )
 
@@ -169,8 +181,124 @@ class NoonConnector(StoreConnector):
             )
         return deals
 
+    def _parse_product_links(self, soup):
+        deals = []
+        seen = set()
+
+        money = re.compile(
+            r"(?:EGP|ج\.?\s*م\.?)\s*([\d,]+(?:\.\d+)?)|"
+            r"([\d,]+(?:\.\d+)?)\s*(?:EGP|ج\.?\s*م\.?)",
+            re.I,
+        )
+
+        for link in soup.select("a[href]"):
+            href = str(link.get("href") or "").strip()
+
+            if not href:
+                continue
+
+            if "/p/" not in href and "/product/" not in href:
+                continue
+
+            full = urljoin("https://www.noon.com", href)
+
+            if full in seen:
+                continue
+
+            card = link
+
+            for _ in range(7):
+                parent = getattr(card, "parent", None)
+
+                if parent is None:
+                    break
+
+                text = parent.get_text(" ", strip=True)
+
+                if (
+                    ("EGP" in text or "ج.م" in text)
+                    and len(text) < 3000
+                ):
+                    card = parent
+                else:
+                    break
+
+            text = card.get_text(" ", strip=True)
+
+            values = []
+
+            for m in money.finditer(text):
+                raw = m.group(1) or m.group(2)
+
+                try:
+                    value = float(raw.replace(",", ""))
+                except Exception:
+                    continue
+
+                if value > 0:
+                    values.append(value)
+
+            values = sorted(set(values))
+
+            if len(values) < 2:
+                continue
+
+            current = values[-2]
+            old = values[-1]
+
+            if old <= current:
+                continue
+
+            title = (
+                link.get("aria-label")
+                or link.get("title")
+            )
+
+            if not title:
+                h = card.select_one(
+                    "h1, h2, h3, "
+                    "[class*='title'], "
+                    "[class*='name']"
+                )
+
+                if h:
+                    title = h.get_text(" ", strip=True)
+
+            img = card.select_one("img")
+
+            if not title and img:
+                title = img.get("alt")
+
+            if not title:
+                continue
+
+            image = None
+
+            if img:
+                image = (
+                    img.get("src")
+                    or img.get("data-src")
+                    or img.get("data-lazy-src")
+                )
+
+            seen.add(full)
+
+            deals.append(
+                Deal(
+                    store=self.name,
+                    title=str(title),
+                    current_price=current,
+                    old_price=old,
+                    url=full,
+                    image_url=image,
+                )
+            )
+
+        return deals
+
     def _parse_page(self, soup):
         deals = self._parse_html_cards(soup)
+        deals.extend(self._parse_product_links(soup))
 
         for script in soup.select("script"):
             raw = script.string or script.get_text("", strip=True)
@@ -195,6 +323,18 @@ class NoonConnector(StoreConnector):
                 continue
             seen.add(key)
             unique.append(deal)
+        discounted = sum(
+            1 for deal in unique
+            if deal.old_price
+            and deal.old_price > deal.current_price
+        )
+
+        print(
+            f"🧩 NOON PARSER total={len(unique)} "
+            f"discounted={discounted}",
+            flush=True,
+        )
+
         return unique
 
     async def _fetch_one(self, url):
