@@ -1,4 +1,5 @@
 from abc import ABC, abstractmethod
+import asyncio
 import os
 import logging
 import re
@@ -17,6 +18,96 @@ def parse_price(text: str | None) -> float | None:
     text = text.replace(",", "")
     m = re.search(r"(\d+(?:\.\d+)?)", text)
     return float(m.group(1)) if m else None
+
+
+def _browser_html(url: str, headers: dict) -> str:
+    from playwright.sync_api import sync_playwright
+
+    block_terms = (
+        "robot check",
+        "captcha",
+        "verify you are human",
+        "access denied",
+        "unusual traffic",
+        "تم رفض الوصول",
+        "تحقق من أنك إنسان",
+    )
+
+    with sync_playwright() as pw:
+        browser = pw.chromium.launch(
+            headless=True,
+            args=[
+                "--no-sandbox",
+                "--disable-dev-shm-usage",
+                "--disable-background-networking",
+            ],
+        )
+
+        context = browser.new_context(
+            viewport={"width": 1360, "height": 950},
+            locale="ar-EG",
+            user_agent=headers.get(
+                "User-Agent",
+                "Mozilla/5.0 Chrome/140 Safari/537.36",
+            ),
+            extra_http_headers={
+                "Accept-Language": headers.get(
+                    "Accept-Language",
+                    "ar-EG,ar;q=0.9,en;q=0.8",
+                )
+            },
+        )
+
+        page = context.new_page()
+
+        try:
+            response = page.goto(
+                url,
+                wait_until="domcontentloaded",
+                timeout=40000,
+            )
+
+            status = response.status if response else None
+
+            if status in (403, 429, 503):
+                raise RuntimeError(
+                    f"browser_http_{status}"
+                )
+
+            page.wait_for_timeout(3000)
+
+            try:
+                body = page.locator("body").inner_text(
+                    timeout=5000
+                ).lower()
+            except Exception:
+                body = ""
+
+            if any(term in body for term in block_terms):
+                raise RuntimeError(
+                    "browser_protection_page"
+                )
+
+            html = page.content()
+
+            if len(html) < 5000:
+                raise RuntimeError(
+                    f"browser_html_too_small_{len(html)}"
+                )
+
+            return html
+
+        finally:
+            try:
+                context.close()
+            except Exception:
+                pass
+
+            try:
+                browser.close()
+            except Exception:
+                pass
+
 
 class StoreConnector(ABC):
     name: str
@@ -59,6 +150,32 @@ class StoreConnector(ABC):
         return BeautifulSoup(proxy.text, "html.parser")
 
     async def get_soup(self, url: str) -> BeautifulSoup:
+        if self.name in ("noon", "2b"):
+            try:
+                html = await asyncio.to_thread(
+                    _browser_html,
+                    url,
+                    self.headers,
+                )
+
+                print(
+                    f"🌐 {self.name} BROWSER "
+                    f"bytes={len(html)}",
+                    flush=True,
+                )
+
+                return BeautifulSoup(
+                    html,
+                    "html.parser",
+                )
+
+            except Exception as exc:
+                print(
+                    f"⚠️ {self.name} BROWSER FAILED "
+                    f"{type(exc).__name__}: {exc}",
+                    flush=True,
+                )
+
         async with httpx.AsyncClient(
             headers=self.headers,
             timeout=self.timeout,
