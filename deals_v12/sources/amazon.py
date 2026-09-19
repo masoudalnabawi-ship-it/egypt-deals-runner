@@ -255,11 +255,20 @@ class AmazonSource:
 
         async with httpx.AsyncClient() as client:
             for name, url in PRIORITY_SURFACES:
-                items = await self.scan_surface(
-                    client,
-                    name,
-                    url,
-                )
+                try:
+                    items = await self.scan_surface(
+                        client,
+                        name,
+                        url,
+                    )
+                except Exception as exc:
+                    print(
+                        "⚠️ AMAZON SURFACE SKIPPED",
+                        name,
+                        repr(exc),
+                        flush=True,
+                    )
+                    continue
 
                 for deal in items:
                     found[deal.fingerprint] = deal
