@@ -6,6 +6,7 @@ import httpx
 from deals_v12.sources.amazon import AmazonSource
 from deals_v12.verification import AmazonVerifier
 from deals_v12.review import TelegramReviewer
+from deals_v12.amazon_capture import capture_amazon_page
 
 
 async def main():
@@ -80,6 +81,42 @@ async def main():
             )
 
             deal.metadata["verification"] = result
+
+            print(
+                "📸 CAPTURE AMAZON PAGE",
+                deal.external_id,
+                flush=True,
+            )
+
+            capture = await asyncio.to_thread(
+                capture_amazon_page,
+                deal.url,
+                deal.external_id or "product",
+            )
+
+            if not capture.get("ok"):
+                print(
+                    "⚠️ SCREENSHOT FAILED",
+                    deal.external_id,
+                    capture.get("reason"),
+                    flush=True,
+                )
+                continue
+
+            screenshot = str(
+                capture.get("screenshot") or ""
+            ).strip()
+
+            if not screenshot:
+                print(
+                    "⚠️ SCREENSHOT MISSING",
+                    deal.external_id,
+                    flush=True,
+                )
+                continue
+
+            deal.metadata["review_media_path"] = screenshot
+            deal.metadata["review_media_source"] = "amazon_page_screenshot"
 
             message = await reviewer.send_review(deal)
 

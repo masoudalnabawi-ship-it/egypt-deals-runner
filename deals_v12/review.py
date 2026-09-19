@@ -75,7 +75,11 @@ class TelegramReviewer:
         }
 
     async def send_review(self, deal: DealCandidate):
-        if not deal.image_url:
+        local_path = str(
+            deal.metadata.get("review_media_path") or ""
+        ).strip()
+
+        if not local_path and not deal.image_url:
             raise RuntimeError("deal_image_missing")
 
         api = (
@@ -90,6 +94,44 @@ class TelegramReviewer:
             timeout=30,
             follow_redirects=True,
         ) as client:
+            # Preferred V12 media:
+            # real screenshot captured from Amazon product page.
+            if local_path and os.path.isfile(local_path):
+                form = {
+                    "chat_id": self.chat_id,
+                    "caption": caption,
+                    "parse_mode": "HTML",
+                    "reply_markup": __import__("json").dumps(
+                        keyboard,
+                        ensure_ascii=False,
+                    ),
+                }
+
+                with open(local_path, "rb") as fh:
+                    files = {
+                        "photo": (
+                            "amazon-page.jpg",
+                            fh,
+                            "image/jpeg",
+                        )
+                    }
+
+                    response = await client.post(
+                        api,
+                        data=form,
+                        files=files,
+                    )
+
+                data = response.json()
+
+                if not data.get("ok"):
+                    raise RuntimeError(
+                        "telegram_screenshot_send_failed: "
+                        + str(data.get("description") or data)
+                    )
+
+                return data["result"]
+
 
             # First try: let Telegram fetch the image URL.
             payload = {
