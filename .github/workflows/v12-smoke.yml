@@ -32,4 +32,4 @@ jobs:
 
       - name: Run one verified Amazon review
         run: |
-          PYTHONPATH=. python scripts/v12_smoke_review.py
+          PYTHONPATH=. python scripts/v12_smoke_btech.py

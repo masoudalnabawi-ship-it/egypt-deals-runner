@@ -35,15 +35,32 @@ class TelegramReviewer:
         saving = deal.saving
         discount = deal.discount_percent
 
+        store_key = str(deal.store or "").lower()
+        store_name = {
+            "amazon": "Amazon",
+            "btech": "BTECH",
+            "noon": "Noon",
+            "2b": "2B",
+            "twob": "2B",
+        }.get(store_key, str(deal.store).upper())
+
+        id_label = "ASIN" if store_key == "amazon" else "معرف المنتج"
+
+        verified_text = (
+            "✅ تم التحقق من صفحة المنتج مباشرة."
+            if deal.metadata.get("verification")
+            else "✅ تم رصد العرض مباشرة من المتجر."
+        )
+
         return (
-            "🔥 <b>عرض Amazon مؤكد — V12</b>\n\n"
+            f"🔥 <b>عرض {store_name} مؤكد — V12</b>\n\n"
             f"📦 <b>{html.escape(deal.title[:260])}</b>\n\n"
             f"💰 السعر الحالي: <b>{deal.current_price:,.2f} جنيه</b>\n"
             f"📊 السعر السابق: <s>{deal.old_price:,.2f} جنيه</s>\n"
             f"📉 الخصم المؤكد: <b>{discount:.1f}%</b>\n"
             f"💵 التوفير: <b>{saving:,.2f} جنيه</b>\n\n"
-            f"🔎 ASIN: <code>{html.escape(deal.external_id)}</code>\n"
-            "✅ تم التحقق من صفحة المنتج مباشرة."
+            f"🔎 {id_label}: <code>{html.escape(deal.external_id)}</code>\n"
+            f"{verified_text}"
         )
 
     def _keyboard(self, deal: DealCandidate):
