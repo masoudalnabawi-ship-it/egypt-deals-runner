@@ -65,34 +65,16 @@ class StoreConnector(ABC):
             follow_redirects=True,
         ) as client:
 
-            proxy_first = bool(
-                getattr(
-                    self,
-                    "prefer_cloud_proxy",
-                    False,
-                )
-            )
-
-            proxy_attempted = False
-
-            if proxy_first:
-                proxy_attempted = True
-
-                try:
-                    return await self._cloud_proxy_soup(
-                        client,
-                        url,
-                    )
-                except Exception as exc:
-                    logger.warning(
-                        "%s proxy-first failed; trying direct | %s",
-                        self.name,
-                        type(exc).__name__,
-                    )
-
             try:
                 response = await client.get(url)
                 response.raise_for_status()
+
+                print(
+                    f"✅ {self.name} DIRECT "
+                    f"status={response.status_code} "
+                    f"bytes={len(response.content)}",
+                    flush=True,
+                )
 
                 return BeautifulSoup(
                     response.text,
@@ -100,43 +82,72 @@ class StoreConnector(ABC):
                 )
 
             except httpx.HTTPStatusError as exc:
-                if (
-                    exc.response.status_code
-                    not in (403, 429)
-                ):
+                status = exc.response.status_code
+
+                if status not in (403, 429):
                     raise
 
-                if proxy_attempted:
-                    raise
-
-                logger.warning(
-                    "%s direct returned %s; trying proxy",
-                    self.name,
-                    exc.response.status_code,
-                )
-
-                return await self._cloud_proxy_soup(
-                    client,
-                    url,
+                print(
+                    f"⚠️ {self.name} DIRECT BLOCKED "
+                    f"status={status}",
+                    flush=True,
                 )
 
             except (
                 httpx.ReadTimeout,
                 httpx.ConnectTimeout,
                 httpx.ConnectError,
-            ):
-                if proxy_attempted:
-                    raise
-
-                logger.warning(
-                    "%s direct timed out; trying proxy",
-                    self.name,
+            ) as exc:
+                print(
+                    f"⚠️ {self.name} DIRECT ERROR "
+                    f"{type(exc).__name__}",
+                    flush=True,
                 )
 
-                return await self._cloud_proxy_soup(
-                    client,
-                    url,
+            cloud_url = os.getenv(
+                "CLOUD_API_URL",
+                "",
+            ).strip()
+
+            cloud_key = os.getenv(
+                "CLOUD_API_KEY",
+                "",
+            ).strip()
+
+            if not cloud_url or not cloud_key:
+                raise RuntimeError(
+                    f"{self.name}: cloud proxy unavailable"
                 )
+
+            cloud_url = cloud_url.rstrip("/")
+
+            if cloud_url.endswith("/api/deals"):
+                cloud_url = cloud_url[:-len("/api/deals")]
+
+            proxy_url = cloud_url + "/api/store-proxy"
+
+            proxy = await client.get(
+                proxy_url,
+                params={"url": url},
+                headers={
+                    "x-api-key": cloud_key,
+                    "Accept": "text/html",
+                },
+            )
+
+            print(
+                f"☁️ {self.name} PROXY "
+                f"status={proxy.status_code} "
+                f"bytes={len(proxy.content)}",
+                flush=True,
+            )
+
+            proxy.raise_for_status()
+
+            return BeautifulSoup(
+                proxy.text,
+                "html.parser",
+            )
 
     @abstractmethod
     async def fetch_deals(self) -> list[DealCandidate]:
