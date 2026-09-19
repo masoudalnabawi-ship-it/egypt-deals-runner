@@ -63,9 +63,15 @@ class TelegramReviewer:
                 ],
                 [
                     {
+                        "text": "✏️ تعديل الرسالة",
+                        "callback_data": f"v12:e:{short_fp}",
+                    },
+                    {
                         "text": "🔗 فتح المنتج",
                         "url": deal.url,
                     },
+                ],
+                [
                     {
                         "text": "❌ رفض",
                         "callback_data": f"v12:r:{short_fp}",
