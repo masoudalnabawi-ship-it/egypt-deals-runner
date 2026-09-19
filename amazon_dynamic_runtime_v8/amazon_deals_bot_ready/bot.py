@@ -528,7 +528,15 @@ def channel_text(p, c, urgent=False):
         else "🔥 <b>عرض Amazon</b>"
     )
 
+    # Public channel must always show the exact LIVE Amazon
+    # page price as the main price.
     current = num(
+        c.get("current")
+        or p.get("current_price")
+        or p.get("live_price")
+    )
+
+    effective_current = num(
         c.get("effective_current")
     )
 
@@ -536,8 +544,23 @@ def channel_text(p, c, urgent=False):
         head,
         "",
         f"📦 <b>{title}</b>",
-        f"💰 السعر: <b>{money(current)}</b>",
+        f"💰 سعر Amazon الآن: <b>{money(current)}</b>",
     ]
+
+    # A lower promo price is shown separately and NEVER replaces
+    # the live Amazon page price.
+    if (
+        bool(p.get("promo_verified"))
+        and not bool(c.get("conditional"))
+        and not bool(c.get("member_only"))
+        and not bool(p.get("account_specific"))
+        and effective_current > 0
+        and current > 0
+        and effective_current < current
+    ):
+        lines.append(
+            f"🎟️ بعد تطبيق العرض المؤكد: <b>{money(effective_current)}</b>"
+        )
 
     amazon_old = num(
         p.get("amazon_old_price")
