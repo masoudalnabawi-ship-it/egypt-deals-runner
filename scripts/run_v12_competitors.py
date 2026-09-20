@@ -53,9 +53,17 @@ async def process_store(store, source, reviewer, queue):
         flush=True,
     )
 
-    for deal in candidates:
-        if queue.was_seen_exact(deal):
-            continue
+    unseen = [
+        deal for deal in candidates
+        if not queue.was_seen_exact(deal)
+    ]
+
+    print(
+        f"🆕 {store.upper()} unseen={len(unseen)}",
+        flush=True,
+    )
+
+    for deal in unseen[:5]:
 
         result = await asyncio.to_thread(
             capture,
