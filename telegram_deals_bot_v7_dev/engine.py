@@ -41,6 +41,8 @@ from telegram_client import (
     clear_review_buttons, get_updates,
     send_flash_admin_review, send_custom_post,
     build_message, build_featured_message,
+    copy_review_message, edit_review_caption,
+    send_v12_edit_prompt,
 )
 from flash_review_v9 import build_flash_review_card
 from review_media import prepare_review_media
@@ -1628,6 +1630,142 @@ async def scan_once():
     log.info("Cycle complete: %d VERIFIED offers sent for review", sent)
     return sent
 
+V12_EDIT_TARGETS = {}
+
+
+async def handle_v12_callback(cb):
+    """Handle V12 review buttons without touching V11/V8 logic."""
+    cb_id = cb.get("id")
+    message = cb.get("message", {})
+    data = str(cb.get("data") or "")
+
+    parts = data.split(":", 2)
+    if len(parts) != 3 or parts[0] != "v12":
+        return False
+
+    action = parts[1]
+    short_fp = parts[2]
+
+    chat = message.get("chat", {})
+    chat_id = int(chat.get("id", 0))
+    message_id = int(message.get("message_id", 0))
+
+    if not chat_id or not message_id:
+        await answer_callback(
+            settings.telegram_bot_token,
+            cb_id,
+            "تعذر تحديد رسالة المراجعة",
+            True,
+        )
+        return True
+
+    if action == "e":
+        prompt = await send_v12_edit_prompt(
+            settings.telegram_bot_token,
+            chat_id,
+        )
+
+        V12_EDIT_TARGETS[int(prompt["message_id"])] = {
+            "chat_id": chat_id,
+            "message_id": message_id,
+            "short_fp": short_fp,
+        }
+
+        await answer_callback(
+            settings.telegram_bot_token,
+            cb_id,
+            "ابعت الكابشن الجديد ✏️",
+        )
+        return True
+
+    if action == "r":
+        await clear_review_buttons(
+            settings.telegram_bot_token,
+            chat_id,
+            message_id,
+        )
+
+        await answer_callback(
+            settings.telegram_bot_token,
+            cb_id,
+            "تم رفض العرض ❌",
+        )
+        return True
+
+    if action in ("u", "p"):
+        await copy_review_message(
+            settings.telegram_bot_token,
+            settings.telegram_channel_id,
+            chat_id,
+            message_id,
+        )
+
+        await clear_review_buttons(
+            settings.telegram_bot_token,
+            chat_id,
+            message_id,
+        )
+
+        await answer_callback(
+            settings.telegram_bot_token,
+            cb_id,
+            (
+                "تم النشر العاجل 🚀"
+                if action == "u"
+                else "تم النشر العادي 📢"
+            ),
+        )
+        return True
+
+    await answer_callback(
+        settings.telegram_bot_token,
+        cb_id,
+        "أمر V12 غير معروف",
+        True,
+    )
+    return True
+
+
+async def handle_v12_edit_message(message):
+    """Apply a replacement caption sent as a reply to the V12 edit prompt."""
+    from_user = message.get("from", {})
+
+    if int(from_user.get("id", 0)) != settings.admin_chat_id:
+        return False
+
+    reply = message.get("reply_to_message") or {}
+    prompt_id = int(reply.get("message_id", 0) or 0)
+
+    target = V12_EDIT_TARGETS.get(prompt_id)
+    if not target:
+        return False
+
+    text = str(
+        message.get("text")
+        or message.get("caption")
+        or ""
+    ).strip()
+
+    if not text:
+        return False
+
+    await edit_review_caption(
+        settings.telegram_bot_token,
+        target["chat_id"],
+        target["message_id"],
+        text,
+    )
+
+    V12_EDIT_TARGETS.pop(prompt_id, None)
+
+    print(
+        f"✏️ V12 REVIEW EDITED {target['short_fp']}",
+        flush=True,
+    )
+
+    return True
+
+
 def _deal_from_payload(payload):
     data = json.loads(payload)
     data.pop("discount_percent", None)
@@ -1648,6 +1786,11 @@ async def handle_callback(cb):
             True,
         )
         return
+
+    if data.startswith("v12:"):
+        handled = await handle_v12_callback(cb)
+        if handled:
+            return
 
     if ":" not in data:
         return
@@ -1844,6 +1987,8 @@ async def moderation_loop():
                 offset = int(update["update_id"]) + 1
                 if update.get("callback_query"):
                     await handle_callback(update["callback_query"])
+                elif update.get("message"):
+                    await handle_v12_edit_message(update["message"])
         except Exception as exc:
             log.exception("Moderation polling error: %s", exc)
             await asyncio.sleep(5)

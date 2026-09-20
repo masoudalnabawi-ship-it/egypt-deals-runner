@@ -163,6 +163,39 @@ async def clear_review_buttons(token, chat_id, message_id):
     })
 
 
+async def copy_review_message(token, channel_id, from_chat_id, message_id):
+    """Publish the exact Telegram review message/media without its review buttons."""
+    return await _post(token, "copyMessage", {
+        "chat_id": channel_id,
+        "from_chat_id": from_chat_id,
+        "message_id": message_id,
+    })
+
+
+async def edit_review_caption(token, chat_id, message_id, caption):
+    """Edit the caption of the existing review photo while keeping its buttons."""
+    return await _post(token, "editMessageCaption", {
+        "chat_id": chat_id,
+        "message_id": message_id,
+        "caption": str(caption or "").strip()[:1024],
+    })
+
+
+async def send_v12_edit_prompt(token, chat_id):
+    """Ask the admin for the replacement V12 caption."""
+    return await _post(token, "sendMessage", {
+        "chat_id": chat_id,
+        "text": (
+            "✏️ ابعت الكابشن الجديد كـ Reply على الرسالة دي.\n"
+            "بعد الإرسال هيتعدل نفس عرض المراجعة ونفس الـ Screenshot."
+        ),
+        "reply_markup": {
+            "force_reply": True,
+            "selective": True,
+        },
+    })
+
+
 async def get_updates(token, offset=None, timeout=25):
     params = {"timeout": timeout, "allowed_updates": ["callback_query", "message"]}
     if offset is not None:
