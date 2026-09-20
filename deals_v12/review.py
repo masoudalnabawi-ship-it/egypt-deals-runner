@@ -13,7 +13,7 @@ class TelegramReviewer:
             "",
         ).strip()
 
-        self.chat_id = (
+        self.normal_chat_id = (
             os.getenv("REVIEW_CHAT_ID", "").strip()
             or os.getenv(
                 "AMAZON_NORMAL_REVIEW_CHAT_ID",
@@ -21,14 +21,21 @@ class TelegramReviewer:
             ).strip()
         )
 
+        self.ultra_chat_id = os.getenv(
+            "AMAZON_REVIEW_GROUP_ID",
+            "",
+        ).strip()
+
+        self.chat_id = self.normal_chat_id
+
         if not self.token:
             raise RuntimeError(
                 "TELEGRAM_BOT_TOKEN missing"
             )
 
-        if not self.chat_id:
+        if not self.normal_chat_id:
             raise RuntimeError(
-                "REVIEW_CHAT_ID missing"
+                "AMAZON_NORMAL_REVIEW_CHAT_ID missing"
             )
 
     def _caption(self, deal: DealCandidate):
@@ -97,6 +104,20 @@ class TelegramReviewer:
             ]
         }
 
+    def _route_chat(self, deal: DealCandidate):
+        if (
+            str(deal.store).lower() == "amazon"
+            and deal.discount_percent >= 50
+        ):
+            if not self.ultra_chat_id:
+                raise RuntimeError(
+                    "AMAZON_REVIEW_GROUP_ID missing for Ultra deal"
+                )
+
+            return self.ultra_chat_id, "ultra"
+
+        return self.normal_chat_id, "normal"
+
     async def send_review(self, deal: DealCandidate):
         local_path = str(
             deal.metadata.get("review_media_path") or ""
@@ -104,6 +125,17 @@ class TelegramReviewer:
 
         if not local_path and not deal.image_url:
             raise RuntimeError("deal_image_missing")
+
+        route_chat_id, route_name = self._route_chat(deal)
+
+        print(
+            "📨 V12 REVIEW ROUTE",
+            deal.external_id,
+            f"{deal.discount_percent:.1f}%",
+            "->",
+            route_name,
+            flush=True,
+        )
 
         api = (
             f"https://api.telegram.org/"
@@ -121,7 +153,7 @@ class TelegramReviewer:
             # real screenshot captured from Amazon product page.
             if local_path and os.path.isfile(local_path):
                 form = {
-                    "chat_id": self.chat_id,
+                    "chat_id": route_chat_id,
                     "caption": caption,
                     "parse_mode": "HTML",
                     "reply_markup": __import__("json").dumps(
@@ -158,7 +190,7 @@ class TelegramReviewer:
 
             # First try: let Telegram fetch the image URL.
             payload = {
-                "chat_id": self.chat_id,
+                "chat_id": route_chat_id,
                 "photo": deal.image_url,
                 "caption": caption,
                 "parse_mode": "HTML",
@@ -195,7 +227,7 @@ class TelegramReviewer:
             }
 
             form = {
-                "chat_id": self.chat_id,
+                "chat_id": route_chat_id,
                 "caption": caption,
                 "parse_mode": "HTML",
                 "reply_markup": __import__("json").dumps(

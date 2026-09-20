@@ -152,6 +152,24 @@ class DealQueue:
             for row in rows
         ]
 
+    def get_verified(self, limit=10):
+        with connect() as con:
+            rows = con.execute(
+                """
+                SELECT *
+                FROM queue_items
+                WHERE status='verified'
+                ORDER BY priority DESC, discovered_at ASC
+                LIMIT ?
+                """,
+                (int(limit),),
+            ).fetchall()
+
+        return [
+            dict(row)
+            for row in rows
+        ]
+
     def mark_processing(self, fingerprint):
         now = int(time.time())
 
