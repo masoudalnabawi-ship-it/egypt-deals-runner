@@ -105,6 +105,10 @@ async def send_verified_reviews(core, reviewer):
                 deal
             )
 
+            # Persist exact store/product/price immediately after
+            # Telegram confirms the review message was sent.
+            core.queue.remember_seen_exact(deal)
+
             core.queue.mark_reviewed(
                 fp,
                 message.get("message_id"),

@@ -1,13 +1,69 @@
 import json
 import time
+from pathlib import Path
 
 from .models import DealCandidate
 from .state import connect, init_db
 
 
+SEEN_LEDGER = Path(".runtime_state/v12_seen_ledger.json")
+
+
+def _load_seen_ledger():
+    try:
+        if SEEN_LEDGER.is_file():
+            return json.loads(SEEN_LEDGER.read_text())
+    except Exception:
+        pass
+    return {}
+
+
+def _save_seen_ledger(data):
+    SEEN_LEDGER.parent.mkdir(parents=True, exist_ok=True)
+    tmp = SEEN_LEDGER.with_suffix(".tmp")
+    tmp.write_text(
+        json.dumps(data, ensure_ascii=False, sort_keys=True)
+    )
+    tmp.replace(SEEN_LEDGER)
+
+
+
 class DealQueue:
     def __init__(self):
         init_db()
+
+    def _seen_key(self, deal: DealCandidate):
+        return (
+            f"{deal.store.lower()}|"
+            f"{deal.external_id.strip().lower()}|"
+            f"{float(deal.current_price or 0):.2f}"
+        )
+
+    def was_seen_exact(self, deal: DealCandidate):
+        ledger = _load_seen_ledger()
+        return self._seen_key(deal) in ledger
+
+    def remember_seen_exact(self, deal: DealCandidate):
+        ledger = _load_seen_ledger()
+        key = self._seen_key(deal)
+
+        ledger[key] = {
+            "store": deal.store.lower(),
+            "external_id": deal.external_id,
+            "price": float(deal.current_price or 0),
+            "seen_at": int(time.time()),
+        }
+
+        # Keep ledger bounded.
+        if len(ledger) > 20000:
+            items = sorted(
+                ledger.items(),
+                key=lambda kv: kv[1].get("seen_at", 0),
+                reverse=True,
+            )[:15000]
+            ledger = dict(items)
+
+        _save_seen_ledger(ledger)
 
     def enqueue(self, deal: DealCandidate, priority=0):
         now = int(time.time())
@@ -28,6 +84,9 @@ class DealQueue:
             ).fetchone()
 
             if row is None:
+                if self.was_seen_exact(deal):
+                    return "seen_exact"
+
                 con.execute(
                     """
                     INSERT INTO queue_items(

@@ -43,6 +43,7 @@ jobs:
             .runtime_state/v12.db-wal
             .runtime_state/v12.db-shm
             .runtime_state/v12_health.json
+            .runtime_state/v12_seen_ledger.json
           key: v12-state-${{ github.run_id }}
           restore-keys: |
             v12-state-
@@ -75,4 +76,5 @@ jobs:
             .runtime_state/v12.db-wal
             .runtime_state/v12.db-shm
             .runtime_state/v12_health.json
+            .runtime_state/v12_seen_ledger.json
           key: v12-state-${{ github.run_id }}
