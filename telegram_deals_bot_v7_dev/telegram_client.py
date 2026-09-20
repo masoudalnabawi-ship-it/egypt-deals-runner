@@ -163,13 +163,18 @@ async def clear_review_buttons(token, chat_id, message_id):
     })
 
 
-async def copy_review_message(token, channel_id, from_chat_id, message_id):
-    """Publish the exact Telegram review message/media without its review buttons."""
-    return await _post(token, "copyMessage", {
+async def copy_review_message(token, channel_id, from_chat_id, message_id, caption=None):
+    """Publish the same review screenshot with a clean public caption."""
+    payload = {
         "chat_id": channel_id,
         "from_chat_id": from_chat_id,
         "message_id": message_id,
-    })
+    }
+
+    if caption:
+        payload["caption"] = str(caption)[:1024]
+
+    return await _post(token, "copyMessage", payload)
 
 
 async def edit_review_caption(token, chat_id, message_id, caption):

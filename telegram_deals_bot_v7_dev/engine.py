@@ -1633,6 +1633,59 @@ async def scan_once():
 V12_EDIT_TARGETS = {}
 
 
+def _v12_public_caption(message):
+    """
+    Public V12 caption:
+    product + brand + useful details + prices only.
+    Technical verification/IDs remain in review chat.
+    """
+    raw = str(
+        message.get("caption")
+        or message.get("text")
+        or ""
+    )
+
+    lines = []
+
+    for original in raw.splitlines():
+        line = original.strip()
+
+        if not line:
+            if lines and lines[-1] != "":
+                lines.append("")
+            continue
+
+        # Internal review heading.
+        if line.startswith("◆ عرض ") and "للمراجعة" in line:
+            continue
+
+        # Never expose anomaly warning publicly.
+        # The admin may still publish the deal after checking it.
+        if "سعر غير منطقي" in line:
+            continue
+
+        if line.startswith("انخفاض حاد:"):
+            continue
+
+        # Internal IDs.
+        if line.startswith("• ASIN:"):
+            continue
+
+        if line.startswith("• معرف المنتج:"):
+            continue
+
+        # Internal verification status.
+        if line.startswith("✓ "):
+            continue
+
+        lines.append(line)
+
+    while lines and lines[-1] == "":
+        lines.pop()
+
+    return "\n".join(lines)[:1024]
+
+
 async def handle_v12_callback(cb):
     """Handle V12 review buttons without touching V11/V8 logic."""
     cb_id = cb.get("id")
@@ -1693,11 +1746,14 @@ async def handle_v12_callback(cb):
         return True
 
     if action in ("u", "p"):
+        public_caption = _v12_public_caption(message)
+
         await copy_review_message(
             settings.telegram_bot_token,
             settings.telegram_channel_id,
             chat_id,
             message_id,
+            caption=public_caption,
         )
 
         await clear_review_buttons(
