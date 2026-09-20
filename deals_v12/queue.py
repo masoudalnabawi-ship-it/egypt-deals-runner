@@ -1,4 +1,5 @@
 import json
+import os
 import time
 from pathlib import Path
 
@@ -6,7 +7,12 @@ from .models import DealCandidate
 from .state import connect, init_db
 
 
-SEEN_LEDGER = Path(".runtime_state/v12_seen_ledger.json")
+SEEN_LEDGER = Path(
+    os.getenv(
+        "V12_SEEN_LEDGER",
+        ".runtime_state/v12_seen_ledger.json",
+    )
+)
 
 
 def _load_seen_ledger():

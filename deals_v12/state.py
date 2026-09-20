@@ -1,9 +1,15 @@
 from pathlib import Path
+import os
 import sqlite3
 
 
 ROOT = Path(__file__).resolve().parents[1]
-DB_PATH = ROOT / ".runtime_state" / "v12.db"
+DB_PATH = Path(
+    os.getenv(
+        "V12_DB_PATH",
+        str(ROOT / ".runtime_state" / "v12.db"),
+    )
+)
 
 
 def connect():
