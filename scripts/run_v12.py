@@ -12,6 +12,10 @@ from deals_v12.orchestrator import V12Orchestrator
 from deals_v12.review import TelegramReviewer
 
 
+RADAR_INTERVAL = int(
+    os.getenv("V12_AMAZON_RADAR_INTERVAL", "25")
+)
+
 SCAN_INTERVAL = int(
     os.getenv("V12_AMAZON_SCAN_INTERVAL", "120")
 )
@@ -196,6 +200,7 @@ async def main():
     core.queue.recover_stuck()
 
     last_scan = 0.0
+    last_radar = 0.0
 
     print(
         "🚀 V12 AMAZON CONTINUOUS WORKER STARTED",
@@ -204,6 +209,33 @@ async def main():
 
     while not STOP_REQUESTED:
         now = time.monotonic()
+
+        if (
+            last_radar == 0
+            or now - last_radar >= RADAR_INTERVAL
+        ):
+            try:
+                radar = await core.scan_amazon_radar_once()
+
+                if (
+                    radar["fetched"]
+                    or radar["new"]
+                    or radar["reopened"]
+                ):
+                    print(
+                        "🚨 V12 AMAZON FAST RADAR",
+                        radar,
+                        flush=True,
+                    )
+
+            except Exception as exc:
+                print(
+                    "⚠️ V12 AMAZON FAST RADAR ERROR",
+                    repr(exc),
+                    flush=True,
+                )
+
+            last_radar = time.monotonic()
 
         if (
             last_scan == 0

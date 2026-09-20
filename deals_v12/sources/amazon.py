@@ -57,6 +57,25 @@ def _clean(text) -> str:
     ).strip()
 
 
+FAST_RADAR_SURFACES = (
+    ("radar_deals", BASE + "/deals"),
+    (
+        "radar_70off",
+        BASE + "/s?k=" + quote_plus("70% off deals"),
+    ),
+    (
+        "radar_clearance",
+        BASE + "/s?k=" + quote_plus("clearance deals"),
+    ),
+    (
+        "radar_expensive",
+        BASE + "/s?k=" + quote_plus(
+            "laptop mobile refrigerator treadmill deals"
+        ),
+    ),
+)
+
+
 class AmazonSource:
     name = "amazon"
 
@@ -322,6 +341,42 @@ class AmazonSource:
             body,
             surface=name,
         )
+
+    async def scan_fast_radar_once(self):
+        """
+        Small high-frequency Amazon scan.
+        Only returns extreme discounts and price anomalies.
+        """
+        found = {}
+
+        async with httpx.AsyncClient() as client:
+            for name, url in FAST_RADAR_SURFACES:
+                try:
+                    items = await self.scan_surface(
+                        client,
+                        name,
+                        url,
+                    )
+                except Exception as exc:
+                    print(
+                        "⚠️ AMAZON FAST RADAR SKIPPED",
+                        name,
+                        repr(exc),
+                        flush=True,
+                    )
+                    continue
+
+                for deal in items:
+                    meta = deal.metadata or {}
+
+                    if (
+                        bool(meta.get("price_anomaly"))
+                        or deal.discount_percent >= 70
+                    ):
+                        found[deal.fingerprint] = deal
+
+        return list(found.values())
+
 
     async def scan_once(self):
         found = {}

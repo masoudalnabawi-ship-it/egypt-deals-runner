@@ -11,6 +11,30 @@ class V12Orchestrator:
         self.queue = DealQueue()
         self.amazon = AmazonSource()
 
+    async def scan_amazon_radar_once(self):
+        items = await self.amazon.scan_fast_radar_once()
+
+        new_count = 0
+        reopened_count = 0
+
+        for deal in items:
+            result = self.queue.enqueue(
+                deal,
+                priority=1000,
+            )
+
+            if result == "new":
+                new_count += 1
+            elif result == "reopened":
+                reopened_count += 1
+
+        return {
+            "fetched": len(items),
+            "new": new_count,
+            "reopened": reopened_count,
+        }
+
+
     async def scan_amazon_once(self):
         store = "amazon"
         started = time.monotonic()
