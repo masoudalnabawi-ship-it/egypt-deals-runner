@@ -77,14 +77,20 @@ class DealQueue:
                 deal.discount_percent or 0
             )
 
+            price_drop_percent = (
+                ((old_price - new_price) / old_price) * 100
+                if old_price > 0 and new_price > 0 and new_price < old_price
+                else 0.0
+            )
+
+            # Do not re-send an already known product for tiny fluctuations.
+            # Re-open only when the offer became materially better.
             price_improved = (
-                old_price > 0
-                and new_price > 0
-                and new_price < old_price
+                price_drop_percent >= 5.0
             )
 
             discount_improved = (
-                new_discount >= old_discount + 1
+                new_discount >= old_discount + 5.0
             )
 
             reopen = (

@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 
 import asyncio
+import signal
 import json
 import os
 import time
@@ -140,9 +141,53 @@ async def send_verified_reviews(core, reviewer):
     }
 
 
+STOP_REQUESTED = False
+
+
+def _request_stop():
+    global STOP_REQUESTED
+    STOP_REQUESTED = True
+    print(
+        "🛑 V12 graceful shutdown requested",
+        flush=True,
+    )
+
+
+def _checkpoint_v12_db():
+    try:
+        from deals_v12.state import connect
+
+        with connect() as con:
+            con.execute("PRAGMA wal_checkpoint(FULL)")
+            con.commit()
+
+        print(
+            "💾 V12 database checkpoint complete",
+            flush=True,
+        )
+
+    except Exception as exc:
+        print(
+            "⚠️ V12 database checkpoint failed",
+            repr(exc),
+            flush=True,
+        )
+
+
 async def main():
     core = V12Orchestrator()
     reviewer = TelegramReviewer()
+
+    loop = asyncio.get_running_loop()
+
+    for sig in (signal.SIGTERM, signal.SIGINT):
+        try:
+            loop.add_signal_handler(
+                sig,
+                _request_stop,
+            )
+        except NotImplementedError:
+            pass
 
     core.queue.recover_stuck()
 
@@ -153,7 +198,7 @@ async def main():
         flush=True,
     )
 
-    while True:
+    while not STOP_REQUESTED:
         now = time.monotonic()
 
         if (
@@ -222,6 +267,13 @@ async def main():
         await asyncio.sleep(
             LOOP_INTERVAL
         )
+
+    _checkpoint_v12_db()
+
+    print(
+        "✅ V12 AMAZON WORKER STOPPED CLEANLY",
+        flush=True,
+    )
 
 
 if __name__ == "__main__":

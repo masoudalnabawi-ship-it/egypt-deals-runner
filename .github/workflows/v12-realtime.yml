@@ -35,7 +35,8 @@ jobs:
           python-version: "3.13"
 
       - name: Restore V12 queue
-        uses: actions/cache@v4
+        id: v12-cache-restore
+        uses: actions/cache/restore@v4
         with:
           path: |
             .runtime_state/v12.db
@@ -64,3 +65,14 @@ jobs:
           fi
 
           exit "$code"
+
+      - name: Save V12 queue
+        if: always()
+        uses: actions/cache/save@v4
+        with:
+          path: |
+            .runtime_state/v12.db
+            .runtime_state/v12.db-wal
+            .runtime_state/v12.db-shm
+            .runtime_state/v12_health.json
+          key: v12-state-${{ github.run_id }}
