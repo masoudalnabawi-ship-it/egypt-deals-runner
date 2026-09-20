@@ -38,6 +38,114 @@ class TelegramReviewer:
                 "AMAZON_NORMAL_REVIEW_CHAT_ID missing"
             )
 
+    def _brand_and_details(self, deal: DealCandidate):
+        meta = deal.metadata or {}
+
+        brand = str(
+            meta.get("brand")
+            or meta.get("brand_name")
+            or meta.get("manufacturer")
+            or ""
+        ).strip()
+
+        title = " ".join(str(deal.title or "").split())
+
+        if not brand and title:
+            first = title.split()[0].strip(
+                " -–—,:،|()[]{}"
+            )
+
+            generic_words = {
+                "تيشيرت", "قميص", "بنطلون", "حذاء",
+                "هاتف", "موبايل", "سماعة", "شاحن",
+                "ماكينة", "جهاز", "طقم", "عبوة",
+                "كابل", "شنطة", "ساعة", "منتج",
+            }
+
+            if first and first.lower() not in generic_words:
+                brand = first
+
+        if not brand:
+            brand = "غير محددة"
+
+        details_source = title
+
+        if (
+            brand != "غير محددة"
+            and details_source.lower().startswith(brand.lower())
+        ):
+            details_source = details_source[len(brand):].lstrip(
+                " -–—,:،|"
+            )
+
+        normalized = (
+            details_source
+            .replace("،", ",")
+            .replace("|", ",")
+            .replace(" - ", ",")
+            .replace(" – ", ",")
+            .replace(" — ", ",")
+        )
+
+        parts = [
+            part.strip()
+            for part in normalized.split(",")
+            if part.strip()
+        ]
+
+        details = " • ".join(parts[:3]).strip()
+
+        if not details:
+            details = details_source.strip()
+
+        if not details:
+            details = "تفاصيل المنتج متاحة داخل صفحة المتجر"
+
+        return brand[:60], details[:180]
+
+
+    def _alert_banner(self, deal: DealCandidate):
+        old_price = float(deal.old_price or 0)
+        current_price = float(deal.current_price or 0)
+        discount = float(deal.discount_percent or 0)
+
+        ratio = (
+            current_price / old_price
+            if old_price > 0 and current_price > 0
+            else 1.0
+        )
+
+        # Expensive product collapsing to an extremely tiny price.
+        # Example: 10,000 -> 131 EGP.
+        if (
+            old_price >= 1000
+            and (
+                ratio <= 0.05
+                or (
+                    discount >= 95
+                    and current_price <= 500
+                )
+            )
+        ):
+            return (
+                "◆◆ سعر غير منطقي — مراجعة فورية ◆◆\n"
+                f"انخفاض حاد: {old_price:,.2f} ← {current_price:,.2f} جنيه "
+                f"({discount:.1f}%)\n\n"
+            )
+
+        if discount >= 90:
+            return (
+                f"◆◆ خصم استثنائي — {discount:.1f}% ◆◆\n\n"
+            )
+
+        if discount >= 70:
+            return (
+                f"◆ خصم قوي — {discount:.1f}% ◆\n\n"
+            )
+
+        return ""
+
+
     def _caption(self, deal: DealCandidate):
         saving = deal.saving
         discount = deal.discount_percent
@@ -51,24 +159,52 @@ class TelegramReviewer:
             "twob": "2B",
         }.get(store_key, str(deal.store).upper())
 
-        id_label = "ASIN" if store_key == "amazon" else "معرف المنتج"
+        id_label = (
+            "ASIN"
+            if store_key == "amazon"
+            else "معرف المنتج"
+        )
+
+        brand, details = self._brand_and_details(deal)
+        banner = self._alert_banner(deal)
 
         verified_text = (
-            "✅ تم التحقق من صفحة المنتج مباشرة."
+            "تم التحقق من السعر من صفحة المنتج مباشرة."
             if deal.metadata.get("verification")
-            else "✅ تم رصد العرض مباشرة من المتجر."
+            else "تم رصد العرض مباشرة من المتجر."
         )
 
         return (
-            f"🔥 <b>عرض {store_name} مؤكد — V12</b>\n\n"
-            f"📦 <b>{html.escape(deal.title[:260])}</b>\n\n"
-            f"💰 السعر الحالي: <b>{deal.current_price:,.2f} جنيه</b>\n"
-            f"📊 السعر السابق: <s>{deal.old_price:,.2f} جنيه</s>\n"
-            f"📉 الخصم المؤكد: <b>{discount:.1f}%</b>\n"
-            f"💵 التوفير: <b>{saving:,.2f} جنيه</b>\n\n"
-            f"🔎 {id_label}: <code>{html.escape(deal.external_id)}</code>\n"
-            f"{verified_text}"
+            f"{banner}"
+            f"◆ <b>عرض {store_name} للمراجعة</b>\n\n"
+
+            f"◈ <b>المنتج</b>\n"
+            f"{html.escape(deal.title[:260])}\n\n"
+
+            f"▣ <b>الماركة</b>\n"
+            f"{html.escape(brand)}\n\n"
+
+            f"▣ <b>التفاصيل</b>\n"
+            f"{html.escape(details)}\n\n"
+
+            f"▰ <b>السعر الحالي</b>\n"
+            f"{deal.current_price:,.2f} جنيه\n\n"
+
+            f"↘ <b>السعر السابق</b>\n"
+            f"<s>{deal.old_price:,.2f} جنيه</s>\n\n"
+
+            f"◇ <b>الخصم</b>\n"
+            f"{discount:.1f}%\n\n"
+
+            f"＋ <b>التوفير</b>\n"
+            f"{saving:,.2f} جنيه\n\n"
+
+            f"• {id_label}: "
+            f"<code>{html.escape(deal.external_id)}</code>\n"
+
+            f"✓ {verified_text}"
         )
+
 
     def _keyboard(self, deal: DealCandidate):
         short_fp = deal.fingerprint[:16]
@@ -77,32 +213,33 @@ class TelegramReviewer:
             "inline_keyboard": [
                 [
                     {
-                        "text": "🚀 نشر عاجل",
+                        "text": "◆ نشر عاجل",
                         "callback_data": f"v12:u:{short_fp}",
                     },
                     {
-                        "text": "📢 نشر عادي",
+                        "text": "▣ نشر عادي",
                         "callback_data": f"v12:p:{short_fp}",
                     },
                 ],
                 [
                     {
-                        "text": "✏️ تعديل الرسالة",
+                        "text": "✎ تعديل الرسالة",
                         "callback_data": f"v12:e:{short_fp}",
                     },
                     {
-                        "text": "🔗 فتح المنتج",
+                        "text": "↗ فتح المنتج",
                         "url": deal.url,
                     },
                 ],
                 [
                     {
-                        "text": "❌ رفض",
+                        "text": "× رفض",
                         "callback_data": f"v12:r:{short_fp}",
                     },
                 ],
             ]
         }
+
 
     def _route_chat(self, deal: DealCandidate):
         if (
