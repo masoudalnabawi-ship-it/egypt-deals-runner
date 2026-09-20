@@ -122,6 +122,62 @@ class AmazonVerifier:
                 "reason": "no_live_price",
             }
 
+        incoming_promo = str(
+            (deal.metadata or {}).get("promo_text") or ""
+        ).strip()
+
+        page_text = soup.get_text(" ", strip=True).lower()
+
+        promo_patterns = (
+            "احصل على 2 بسعر 1",
+            "اشتر 1 واحصل على 1",
+            "اشترِ 1 واحصل على 1",
+            "2 بسعر 1",
+            "buy 1 get 1",
+            "buy one get one",
+            "2 for 1",
+            "coupon",
+            "كوبون",
+        )
+
+        live_promo = ""
+
+        if incoming_promo:
+            for pattern in promo_patterns:
+                if pattern.lower() in page_text:
+                    live_promo = pattern
+                    break
+
+        if live_promo:
+            verified_old = (
+                old
+                if old > current
+                else None
+            )
+
+            verified_discount = (
+                round(
+                    ((old - current) / old) * 100,
+                    2,
+                )
+                if verified_old
+                else 0.0
+            )
+
+            return {
+                "verified": True,
+                "reason": "amazon_live_promo_verified",
+                "current_price": current,
+                "old_price": verified_old,
+                "discount_percent": verified_discount,
+                "saving": (
+                    round(old - current, 2)
+                    if verified_old
+                    else 0.0
+                ),
+                "promo_text": live_promo,
+            }
+
         if old <= current:
             return {
                 "verified": False,

@@ -23,21 +23,39 @@ class V12Orchestrator:
             candidates = [
                 deal
                 for deal in items
-                if deal.old_price
-                and deal.old_price > deal.current_price
-                and deal.discount_percent >= 5
+                if (
+                    (
+                        deal.old_price
+                        and deal.old_price > deal.current_price
+                        and deal.discount_percent >= 5
+                    )
+                    or bool(
+                        (deal.metadata or {}).get("promo_text")
+                    )
+                )
             ]
 
             new_count = 0
             reopened_count = 0
 
             for deal in candidates:
-                priority = int(
-                    min(
-                        1000,
-                        deal.discount_percent * 10,
+                if (deal.metadata or {}).get("promo_text"):
+                    priority = max(
+                        650,
+                        int(
+                            min(
+                                1000,
+                                deal.discount_percent * 10,
+                            )
+                        ),
                     )
-                )
+                else:
+                    priority = int(
+                        min(
+                            1000,
+                            deal.discount_percent * 10,
+                        )
+                    )
 
                 result = self.queue.enqueue(
                     deal,

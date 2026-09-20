@@ -218,6 +218,33 @@ class AmazonSource:
             if old <= current:
                 old = None
 
+            # Detect non-price Amazon promotions from the product card.
+            card_text = card.get_text(" ", strip=True)
+
+            promo_patterns = (
+                "احصل على 2 بسعر 1",
+                "اشتر 1 واحصل على 1",
+                "اشترِ 1 واحصل على 1",
+                "2 بسعر 1",
+                "buy 1 get 1",
+                "buy one get one",
+                "2 for 1",
+                "coupon",
+                "كوبون",
+                "خصم إضافي",
+                "وفر",
+                "save",
+            )
+
+            promo_text = ""
+
+            lowered_card_text = card_text.lower()
+
+            for pattern in promo_patterns:
+                if pattern.lower() in lowered_card_text:
+                    promo_text = pattern
+                    break
+
             results[asin] = DealCandidate(
                 store="amazon",
                 external_id=asin,
@@ -229,6 +256,7 @@ class AmazonSource:
                 metadata={
                     "surface": surface,
                     "source": "amazon_direct",
+                    "promo_text": promo_text,
                 },
             )
 
