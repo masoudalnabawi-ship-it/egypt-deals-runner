@@ -1635,9 +1635,9 @@ V12_EDIT_TARGETS = {}
 
 def _v12_public_caption(message):
     """
-    Public V12 caption:
-    product + brand + useful details + prices only.
-    Technical verification/IDs remain in review chat.
+    Compact public V12 caption:
+    product + brand + 2 price lines only.
+    No review-only verification, IDs, anomaly warnings, or duplicated details.
     """
     raw = str(
         message.get("caption")
@@ -1645,45 +1645,56 @@ def _v12_public_caption(message):
         or ""
     )
 
-    lines = []
+    lines = [x.strip() for x in raw.splitlines()]
 
-    for original in raw.splitlines():
-        line = original.strip()
+    def value_after(label):
+        for i, line in enumerate(lines):
+            if line == label:
+                j = i + 1
+                while j < len(lines):
+                    if lines[j]:
+                        return lines[j]
+                    j += 1
+        return ""
 
-        if not line:
-            if lines and lines[-1] != "":
-                lines.append("")
-            continue
+    title = value_after("◈ المنتج")
+    brand = value_after("▣ الماركة")
+    current = value_after("▰ السعر الحالي")
+    old = value_after("↘ السعر السابق")
+    discount = value_after("◇ الخصم")
+    saving = value_after("＋ التوفير")
 
-        # Internal review heading.
-        if line.startswith("◆ عرض ") and "للمراجعة" in line:
-            continue
+    # Strip HTML strike tag if present in Telegram callback payload.
+    old = re.sub(r"</?s>", "", old).strip()
 
-        # Never expose anomaly warning publicly.
-        # The admin may still publish the deal after checking it.
-        if "سعر غير منطقي" in line:
-            continue
+    out = []
 
-        if line.startswith("انخفاض حاد:"):
-            continue
+    if title:
+        out.append(f"◆ {title}")
 
-        # Internal IDs.
-        if line.startswith("• ASIN:"):
-            continue
+    if brand and brand != "غير محددة":
+        out.append(f"◈ الماركة: {brand}")
 
-        if line.startswith("• معرف المنتج:"):
-            continue
+    if current:
+        if old:
+            out.append(
+                f"▰ السعر: {current}  |  بدلًا من <s>{old}</s>"
+            )
+        else:
+            out.append(f"▰ السعر: {current}")
 
-        # Internal verification status.
-        if line.startswith("✓ "):
-            continue
+    price_line_2 = []
 
-        lines.append(line)
+    if discount:
+        price_line_2.append(f"خصم {discount}")
 
-    while lines and lines[-1] == "":
-        lines.pop()
+    if saving:
+        price_line_2.append(f"توفير {saving}")
 
-    return "\n".join(lines)[:1024]
+    if price_line_2:
+        out.append(" • ".join(price_line_2))
+
+    return "\n\n".join(out)[:1024]
 
 
 async def handle_v12_callback(cb):
