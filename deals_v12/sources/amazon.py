@@ -57,6 +57,25 @@ def _clean(text) -> str:
     ).strip()
 
 
+PROMO_RADAR_SURFACES = (
+    (
+        "promo_buy_more_save_more",
+        BASE + "/s?k=" + quote_plus("buy more save more"),
+    ),
+    (
+        "promo_buy_1_get_1",
+        BASE + "/s?k=" + quote_plus("buy 1 get 1"),
+    ),
+    (
+        "promo_2_for_1",
+        BASE + "/s?k=" + quote_plus("2 for 1"),
+    ),
+    (
+        "promo_coupon",
+        BASE + "/s?k=" + quote_plus("coupon discount"),
+    ),
+)
+
 FAST_RADAR_SURFACES = (
     ("radar_deals", BASE + "/deals"),
     (
@@ -245,14 +264,22 @@ class AmazonSource:
                 "اشتر 1 واحصل على 1",
                 "اشترِ 1 واحصل على 1",
                 "2 بسعر 1",
+                "اشتر أكثر ووفر",
+                "اشترِ أكثر ووفر",
+                "اشتر 2",
+                "اشترِ 2",
+                "عند شراء 2",
+                "عند شراء 3",
+                "خصم عند شراء",
+                "خصم إضافي",
                 "buy 1 get 1",
                 "buy one get one",
+                "buy more save more",
+                "buy more & save",
                 "2 for 1",
+                "buy 2",
                 "coupon",
                 "كوبون",
-                "خصم إضافي",
-                "وفر",
-                "save",
             )
 
             promo_text = ""
@@ -341,7 +368,10 @@ class AmazonSource:
         found = {}
 
         async with httpx.AsyncClient() as client:
-            for name, url in FAST_RADAR_SURFACES:
+            for name, url in (
+                *FAST_RADAR_SURFACES,
+                *PROMO_RADAR_SURFACES,
+            ):
                 try:
                     items = await self.scan_surface(
                         client,
@@ -362,6 +392,7 @@ class AmazonSource:
 
                     if (
                         bool(meta.get("price_anomaly"))
+                        or bool(str(meta.get("promo_text") or "").strip())
                         or deal.discount_percent >= 70
                     ):
                         found[deal.fingerprint] = deal
