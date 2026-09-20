@@ -2,10 +2,13 @@ import json
 import time
 
 from .models import DealCandidate
-from .state import connect
+from .state import connect, init_db
 
 
 class DealQueue:
+    def __init__(self):
+        init_db()
+
     def enqueue(self, deal: DealCandidate, priority=0):
         now = int(time.time())
         fp = deal.fingerprint
