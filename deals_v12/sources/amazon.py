@@ -265,7 +265,7 @@ class AmazonSource:
             anomaly_rules = (
                 (("مشاية كهربائية", "treadmill", "walking pad"), 1500),
                 (("لابتوب", "لاب توب", "laptop", "notebook computer"), 2500),
-                (("موبايل", "هاتف ذكي", "smartphone", "mobile phone"), 1500),
+                (("هاتف ذكي", "smartphone", "iphone", "galaxy s", "galaxy a", "redmi note", "poco", "realme", "oppo", "vivo"), 1500),
                 (("ثلاجة", "refrigerator", "fridge"), 2500),
                 (("غسالة", "washing machine", "washer"), 2000),
                 (("تكييف", "air conditioner", "split ac"), 3000),
@@ -281,6 +281,8 @@ class AmazonSource:
                 "screen protector", "remote", "replacement",
                 "غطاء", "جراب", "حامل", "شاحن", "كابل",
                 "بطارية", "شنطة", "ريموت", "قطعة غيار",
+                "feature phone", "basic phone", "keypad",
+                "موبايل زراير", "هاتف زراير", "زرار",
             )
 
             price_anomaly = False
