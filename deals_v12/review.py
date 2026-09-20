@@ -165,7 +165,7 @@ class TelegramReviewer:
             else "معرف المنتج"
         )
 
-        brand, details = self._brand_and_details(deal)
+        brand, _details = self._brand_and_details(deal)
         banner = self._alert_banner(deal)
 
         verified_text = (
@@ -181,23 +181,15 @@ class TelegramReviewer:
             f"◈ <b>المنتج</b>\n"
             f"{html.escape(deal.title[:260])}\n\n"
 
-            f"▣ <b>الماركة</b>\n"
+            f"▣ <b>الماركة:</b> "
             f"{html.escape(brand)}\n\n"
 
-            f"▣ <b>التفاصيل</b>\n"
-            f"{html.escape(details)}\n\n"
+            f"▰ <b>السعر:</b> "
+            f"<b>{deal.current_price:,.2f} جنيه</b> "
+            f"| بدلًا من <s>{deal.old_price:,.2f} جنيه</s>\n"
 
-            f"▰ <b>السعر الحالي</b>\n"
-            f"{deal.current_price:,.2f} جنيه\n\n"
-
-            f"↘ <b>السعر السابق</b>\n"
-            f"<s>{deal.old_price:,.2f} جنيه</s>\n\n"
-
-            f"◇ <b>الخصم</b>\n"
-            f"{discount:.1f}%\n\n"
-
-            f"＋ <b>التوفير</b>\n"
-            f"{saving:,.2f} جنيه\n\n"
+            f"◇ <b>خصم {discount:.1f}%</b> "
+            f"• توفير <b>{saving:,.2f} جنيه</b>\n\n"
 
             f"• {id_label}: "
             f"<code>{html.escape(deal.external_id)}</code>\n"
