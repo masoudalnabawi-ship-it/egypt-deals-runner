@@ -122,6 +122,20 @@ class AmazonVerifier:
                 "reason": "no_live_price",
             }
 
+        incoming_anomaly = bool(
+            (deal.metadata or {}).get("price_anomaly")
+        )
+
+        anomaly_threshold = float(
+            (deal.metadata or {}).get("anomaly_threshold")
+            or 0
+        )
+
+        anomaly_category = str(
+            (deal.metadata or {}).get("anomaly_category")
+            or ""
+        ).strip()
+
         incoming_promo = str(
             (deal.metadata or {}).get("promo_text") or ""
         ).strip()
@@ -139,6 +153,45 @@ class AmazonVerifier:
             "coupon",
             "كوبون",
         )
+
+        # Confirm that the suspicious live price is really present
+        # on the Amazon product page.
+        if (
+            incoming_anomaly
+            and anomaly_threshold > 0
+            and current > 0
+            and current <= anomaly_threshold
+        ):
+            verified_old = (
+                old
+                if old > current
+                else None
+            )
+
+            verified_discount = (
+                round(
+                    ((old - current) / old) * 100,
+                    2,
+                )
+                if verified_old
+                else 0.0
+            )
+
+            return {
+                "verified": True,
+                "reason": "amazon_live_price_anomaly_verified",
+                "current_price": current,
+                "old_price": verified_old,
+                "discount_percent": verified_discount,
+                "saving": (
+                    round(old - current, 2)
+                    if verified_old
+                    else 0.0
+                ),
+                "price_anomaly": True,
+                "anomaly_category": anomaly_category,
+                "anomaly_threshold": anomaly_threshold,
+            }
 
         live_promo = ""
 

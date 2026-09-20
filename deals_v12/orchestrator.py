@@ -32,6 +32,9 @@ class V12Orchestrator:
                     or bool(
                         (deal.metadata or {}).get("promo_text")
                     )
+                    or bool(
+                        (deal.metadata or {}).get("price_anomaly")
+                    )
                 )
             ]
 
@@ -39,7 +42,10 @@ class V12Orchestrator:
             reopened_count = 0
 
             for deal in candidates:
-                if (deal.metadata or {}).get("promo_text"):
+                if (deal.metadata or {}).get("price_anomaly"):
+                    priority = 1000
+
+                elif (deal.metadata or {}).get("promo_text"):
                     priority = max(
                         650,
                         int(

@@ -240,6 +240,48 @@ class AmazonSource:
 
             lowered_card_text = card_text.lower()
 
+            # Fast anomaly radar for expensive product categories.
+            # This is a suspicion signal only; live product-page
+            # verification is still required before review.
+            anomaly_rules = (
+                (("مشاية كهربائية", "treadmill", "walking pad"), 1500),
+                (("لابتوب", "لاب توب", "laptop", "notebook computer"), 2500),
+                (("موبايل", "هاتف ذكي", "smartphone", "mobile phone"), 1500),
+                (("ثلاجة", "refrigerator", "fridge"), 2500),
+                (("غسالة", "washing machine", "washer"), 2000),
+                (("تكييف", "air conditioner", "split ac"), 3000),
+                (("تلفزيون", "television", "smart tv", "led tv"), 1500),
+                (("فريزر", "freezer"), 2500),
+                (("بوتاجاز", "cooker", "gas stove"), 2000),
+                (("غسالة اطباق", "dishwasher"), 2500),
+            )
+
+            accessory_words = (
+                "cover", "case", "stand", "holder", "charger",
+                "cable", "adapter", "battery", "bag",
+                "screen protector", "remote", "replacement",
+                "غطاء", "جراب", "حامل", "شاحن", "كابل",
+                "بطارية", "شنطة", "ريموت", "قطعة غيار",
+            )
+
+            price_anomaly = False
+            anomaly_category = ""
+            anomaly_threshold = 0.0
+
+            title_low = title.lower()
+
+            if not any(word in title_low for word in accessory_words):
+                for keywords, max_price in anomaly_rules:
+                    if (
+                        any(word in title_low for word in keywords)
+                        and current > 0
+                        and current <= max_price
+                    ):
+                        price_anomaly = True
+                        anomaly_category = keywords[0]
+                        anomaly_threshold = float(max_price)
+                        break
+
             for pattern in promo_patterns:
                 if pattern.lower() in lowered_card_text:
                     promo_text = pattern
@@ -257,6 +299,9 @@ class AmazonSource:
                     "surface": surface,
                     "source": "amazon_direct",
                     "promo_text": promo_text,
+                    "price_anomaly": price_anomaly,
+                    "anomaly_category": anomaly_category,
+                    "anomaly_threshold": anomaly_threshold,
                 },
             )
 

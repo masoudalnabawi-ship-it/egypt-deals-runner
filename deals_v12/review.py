@@ -105,6 +105,18 @@ class TelegramReviewer:
 
 
     def _alert_banner(self, deal: DealCandidate):
+        if bool((deal.metadata or {}).get("price_anomaly")):
+            category = str(
+                (deal.metadata or {}).get("anomaly_category")
+                or "منتج مرتفع القيمة"
+            )
+
+            return (
+                "◆◆ سعر غير منطقي — مراجعة فورية ◆◆\n"
+                f"الفئة: {html.escape(category)} "
+                f"| السعر المرصود: {deal.current_price:,.2f} جنيه\n\n"
+            )
+
         old_price = float(deal.old_price or 0)
         current_price = float(deal.current_price or 0)
         discount = float(deal.discount_percent or 0)
