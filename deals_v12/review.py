@@ -272,9 +272,24 @@ class TelegramReviewer:
 
 
     def _route_chat(self, deal: DealCandidate):
-        if (
+        store_is_amazon = (
             str(deal.store).lower() == "amazon"
-            and deal.discount_percent >= 50
+        )
+
+        is_ultra_discount = (
+            deal.discount_percent >= 50
+        )
+
+        is_verified_anomaly = bool(
+            (deal.metadata or {}).get("price_anomaly")
+        )
+
+        if (
+            store_is_amazon
+            and (
+                is_ultra_discount
+                or is_verified_anomaly
+            )
         ):
             if not self.ultra_chat_id:
                 raise RuntimeError(
