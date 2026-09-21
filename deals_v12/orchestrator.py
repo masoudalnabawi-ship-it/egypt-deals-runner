@@ -30,6 +30,10 @@ class V12Orchestrator:
                 ).strip()
             )
 
+            is_flash = bool(
+                meta.get("flash_deal")
+            )
+
             discount = float(
                 deal.discount_percent or 0
             )
@@ -49,6 +53,8 @@ class V12Orchestrator:
                 priority = 980
             elif discount >= 70:
                 priority = 970
+            elif is_flash:
+                priority = 960
             elif is_promo:
                 priority = 900
             else:

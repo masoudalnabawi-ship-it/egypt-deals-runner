@@ -189,6 +189,25 @@ class AmazonVerifier:
                 live_promo = pattern
                 break
 
+        flash_patterns = (
+            "lightning deal",
+            "limited time deal",
+            "limited time",
+            "deal of the day",
+            "عرض لفترة محدودة",
+            "عرض محدود",
+            "لفترة محدودة",
+            "صفقة لفترة محدودة",
+            "ينتهي خلال",
+        )
+
+        live_flash = ""
+
+        for pattern in flash_patterns:
+            if pattern.lower() in page_text:
+                live_flash = pattern
+                break
+
         # Confirm that the suspicious live price is really present
         # on the Amazon product page.
         if (
@@ -228,7 +247,7 @@ class AmazonVerifier:
                 "anomaly_threshold": anomaly_threshold,
             }
 
-        if live_promo:
+        if live_promo or live_flash:
             verified_old = (
                 old
                 if old > current
@@ -255,7 +274,9 @@ class AmazonVerifier:
                     if verified_old
                     else 0.0
                 ),
-                "promo_text": live_promo,
+                "promo_text": live_promo or live_flash,
+                "flash_deal": bool(live_flash),
+                "flash_text": live_flash,
             }
 
         if old <= current:

@@ -354,12 +354,37 @@ class AmazonSource:
                 "2 for 1",
                 "buy 2",
                 "coupon",
+                "coupon available",
+                "clip coupon",
+                "extra discount",
+                "additional discount",
                 "كوبون",
+                "كوبون خصم",
+                "استخدم الكوبون",
+                "احصل على خصم",
+            )
+
+            flash_patterns = (
+                "lightning deal",
+                "limited time deal",
+                "limited time",
+                "deal of the day",
+                "عرض لفترة محدودة",
+                "عرض محدود",
+                "لفترة محدودة",
+                "صفقة لفترة محدودة",
+                "ينتهي خلال",
             )
 
             promo_text = ""
+            flash_text = ""
 
             lowered_card_text = card_text.lower()
+
+            for pattern in flash_patterns:
+                if pattern.lower() in lowered_card_text:
+                    flash_text = pattern
+                    break
 
             # Price anomaly is NOT decided from category alone.
             # It must be supported by a real previous/reference price.
@@ -411,6 +436,8 @@ class AmazonSource:
                     "surface": surface,
                     "source": "amazon_direct",
                     "promo_text": promo_text,
+                    "flash_deal": bool(flash_text),
+                    "flash_text": flash_text,
                     "price_anomaly": price_anomaly,
                     "anomaly_category": anomaly_category,
                     "anomaly_threshold": anomaly_threshold,
