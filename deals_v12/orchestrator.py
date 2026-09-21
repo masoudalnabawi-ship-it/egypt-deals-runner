@@ -95,6 +95,9 @@ class V12Orchestrator:
                     or bool(
                         (deal.metadata or {}).get("price_anomaly")
                     )
+                    or str(
+                        (deal.metadata or {}).get("surface") or ""
+                    ).startswith(("coupons", "promo_"))
                 )
             ]
 

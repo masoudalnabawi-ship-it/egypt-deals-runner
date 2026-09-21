@@ -155,6 +155,12 @@ class AmazonVerifier:
             "عند شراء 3",
             "خصم عند شراء",
             "خصم إضافي",
+            "خصم 5%",
+            "خصم 10%",
+            "خصم 15%",
+            "خصم 20%",
+            "خصم 25%",
+            "خصم 30%",
             "buy 1 get 1",
             "buy one get one",
             "buy more save more",
@@ -162,8 +168,26 @@ class AmazonVerifier:
             "2 for 1",
             "buy 2",
             "coupon",
+            "coupon available",
+            "clip coupon",
+            "extra discount",
+            "additional discount",
             "كوبون",
+            "كوبون خصم",
+            "خصم إضافي",
+            "استخدم الكوبون",
+            "احصل على خصم",
+            "بحد أقصى",
         )
+
+        # Coupon/promotion discovery is allowed even when the
+        # search result did not explicitly expose promo_text.
+        live_promo = ""
+
+        for pattern in promo_patterns:
+            if pattern.lower() in page_text:
+                live_promo = pattern
+                break
 
         # Confirm that the suspicious live price is really present
         # on the Amazon product page.
@@ -203,14 +227,6 @@ class AmazonVerifier:
                 "anomaly_category": anomaly_category,
                 "anomaly_threshold": anomaly_threshold,
             }
-
-        live_promo = ""
-
-        if incoming_promo:
-            for pattern in promo_patterns:
-                if pattern.lower() in page_text:
-                    live_promo = pattern
-                    break
 
         if live_promo:
             verified_old = (
