@@ -25,6 +25,43 @@ def _price(text):
         return 0.0
 
 
+def _coupon_percent(text):
+    """
+    Extract an explicitly stated percentage coupon.
+    Examples:
+      15% off coupon
+      save 20%
+      خصم 30%
+    """
+    text = str(text or "")
+
+    patterns = (
+        r"(\d+(?:\.\d+)?)\s*%\s*(?:off)?\s*(?:coupon|خصم|كوبون)?",
+        r"(?:coupon|كوبون|خصم)[^%]{0,40}(\d+(?:\.\d+)?)\s*%",
+        r"(?:save|وفر)[^%]{0,30}(\d+(?:\.\d+)?)\s*%",
+    )
+
+    for pattern in patterns:
+        match = re.search(
+            pattern,
+            text,
+            flags=re.IGNORECASE,
+        )
+
+        if not match:
+            continue
+
+        try:
+            value = float(match.group(1))
+
+            if 0 < value <= 100:
+                return value
+        except Exception:
+            pass
+
+    return 0.0
+
+
 class AmazonVerifier:
     def __init__(self):
         self.min_gap = 2.0
@@ -189,6 +226,25 @@ class AmazonVerifier:
                 live_promo = pattern
                 break
 
+        coupon_percent = _coupon_percent(page_text)
+
+        effective_price = (
+            round(
+                current * (1 - coupon_percent / 100),
+                2,
+            )
+            if coupon_percent > 0 and current > 0
+            else current
+        )
+
+        effective_discount = 0.0
+
+        if old > 0 and effective_price < old:
+            effective_discount = round(
+                ((old - effective_price) / old) * 100,
+                2,
+            )
+
         flash_patterns = (
             "lightning deal",
             "limited time deal",
@@ -277,6 +333,9 @@ class AmazonVerifier:
                 "promo_text": live_promo or live_flash,
                 "flash_deal": bool(live_flash),
                 "flash_text": live_flash,
+                "coupon_percent": coupon_percent,
+                "effective_price": effective_price,
+                "effective_discount": effective_discount,
             }
 
         if old <= current:
@@ -310,4 +369,7 @@ class AmazonVerifier:
                 old - current,
                 2,
             ),
+            "coupon_percent": coupon_percent,
+            "effective_price": effective_price,
+            "effective_discount": effective_discount,
         }

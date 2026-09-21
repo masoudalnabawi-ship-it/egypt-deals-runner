@@ -38,6 +38,15 @@ class V12Orchestrator:
                 deal.discount_percent or 0
             )
 
+            effective_discount = float(
+                meta.get("effective_discount") or 0
+            )
+
+            best_discount = max(
+                discount,
+                effective_discount,
+            )
+
             # Ultra priority ladder:
             # 1) verified price anomaly
             # 2) 90%+ discount
@@ -47,11 +56,11 @@ class V12Orchestrator:
             # 6) remaining radar hits
             if is_anomaly:
                 priority = 1000
-            elif discount >= 90:
+            elif best_discount >= 90:
                 priority = 990
-            elif discount >= 80:
+            elif best_discount >= 80:
                 priority = 980
-            elif discount >= 70:
+            elif best_discount >= 70:
                 priority = 970
             elif is_flash:
                 priority = 960
