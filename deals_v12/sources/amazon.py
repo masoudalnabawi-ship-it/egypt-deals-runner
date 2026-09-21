@@ -25,12 +25,37 @@ HEADERS = {
 
 PRIORITY_SURFACES = [
     ("deals", BASE + "/deals"),
+
     ("limited_time", BASE + "/s?k=" + quote_plus("limited time deals")),
-    ("coupons", BASE + "/s?k=" + quote_plus("coupon deals")),
+    ("sale", BASE + "/s?k=" + quote_plus("sale deals")),
+    ("discount", BASE + "/s?k=" + quote_plus("discount deals")),
+    ("offers", BASE + "/s?k=" + quote_plus("offers")),
+    ("clearance", BASE + "/s?k=" + quote_plus("clearance deals")),
+
     ("electronics", BASE + "/s?k=" + quote_plus("electronics deals")),
     ("mobiles", BASE + "/s?k=" + quote_plus("mobile phones deals")),
+    ("laptops", BASE + "/s?k=" + quote_plus("laptops deals")),
+    ("tablets", BASE + "/s?k=" + quote_plus("tablets deals")),
+    ("tvs", BASE + "/s?k=" + quote_plus("smart tv deals")),
+    ("monitors", BASE + "/s?k=" + quote_plus("computer monitors deals")),
+    ("headphones", BASE + "/s?k=" + quote_plus("headphones earbuds deals")),
+    ("gaming", BASE + "/s?k=" + quote_plus("gaming deals")),
+    ("cameras", BASE + "/s?k=" + quote_plus("cameras deals")),
+
     ("appliances", BASE + "/s?k=" + quote_plus("home appliances deals")),
+    ("refrigerators", BASE + "/s?k=" + quote_plus("refrigerators deals")),
+    ("washing_machines", BASE + "/s?k=" + quote_plus("washing machines deals")),
+    ("air_conditioners", BASE + "/s?k=" + quote_plus("air conditioners deals")),
+    ("kitchen", BASE + "/s?k=" + quote_plus("kitchen appliances deals")),
+    ("small_appliances", BASE + "/s?k=" + quote_plus("small appliances deals")),
+
+    ("home", BASE + "/s?k=" + quote_plus("home deals")),
+    ("tools", BASE + "/s?k=" + quote_plus("tools deals")),
+    ("beauty", BASE + "/s?k=" + quote_plus("beauty deals")),
+    ("fashion", BASE + "/s?k=" + quote_plus("fashion deals")),
+    ("sports", BASE + "/s?k=" + quote_plus("sports fitness deals")),
 ]
+
 
 
 def _price(text) -> float:
