@@ -537,10 +537,26 @@ class AmazonSource:
                 for deal in items:
                     meta = deal.metadata or {}
 
+                    surface = str(
+                        meta.get("surface") or ""
+                    )
+
+                    is_ultra_percentage_surface = surface.startswith(
+                        "radar_"
+                    )
+
                     if (
                         bool(meta.get("price_anomaly"))
-                        or bool(str(meta.get("promo_text") or "").strip())
+                        or bool(
+                            str(
+                                meta.get("promo_text") or ""
+                            ).strip()
+                        )
                         or deal.discount_percent >= 70
+                        or (
+                            is_ultra_percentage_surface
+                            and deal.discount_percent >= 50
+                        )
                     ):
                         found[deal.fingerprint] = deal
 
