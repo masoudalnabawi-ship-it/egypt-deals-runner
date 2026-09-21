@@ -56,9 +56,19 @@ def row_to_deal(row):
 
 
 async def send_verified_reviews(core, reviewer):
-    rows = core.queue.get_verified(
-        limit=REVIEW_LIMIT
+    ultra_limit = max(
+        1,
+        min(
+            REVIEW_LIMIT,
+            4,
+        ),
     )
+
+    ultra_rows = core.queue.get_verified(
+        limit=ultra_limit
+    )
+
+    rows = ultra_rows
 
     sent = 0
     retried = 0

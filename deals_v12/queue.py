@@ -434,7 +434,7 @@ class DealQueue:
         with connect() as con:
             row = con.execute(
                 """
-                SELECT payload
+                SELECT payload, priority
                 FROM queue_items
                 WHERE fingerprint=?
                 """,
@@ -464,11 +464,51 @@ class DealQueue:
             metadata["verified_at"] = now
             payload["metadata"] = metadata
 
+            effective_discount = float(
+                metadata.get("effective_discount")
+                or verification.get("effective_discount")
+                or 0
+            )
+
+            verified_discount = float(
+                verification.get("discount_percent")
+                or payload.get("discount_percent")
+                or 0
+            )
+
+            verified_flash = bool(
+                metadata.get("flash_deal")
+                or verification.get("flash_deal")
+            )
+
+            current_priority = int(
+                row.get("priority", 0)
+                if hasattr(row, "get")
+                else row["priority"]
+            )
+
+            verification_priority = 0
+
+            if effective_discount >= 90 or verified_discount >= 90:
+                verification_priority = 990
+            elif effective_discount >= 80 or verified_discount >= 80:
+                verification_priority = 980
+            elif effective_discount >= 70 or verified_discount >= 70:
+                verification_priority = 970
+            elif verified_flash:
+                verification_priority = 960
+
+            final_priority = max(
+                current_priority,
+                verification_priority,
+            )
+
             con.execute(
                 """
                 UPDATE queue_items
                 SET payload=?,
                     status='verified',
+                    priority=?,
                     next_attempt_at=0,
                     last_error='',
                     updated_at=?
@@ -479,6 +519,7 @@ class DealQueue:
                         payload,
                         ensure_ascii=False,
                     ),
+                    final_priority,
                     now,
                     fingerprint,
                 ),
