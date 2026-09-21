@@ -201,6 +201,32 @@ class DealQueue:
                 else "updated"
             )
 
+    def get_ultra_due(self, limit=4):
+        now = int(time.time())
+
+        with connect() as con:
+            rows = con.execute(
+                """
+                SELECT *
+                FROM queue_items
+                WHERE status IN ('pending','retry')
+                  AND next_attempt_at <= ?
+                  AND priority >= 960
+                ORDER BY priority DESC,
+                         discovered_at ASC
+                LIMIT ?
+                """,
+                (
+                    now,
+                    int(limit),
+                ),
+            ).fetchall()
+
+        return [
+            dict(row)
+            for row in rows
+        ]
+
     def get_due(self, limit=20):
         now = int(time.time())
 
