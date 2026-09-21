@@ -126,10 +126,6 @@ ULTRA_PERCENTAGE_RADAR = (
 
 FAST_RADAR_SURFACES = (
     (
-        "radar_70off",
-        BASE + "/s?k=" + quote_plus("70% off deals"),
-    ),
-    (
         "radar_clearance",
         BASE + "/s?k=" + quote_plus("clearance deals"),
     ),
@@ -141,6 +137,37 @@ FAST_RADAR_SURFACES = (
     ),
 )
 
+RADAR_ROTATION_GROUPS = (
+    (
+        "lower_percentage",
+        (
+            ULTRA_PERCENTAGE_RADAR[3],
+            ULTRA_PERCENTAGE_RADAR[4],
+        ),
+    ),
+    (
+        "promo_primary",
+        (
+            PROMO_RADAR_SURFACES[0],
+            PROMO_RADAR_SURFACES[1],
+        ),
+    ),
+    (
+        "promo_secondary",
+        (
+            PROMO_RADAR_SURFACES[2],
+            PROMO_RADAR_SURFACES[3],
+        ),
+    ),
+    (
+        "extra_value",
+        (
+            FAST_RADAR_SURFACES[0],
+            FAST_RADAR_SURFACES[1],
+        ),
+    ),
+)
+
 
 class AmazonSource:
     name = "amazon"
@@ -148,6 +175,7 @@ class AmazonSource:
     def __init__(self):
         self.last_request_at = 0.0
         self.min_gap = 2.0
+        self._radar_rotation = 0
 
     async def _wait(self):
         wait = (
@@ -605,11 +633,35 @@ class AmazonSource:
         """
         found = {}
 
+        # Core ultra bands run every radar cycle.
+        core = (
+            ULTRA_PERCENTAGE_RADAR[0],
+            ULTRA_PERCENTAGE_RADAR[1],
+            ULTRA_PERCENTAGE_RADAR[2],
+        )
+
+        # Rotate the lower bands and promo searches so we keep broad
+        # coverage without repeatedly requesting every radar surface.
+        rotation_index = int(
+            getattr(self, "_radar_rotation", 0)
+        ) % len(RADAR_ROTATION_GROUPS)
+
+        rotation_name, rotation_group = RADAR_ROTATION_GROUPS[
+            rotation_index
+        ]
+
+        self._radar_rotation = rotation_index + 1
+
+        print(
+            "🔄 AMAZON RADAR ROTATION",
+            rotation_name,
+            flush=True,
+        )
+
         radar_surfaces = self._smart_radar_order(
             (
-                *ULTRA_PERCENTAGE_RADAR,
-                *FAST_RADAR_SURFACES,
-                *PROMO_RADAR_SURFACES,
+                *core,
+                *rotation_group,
             )
         )
 
