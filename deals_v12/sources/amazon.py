@@ -504,17 +504,113 @@ class AmazonSource:
 
         return items
 
+    def _smart_radar_order(self, surfaces):
+        """
+        Reorder radar surfaces using historical productivity.
+        Every surface remains enabled; productive surfaces simply
+        get scanned earlier so strong deals reach the queue sooner.
+        """
+        try:
+            with connect() as con:
+                rows = con.execute(
+                    """
+                    SELECT
+                        surface,
+                        scans,
+                        candidates,
+                        ultra_hits,
+                        last_latency_ms
+                    FROM surface_stats
+                    WHERE store='amazon'
+                    """
+                ).fetchall()
+
+            stats = {
+                str(row["surface"]): {
+                    "scans": int(row["scans"] or 0),
+                    "candidates": int(
+                        row["candidates"] or 0
+                    ),
+                    "ultra_hits": int(
+                        row["ultra_hits"] or 0
+                    ),
+                    "latency": int(
+                        row["last_latency_ms"] or 0
+                    ),
+                }
+                for row in rows
+            }
+
+        except Exception:
+            stats = {}
+
+        def base_priority(name):
+            name = str(name)
+
+            # Explicit radar strength always dominates historical
+            # productivity so a 90% radar can never fall behind 50%.
+            if "90off" in name:
+                return 600
+            if "80off" in name:
+                return 500
+            if "70off" in name:
+                return 400
+            if "60off" in name:
+                return 300
+            if "50off" in name:
+                return 200
+
+            if name.startswith("promo_"):
+                return 100
+
+            return 50
+
+        def score(item):
+            name, _url = item
+            data = stats.get(name)
+
+            priority = base_priority(name)
+
+            if not data:
+                return (priority, 0, 0, 0)
+
+            scans = max(data["scans"], 1)
+
+            ultra_rate = (
+                data["ultra_hits"] / scans
+            )
+
+            candidate_rate = (
+                data["candidates"] / scans
+            )
+
+            return (
+                priority,
+                round(ultra_rate, 4),
+                round(candidate_rate, 4),
+                data["candidates"],
+            )
+
+        return sorted(
+            surfaces,
+            key=score,
+            reverse=True,
+        )
+
     async def scan_fast_radar_once(self):
         """
-        Small high-frequency Amazon scan.
-        Only returns extreme discounts and price anomalies.
+        Smart high-frequency Amazon radar.
+        All radar surfaces remain enabled, but historically
+        productive surfaces are scanned first.
         """
         found = {}
 
-        radar_surfaces = (
-            *ULTRA_PERCENTAGE_RADAR,
-            *FAST_RADAR_SURFACES,
-            *PROMO_RADAR_SURFACES,
+        radar_surfaces = self._smart_radar_order(
+            (
+                *ULTRA_PERCENTAGE_RADAR,
+                *FAST_RADAR_SURFACES,
+                *PROMO_RADAR_SURFACES,
+            )
         )
 
         async with httpx.AsyncClient() as client:
