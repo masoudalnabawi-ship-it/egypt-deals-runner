@@ -24,6 +24,58 @@ HEADERS = {
 }
 
 
+CATEGORY_EXPANSION_SURFACES = (
+    ("fashion_clothing", BASE + "/s?k=" + quote_plus("clothing fashion deals")),
+    ("fashion_shoes", BASE + "/s?k=" + quote_plus("shoes footwear deals")),
+    ("fashion_bags", BASE + "/s?k=" + quote_plus("bags handbags deals")),
+    ("fashion_men", BASE + "/s?k=" + quote_plus("men mens fashion deals")),
+    ("fashion_women", BASE + "/s?k=" + quote_plus("women womens fashion deals")),
+    ("fashion_kids", BASE + "/s?k=" + quote_plus("kids children clothing deals")),
+
+    ("grocery", BASE + "/s?k=" + quote_plus("grocery food deals")),
+    ("supermarket", BASE + "/s?k=" + quote_plus("supermarket grocery deals")),
+    ("food", BASE + "/s?k=" + quote_plus("food pantry deals")),
+    ("snacks", BASE + "/s?k=" + quote_plus("snacks biscuits chocolate deals")),
+    ("beverages", BASE + "/s?k=" + quote_plus("beverages drinks deals")),
+    ("coffee_tea", BASE + "/s?k=" + quote_plus("coffee tea deals")),
+)
+
+CATEGORY_ROTATION_GROUPS = (
+    (
+        "fashion_core",
+        (
+            CATEGORY_EXPANSION_SURFACES[0],
+            CATEGORY_EXPANSION_SURFACES[1],
+            CATEGORY_EXPANSION_SURFACES[2],
+        ),
+    ),
+    (
+        "fashion_segments",
+        (
+            CATEGORY_EXPANSION_SURFACES[3],
+            CATEGORY_EXPANSION_SURFACES[4],
+            CATEGORY_EXPANSION_SURFACES[5],
+        ),
+    ),
+    (
+        "grocery_core",
+        (
+            CATEGORY_EXPANSION_SURFACES[6],
+            CATEGORY_EXPANSION_SURFACES[7],
+            CATEGORY_EXPANSION_SURFACES[8],
+        ),
+    ),
+    (
+        "grocery_segments",
+        (
+            CATEGORY_EXPANSION_SURFACES[9],
+            CATEGORY_EXPANSION_SURFACES[10],
+            CATEGORY_EXPANSION_SURFACES[11],
+        ),
+    ),
+)
+
+
 PRIORITY_SURFACES = [
 
     ("limited_time", BASE + "/s?k=" + quote_plus("limited time deals")),
@@ -176,6 +228,7 @@ class AmazonSource:
         self.last_request_at = 0.0
         self.min_gap = 2.0
         self._radar_rotation = 0
+        self._category_rotation = 0
 
     async def _wait(self):
         wait = (
@@ -756,6 +809,28 @@ class AmazonSource:
                         f"{url}{separator}page=2",
                     )
                 )
+
+        category_index = (
+            int(getattr(self, "_category_rotation", 0))
+            % len(CATEGORY_ROTATION_GROUPS)
+        )
+
+        category_name, category_group = CATEGORY_ROTATION_GROUPS[
+            category_index
+        ]
+
+        self._category_rotation = category_index + 1
+
+        print(
+            "🛍️ AMAZON CATEGORY ROTATION",
+            category_name,
+            flush=True,
+        )
+
+        # Category expansion is deliberately rotated so it improves
+        # vertical coverage without multiplying every normal scan.
+        for name, url in category_group:
+            expanded.append((name, url))
 
         async with httpx.AsyncClient() as client:
             for name, url in expanded:
