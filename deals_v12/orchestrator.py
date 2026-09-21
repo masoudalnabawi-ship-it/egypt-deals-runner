@@ -18,9 +18,45 @@ class V12Orchestrator:
         reopened_count = 0
 
         for deal in items:
+            meta = deal.metadata or {}
+
+            is_anomaly = bool(
+                meta.get("price_anomaly")
+            )
+
+            is_promo = bool(
+                str(
+                    meta.get("promo_text") or ""
+                ).strip()
+            )
+
+            discount = float(
+                deal.discount_percent or 0
+            )
+
+            # Ultra priority ladder:
+            # 1) verified price anomaly
+            # 2) 90%+ discount
+            # 3) 80-89.99%
+            # 4) 70-79.99%
+            # 5) strong promo
+            # 6) remaining radar hits
+            if is_anomaly:
+                priority = 1000
+            elif discount >= 90:
+                priority = 990
+            elif discount >= 80:
+                priority = 980
+            elif discount >= 70:
+                priority = 970
+            elif is_promo:
+                priority = 900
+            else:
+                priority = 850
+
             result = self.queue.enqueue(
                 deal,
-                priority=1000,
+                priority=priority,
             )
 
             if result == "new":
