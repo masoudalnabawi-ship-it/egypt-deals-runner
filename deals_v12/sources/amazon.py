@@ -101,6 +101,29 @@ PROMO_RADAR_SURFACES = (
     ),
 )
 
+ULTRA_PERCENTAGE_RADAR = (
+    (
+        "radar_90off",
+        BASE + "/s?k=" + quote_plus("90% off deals"),
+    ),
+    (
+        "radar_80off",
+        BASE + "/s?k=" + quote_plus("80% off deals"),
+    ),
+    (
+        "radar_70off",
+        BASE + "/s?k=" + quote_plus("70% off deals"),
+    ),
+    (
+        "radar_60off",
+        BASE + "/s?k=" + quote_plus("60% off deals"),
+    ),
+    (
+        "radar_50off",
+        BASE + "/s?k=" + quote_plus("50% off deals"),
+    ),
+)
+
 FAST_RADAR_SURFACES = (
     (
         "radar_70off",
@@ -488,11 +511,14 @@ class AmazonSource:
         """
         found = {}
 
+        radar_surfaces = (
+            *ULTRA_PERCENTAGE_RADAR,
+            *FAST_RADAR_SURFACES,
+            *PROMO_RADAR_SURFACES,
+        )
+
         async with httpx.AsyncClient() as client:
-            for name, url in (
-                *FAST_RADAR_SURFACES,
-                *PROMO_RADAR_SURFACES,
-            ):
+            for name, url in radar_surfaces:
                 try:
                     items = await self.scan_surface(
                         client,
