@@ -23,6 +23,34 @@ jobs:
         run: |
           python - <<'PY'
           from playwright.sync_api import sync_playwright
+          import urllib.request
+          import urllib.error
+
+          print("=== RAW HTTP DIAGNOSTIC ===")
+          test_url = "https://www.amazon.eg/s?k=electronics+deals"
+          req = urllib.request.Request(
+              test_url,
+              headers={
+                  "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/140.0.0.0 Safari/537.36"
+              },
+          )
+          try:
+              r = urllib.request.urlopen(req, timeout=20)
+              print("STATUS =", r.status)
+              print("FINAL_URL =", r.geturl())
+              print("CONTENT_TYPE =", r.headers.get("Content-Type"))
+              print("CONTENT_DISPOSITION =", r.headers.get("Content-Disposition"))
+              print("LOCATION =", r.headers.get("Location"))
+          except urllib.error.HTTPError as e:
+              print("STATUS =", e.code)
+              print("FINAL_URL =", e.geturl())
+              print("CONTENT_TYPE =", e.headers.get("Content-Type"))
+              print("CONTENT_DISPOSITION =", e.headers.get("Content-Disposition"))
+              print("LOCATION =", e.headers.get("Location"))
+          except Exception as e:
+              print("RAW_HTTP_ERROR =", repr(e))
+
+          print("=== PLAYWRIGHT DIAGNOSTIC ===")
 
           tests = [
               ("ELECTRONICS", "https://www.amazon.eg/s?k=electronics+deals"),
