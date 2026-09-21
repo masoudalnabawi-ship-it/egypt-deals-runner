@@ -23,8 +23,8 @@ jobs:
       V12_AMAZON_RADAR_INTERVAL: "25"
       V12_AMAZON_SCAN_INTERVAL: "45"
       V12_LOOP_INTERVAL: "10"
-      V12_VERIFY_LIMIT: "10"
-      V12_REVIEW_LIMIT: "5"
+      V12_VERIFY_LIMIT: "8"
+      V12_REVIEW_LIMIT: "10"
 
     steps:
       - name: Checkout V12
