@@ -68,6 +68,24 @@ def init_db():
 
             CREATE INDEX IF NOT EXISTS idx_v12_price_history
             ON price_history(fingerprint, seen_at);
+
+            CREATE TABLE IF NOT EXISTS surface_stats (
+                store TEXT NOT NULL,
+                surface TEXT NOT NULL,
+
+                scans INTEGER NOT NULL DEFAULT 0,
+                fetched INTEGER NOT NULL DEFAULT 0,
+                candidates INTEGER NOT NULL DEFAULT 0,
+
+                ultra_hits INTEGER NOT NULL DEFAULT 0,
+                last_scan_at INTEGER NOT NULL DEFAULT 0,
+                last_latency_ms INTEGER NOT NULL DEFAULT 0,
+
+                PRIMARY KEY (store, surface)
+            );
+
+            CREATE INDEX IF NOT EXISTS idx_v12_surface_stats
+            ON surface_stats(store, candidates, ultra_hits);
             """
         )
 
