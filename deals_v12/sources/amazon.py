@@ -8,6 +8,7 @@ import httpx
 from bs4 import BeautifulSoup
 
 from ..models import DealCandidate
+from ..state import connect
 
 
 BASE = "https://www.amazon.eg"
@@ -367,21 +368,118 @@ class AmazonSource:
 
         return list(results.values())
 
+    def _record_surface_stats(
+        self,
+        surface,
+        fetched,
+        candidates,
+        ultra_hits,
+        latency_ms,
+    ):
+        try:
+            with connect() as con:
+                con.execute(
+                    """
+                    INSERT INTO surface_stats(
+                        store,
+                        surface,
+                        scans,
+                        fetched,
+                        candidates,
+                        ultra_hits,
+                        last_scan_at,
+                        last_latency_ms
+                    )
+                    VALUES(
+                        'amazon',
+                        ?,
+                        1,
+                        ?,
+                        ?,
+                        ?,
+                        CAST(strftime('%s','now') AS INTEGER),
+                        ?
+                    )
+                    ON CONFLICT(store, surface)
+                    DO UPDATE SET
+                        scans = scans + 1,
+                        fetched = fetched + excluded.fetched,
+                        candidates = candidates + excluded.candidates,
+                        ultra_hits = ultra_hits + excluded.ultra_hits,
+                        last_scan_at = excluded.last_scan_at,
+                        last_latency_ms = excluded.last_latency_ms
+                    """,
+                    (
+                        surface,
+                        int(fetched),
+                        int(candidates),
+                        int(ultra_hits),
+                        int(latency_ms),
+                    ),
+                )
+                con.commit()
+        except Exception:
+            # Metrics must never break deal discovery.
+            pass
+
     async def scan_surface(
         self,
         client,
         name,
         url,
     ):
+        started = time.monotonic()
+
         body = await self.fetch(
             client,
             url,
         )
 
-        return self.parse_items(
+        items = self.parse_items(
             body,
             surface=name,
         )
+
+        candidates = [
+            deal
+            for deal in items
+            if (
+                (
+                    deal.old_price
+                    and deal.old_price > deal.current_price
+                    and deal.discount_percent >= 5
+                )
+                or bool(
+                    (deal.metadata or {}).get("promo_text")
+                )
+                or bool(
+                    (deal.metadata or {}).get("price_anomaly")
+                )
+            )
+        ]
+
+        ultra_hits = [
+            deal
+            for deal in items
+            if (
+                bool(
+                    (deal.metadata or {}).get("price_anomaly")
+                )
+                or deal.discount_percent >= 70
+            )
+        ]
+
+        self._record_surface_stats(
+            name,
+            fetched=len(items),
+            candidates=len(candidates),
+            ultra_hits=len(ultra_hits),
+            latency_ms=int(
+                (time.monotonic() - started) * 1000
+            ),
+        )
+
+        return items
 
     async def scan_fast_radar_once(self):
         """
