@@ -633,6 +633,166 @@ class AmazonSource:
             # Metrics must never break deal discovery.
             pass
 
+    def _apply_historical_anomaly(self, items):
+        """
+        Detect severe price collapses even when Amazon's current
+        search card does not expose an old/reference price.
+        """
+        if not items:
+            return items
+
+        try:
+            with connect() as con:
+                for deal in items:
+                    rows = con.execute(
+                        """
+                        SELECT current_price, old_price
+                        FROM price_history
+                        WHERE fingerprint=?
+                        ORDER BY seen_at DESC
+                        LIMIT 30
+                        """,
+                        (deal.fingerprint,),
+                    ).fetchall()
+
+                    historical_prices = []
+
+                    for row in rows:
+                        current_seen = float(
+                            row["current_price"] or 0
+                        )
+                        old_seen = float(
+                            row["old_price"] or 0
+                        )
+
+                        if current_seen > 0:
+                            historical_prices.append(
+                                current_seen
+                            )
+
+                        if old_seen > 0:
+                            historical_prices.append(
+                                old_seen
+                            )
+
+                    previous_price = (
+                        max(historical_prices)
+                        if historical_prices
+                        else 0.0
+                    )
+
+                    meta = deal.metadata or {}
+
+                    historical_anomaly = False
+                    anomaly_threshold = float(
+                        meta.get("anomaly_threshold")
+                        or 0
+                    )
+
+                    if (
+                        previous_price >= 1000
+                        and deal.current_price > 0
+                    ):
+                        ratio = (
+                            deal.current_price
+                            / previous_price
+                        )
+
+                        # Critical historical collapse:
+                        # current price <= 20% of the previous observed price.
+                        if ratio <= 0.20:
+                            historical_anomaly = True
+                            anomaly_threshold = (
+                                previous_price * 0.20
+                            )
+
+                    if historical_anomaly:
+                        meta["price_anomaly"] = True
+                        meta["anomaly_category"] = (
+                            "historical_price_collapse"
+                        )
+                        meta["anomaly_threshold"] = float(
+                            anomaly_threshold
+                        )
+                        meta["historical_reference_price"] = (
+                            float(previous_price)
+                        )
+                        meta["anomaly_source"] = (
+                            "price_history"
+                        )
+
+                    deal.metadata = meta
+
+                    latest = con.execute(
+                        """
+                        SELECT current_price, old_price
+                        FROM price_history
+                        WHERE fingerprint=?
+                        ORDER BY seen_at DESC
+                        LIMIT 1
+                        """,
+                        (deal.fingerprint,),
+                    ).fetchone()
+
+                    current_value = float(
+                        deal.current_price or 0
+                    )
+
+                    old_value = (
+                        float(deal.old_price)
+                        if deal.old_price is not None
+                        else 0.0
+                    )
+
+                    latest_current = (
+                        float(latest["current_price"] or 0)
+                        if latest
+                        else -1.0
+                    )
+
+                    latest_old = (
+                        float(latest["old_price"] or 0)
+                        if latest
+                        else -1.0
+                    )
+
+                    if (
+                        not latest
+                        or current_value != latest_current
+                        or old_value != latest_old
+                    ):
+                        con.execute(
+                            """
+                            INSERT INTO price_history(
+                                fingerprint,
+                                store,
+                                current_price,
+                                old_price,
+                                seen_at
+                            )
+                            VALUES(?,?,?,?,?)
+                            """,
+                            (
+                                deal.fingerprint,
+                                deal.store.lower(),
+                                current_value,
+                                (
+                                    old_value
+                                    if old_value > 0
+                                    else None
+                                ),
+                                int(time.time()),
+                            ),
+                        )
+
+                con.commit()
+
+        except Exception:
+            # Historical intelligence must never break discovery.
+            pass
+
+        return items
+
     async def scan_surface(
         self,
         client,
@@ -649,6 +809,10 @@ class AmazonSource:
         items = self.parse_items(
             body,
             surface=name,
+        )
+
+        items = self._apply_historical_anomaly(
+            items
         )
 
         candidates = [

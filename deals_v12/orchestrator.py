@@ -64,6 +64,10 @@ class V12Orchestrator:
                 priority = 970
             elif is_flash:
                 priority = 960
+            elif best_discount >= 50:
+                # Any genuine Amazon 50%+ deal is Ultra,
+                # regardless of the discovery surface.
+                priority = 965
             elif is_promo:
                 priority = 900
             else:
