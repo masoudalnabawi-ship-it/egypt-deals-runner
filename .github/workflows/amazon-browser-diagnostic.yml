@@ -6,6 +6,9 @@ on:
 jobs:
   test:
     runs-on: ubuntu-latest
+    env:
+      CLOUD_API_URL: ${{ secrets.CLOUD_API_URL }}
+      CLOUD_API_KEY: ${{ secrets.CLOUD_API_KEY }}
 
     steps:
       - uses: actions/checkout@v4
@@ -49,6 +52,41 @@ jobs:
               print("LOCATION =", e.headers.get("Location"))
           except Exception as e:
               print("RAW_HTTP_ERROR =", repr(e))
+
+          print("=== CLOUD PROXY DIAGNOSTIC ===")
+          import os
+          import urllib.parse
+
+          cloud_url = os.getenv("CLOUD_API_URL", "").strip().rstrip("/")
+          cloud_key = os.getenv("CLOUD_API_KEY", "").strip()
+
+          if cloud_url.endswith("/api/deals"):
+              cloud_url = cloud_url[:-len("/api/deals")]
+
+          proxy_url = cloud_url + "/api/store-proxy?" + urllib.parse.urlencode(
+              {"url": test_url}
+          )
+
+          try:
+              proxy_req = urllib.request.Request(
+                  proxy_url,
+                  headers={
+                      "x-api-key": cloud_key,
+                      "Accept": "text/html",
+                  },
+              )
+              pr = urllib.request.urlopen(proxy_req, timeout=30)
+              data = pr.read()
+              print("PROXY_STATUS =", pr.status)
+              print("PROXY_CONTENT_TYPE =", pr.headers.get("Content-Type"))
+              print("PROXY_BYTES =", len(data))
+              print("PROXY_HAS_ASIN =", b"data-asin" in data)
+          except urllib.error.HTTPError as e:
+              print("PROXY_STATUS =", e.code)
+              print("PROXY_CONTENT_TYPE =", e.headers.get("Content-Type"))
+              print("PROXY_ERROR =", e.read(500).decode("utf-8", errors="replace"))
+          except Exception as e:
+              print("PROXY_ERROR =", repr(e))
 
           print("=== PLAYWRIGHT DIAGNOSTIC ===")
 
