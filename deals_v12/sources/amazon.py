@@ -40,6 +40,92 @@ CATEGORY_EXPANSION_SURFACES = (
     ("coffee_tea", BASE + "/s?k=" + quote_plus("coffee tea deals")),
 )
 
+DEPARTMENT_EXPANSION_SURFACES = (
+    # Fashion
+    ("dept_tshirts", BASE + "/s?k=" + quote_plus("t shirts clothing deals")),
+    ("dept_shirts", BASE + "/s?k=" + quote_plus("shirts clothing deals")),
+    ("dept_jeans", BASE + "/s?k=" + quote_plus("jeans denim deals")),
+    ("dept_pants", BASE + "/s?k=" + quote_plus("pants trousers deals")),
+    ("dept_dresses", BASE + "/s?k=" + quote_plus("dresses women fashion deals")),
+    ("dept_sneakers", BASE + "/s?k=" + quote_plus("sneakers shoes deals")),
+    ("dept_shoes", BASE + "/s?k=" + quote_plus("shoes footwear deals")),
+    ("dept_bags", BASE + "/s?k=" + quote_plus("bags handbags deals")),
+    ("dept_watches", BASE + "/s?k=" + quote_plus("watches deals")),
+    ("dept_kids_clothing", BASE + "/s?k=" + quote_plus("kids clothing deals")),
+
+    # Grocery / supermarket
+    ("dept_rice", BASE + "/s?k=" + quote_plus("rice grocery deals")),
+    ("dept_pasta", BASE + "/s?k=" + quote_plus("pasta grocery deals")),
+    ("dept_oil", BASE + "/s?k=" + quote_plus("cooking oil grocery deals")),
+    ("dept_canned", BASE + "/s?k=" + quote_plus("canned food grocery deals")),
+    ("dept_chocolate", BASE + "/s?k=" + quote_plus("chocolate sweets deals")),
+    ("dept_biscuits", BASE + "/s?k=" + quote_plus("biscuits cookies deals")),
+    ("dept_coffee", BASE + "/s?k=" + quote_plus("coffee deals")),
+    ("dept_tea", BASE + "/s?k=" + quote_plus("tea deals")),
+    ("dept_juice", BASE + "/s?k=" + quote_plus("juice drinks deals")),
+    ("dept_water", BASE + "/s?k=" + quote_plus("water beverages deals")),
+    ("dept_detergent", BASE + "/s?k=" + quote_plus("detergent cleaning products deals")),
+)
+
+DEPARTMENT_ROTATION_GROUPS = (
+    (
+        "fashion_clothing_deep",
+        (
+            DEPARTMENT_EXPANSION_SURFACES[0],
+            DEPARTMENT_EXPANSION_SURFACES[1],
+            DEPARTMENT_EXPANSION_SURFACES[2],
+        ),
+    ),
+    (
+        "fashion_bottoms",
+        (
+            DEPARTMENT_EXPANSION_SURFACES[3],
+            DEPARTMENT_EXPANSION_SURFACES[4],
+            DEPARTMENT_EXPANSION_SURFACES[5],
+        ),
+    ),
+    (
+        "fashion_accessories",
+        (
+            DEPARTMENT_EXPANSION_SURFACES[6],
+            DEPARTMENT_EXPANSION_SURFACES[7],
+            DEPARTMENT_EXPANSION_SURFACES[8],
+        ),
+    ),
+    (
+        "fashion_kids",
+        (
+            DEPARTMENT_EXPANSION_SURFACES[9],
+            DEPARTMENT_EXPANSION_SURFACES[10],
+            DEPARTMENT_EXPANSION_SURFACES[11],
+        ),
+    ),
+    (
+        "grocery_basics",
+        (
+            DEPARTMENT_EXPANSION_SURFACES[12],
+            DEPARTMENT_EXPANSION_SURFACES[13],
+            DEPARTMENT_EXPANSION_SURFACES[14],
+        ),
+    ),
+    (
+        "grocery_pantry",
+        (
+            DEPARTMENT_EXPANSION_SURFACES[15],
+            DEPARTMENT_EXPANSION_SURFACES[16],
+            DEPARTMENT_EXPANSION_SURFACES[17],
+        ),
+    ),
+    (
+        "grocery_drinks",
+        (
+            DEPARTMENT_EXPANSION_SURFACES[18],
+            DEPARTMENT_EXPANSION_SURFACES[19],
+            DEPARTMENT_EXPANSION_SURFACES[20],
+        ),
+    ),
+)
+
 CATEGORY_ROTATION_GROUPS = (
     (
         "fashion_core",
@@ -191,13 +277,6 @@ FAST_RADAR_SURFACES = (
 
 RADAR_ROTATION_GROUPS = (
     (
-        "lower_percentage",
-        (
-            ULTRA_PERCENTAGE_RADAR[3],
-            ULTRA_PERCENTAGE_RADAR[4],
-        ),
-    ),
-    (
         "promo_primary",
         (
             PROMO_RADAR_SURFACES[0],
@@ -229,6 +308,7 @@ class AmazonSource:
         self.min_gap = 2.0
         self._radar_rotation = 0
         self._category_rotation = 0
+        self._department_rotation = 0
 
     async def _wait(self):
         wait = (
@@ -714,10 +794,15 @@ class AmazonSource:
         found = {}
 
         # Core ultra bands run every radar cycle.
+        # All 50%+ percentage bands are always scanned.
+        # This guarantees that lower ultra bands are never starved
+        # by category or promotional discovery.
         core = (
             ULTRA_PERCENTAGE_RADAR[0],
             ULTRA_PERCENTAGE_RADAR[1],
             ULTRA_PERCENTAGE_RADAR[2],
+            ULTRA_PERCENTAGE_RADAR[3],
+            ULTRA_PERCENTAGE_RADAR[4],
         )
 
         # Rotate the lower bands and promo searches so we keep broad
@@ -830,6 +915,28 @@ class AmazonSource:
         # Category expansion is deliberately rotated so it improves
         # vertical coverage without multiplying every normal scan.
         for name, url in category_group:
+            expanded.append((name, url))
+
+        department_index = (
+            int(getattr(self, "_department_rotation", 0))
+            % len(DEPARTMENT_ROTATION_GROUPS)
+        )
+
+        department_name, department_group = DEPARTMENT_ROTATION_GROUPS[
+            department_index
+        ]
+
+        self._department_rotation = department_index + 1
+
+        print(
+            "🧩 AMAZON DEPARTMENT ROTATION",
+            department_name,
+            flush=True,
+        )
+
+        # Deep department discovery is also rotated. This adds
+        # only three specialized queries per normal scan.
+        for name, url in department_group:
             expanded.append((name, url))
 
         async with httpx.AsyncClient() as client:
