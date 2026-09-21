@@ -24,7 +24,6 @@ HEADERS = {
 
 
 PRIORITY_SURFACES = [
-    ("deals", BASE + "/deals"),
 
     ("limited_time", BASE + "/s?k=" + quote_plus("limited time deals")),
     ("sale", BASE + "/s?k=" + quote_plus("sale deals")),
@@ -102,7 +101,6 @@ PROMO_RADAR_SURFACES = (
 )
 
 FAST_RADAR_SURFACES = (
-    ("radar_deals", BASE + "/deals"),
     (
         "radar_70off",
         BASE + "/s?k=" + quote_plus("70% off deals"),
