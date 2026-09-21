@@ -428,8 +428,24 @@ class AmazonSource:
     async def scan_once(self):
         found = {}
 
+        # Deep discovery: inspect multiple result pages for each surface.
+        # Keep the first page as the primary source, then add page 2.
+        expanded = []
+
+        for name, url in PRIORITY_SURFACES:
+            expanded.append((name, url))
+
+            if "/s?" in url:
+                separator = "&" if "?" in url else "?"
+                expanded.append(
+                    (
+                        f"{name}_page2",
+                        f"{url}{separator}page=2",
+                    )
+                )
+
         async with httpx.AsyncClient() as client:
-            for name, url in PRIORITY_SURFACES:
+            for name, url in expanded:
                 try:
                     items = await self.scan_surface(
                         client,
