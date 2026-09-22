@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 import re
 import time
 from urllib.parse import quote_plus
@@ -325,38 +326,82 @@ class AmazonSource:
     async def fetch(self, client, url):
         await self._wait()
 
-        r = await client.get(
-            url,
-            headers=HEADERS,
-            timeout=20,
-            follow_redirects=True,
-        )
+        direct_error = None
 
-        body = r.text or ""
-        low = body.lower()
-
-        protected = (
-            "captcha" in low
-            or "robot check" in low
-            or "enter the characters you see below" in low
-        )
-
-        if r.status_code in (403, 429):
-            raise RuntimeError(
-                f"amazon_http_{r.status_code}"
+        try:
+            r = await client.get(
+                url,
+                headers=HEADERS,
+                timeout=20,
+                follow_redirects=True,
             )
 
-        if protected:
-            raise RuntimeError(
+            body = r.text or ""
+            low = body.lower()
+
+            protected = (
+                "captcha" in low
+                or "robot check" in low
+                or "enter the characters you see below" in low
+            )
+
+            if r.status_code == 200 and not protected:
+                return body
+
+            direct_error = (
                 "amazon_protection_page"
+                if protected
+                else f"amazon_http_{r.status_code}"
             )
 
-        if r.status_code != 200:
+        except (httpx.TimeoutException, httpx.NetworkError) as exc:
+            direct_error = f"amazon_direct_network_{type(exc).__name__}"
+
+        cloud_url = os.environ.get("CLOUD_API_URL", "").strip()
+        cloud_key = os.environ.get("CLOUD_API_KEY", "").strip()
+
+        if not cloud_url or not cloud_key:
+            raise RuntimeError(direct_error or "amazon_direct_failed")
+
+        cloud_url = cloud_url.rstrip("/")
+        if cloud_url.endswith("/api/deals"):
+            cloud_url = cloud_url[:-len("/api/deals")]
+
+        proxy_url = cloud_url + "/api/store-proxy"
+
+        try:
+            proxy = await client.get(
+                proxy_url,
+                params={"url": url},
+                headers={
+                    "x-api-key": cloud_key,
+                    "Accept": "text/html",
+                },
+                timeout=30,
+                follow_redirects=True,
+            )
+        except (httpx.TimeoutException, httpx.NetworkError) as exc:
             raise RuntimeError(
-                f"amazon_http_{r.status_code}"
-            )
+                f"amazon_proxy_network_{type(exc).__name__}"
+            ) from exc
 
-        return body
+        proxy_body = proxy.text or ""
+        proxy_low = proxy_body.lower()
+
+        proxy_protected = (
+            "captcha" in proxy_low
+            or "robot check" in proxy_low
+            or "enter the characters you see below" in proxy_low
+        )
+
+        if proxy.status_code != 200:
+            raise RuntimeError(f"amazon_proxy_http_{proxy.status_code}")
+
+        if proxy_protected:
+            raise RuntimeError("amazon_proxy_protection_page")
+
+        print(f"☁️ AMAZON CLOUD PROXY OK | {url}")
+        return proxy_body
 
     def parse_items(self, body, surface="amazon"):
         soup = BeautifulSoup(
