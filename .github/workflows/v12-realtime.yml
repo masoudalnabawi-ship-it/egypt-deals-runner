@@ -17,6 +17,8 @@ jobs:
 
     env:
       TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+      CLOUD_API_URL: ${{ secrets.CLOUD_API_URL }}
+      CLOUD_API_KEY: ${{ secrets.CLOUD_API_KEY }}
       AMAZON_NORMAL_REVIEW_CHAT_ID: ${{ secrets.AMAZON_NORMAL_REVIEW_CHAT_ID }}
       AMAZON_REVIEW_GROUP_ID: ${{ secrets.AMAZON_REVIEW_GROUP_ID }}
 
