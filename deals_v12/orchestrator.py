@@ -197,6 +197,101 @@ class V12Orchestrator:
 
             raise
 
+    async def verify_amazon_ultra_batch(self, limit=4):
+        import json
+        import httpx
+
+        from .models import DealCandidate
+        from .verification import AmazonVerifier
+
+        rows = [
+            row
+            for row in self.queue.claim_ultra_due(
+                limit=max(1, min(4, int(limit)))
+            )
+            if row.get("store") == "amazon"
+        ]
+
+        verifier = AmazonVerifier()
+
+        verified = 0
+        invalid = 0
+        retried = 0
+
+        async with httpx.AsyncClient() as client:
+            for row in rows:
+                fp = row["fingerprint"]
+
+                try:
+                    data = json.loads(row["payload"])
+
+                    deal = DealCandidate(
+                        store=data["store"],
+                        external_id=data["external_id"],
+                        title=data["title"],
+                        url=data["url"],
+                        current_price=float(
+                            data["current_price"]
+                        ),
+                        old_price=data.get("old_price"),
+                        image_url=data.get(
+                            "image_url",
+                            "",
+                        ),
+                        discovered_at=int(
+                            data.get("discovered_at")
+                            or 0
+                        ),
+                        metadata=data.get(
+                            "metadata"
+                        ) or {},
+                    )
+
+                    result = await verifier.verify(
+                        client,
+                        deal,
+                    )
+
+                    if result.get("verified"):
+                        self.queue.mark_verified(
+                            fp,
+                            result,
+                        )
+                        verified += 1
+                    else:
+                        reason = str(
+                            result.get("reason")
+                            or "verification_failed"
+                        )
+
+                        if reason == "no_live_price":
+                            self.queue.mark_retry(
+                                fp,
+                                reason,
+                            )
+                            retried += 1
+                        else:
+                            self.queue.mark_invalid(
+                                fp,
+                                reason,
+                            )
+                            invalid += 1
+
+                except Exception as exc:
+                    self.queue.mark_retry(
+                        fp,
+                        f"{type(exc).__name__}: {exc}",
+                    )
+                    retried += 1
+
+        return {
+            "processed": len(rows),
+            "verified": verified,
+            "invalid": invalid,
+            "retry": retried,
+            "queue": self.queue.stats(),
+        }
+
     async def verify_amazon_batch(self, limit=6):
         import json
         import httpx

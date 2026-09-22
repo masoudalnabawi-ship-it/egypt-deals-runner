@@ -59,7 +59,19 @@ def row_to_deal(row):
     )
 
 
-async def send_verified_reviews(core, reviewer):
+async def send_verified_reviews(
+    core,
+    reviewer,
+    *,
+    use_lock=True,
+):
+    if use_lock:
+        async with REVIEW_LOCK:
+            return await send_verified_reviews(
+                core,
+                reviewer,
+                use_lock=False,
+            )
     ultra_limit = max(
         1,
         min(
@@ -163,6 +175,8 @@ async def send_verified_reviews(core, reviewer):
     }
 
 
+REVIEW_LOCK = asyncio.Lock()
+
 STOP_REQUESTED = False
 
 
@@ -194,6 +208,47 @@ def _checkpoint_v12_db():
             repr(exc),
             flush=True,
         )
+
+
+async def amazon_ultra_delivery_loop(core, reviewer):
+    print(
+        "🚨 V12 AMAZON ULTRA DELIVERY LOOP STARTED",
+        flush=True,
+    )
+
+    while not STOP_REQUESTED:
+        try:
+            verify = await core.verify_amazon_ultra_batch(
+                limit=4
+            )
+
+            if verify["processed"]:
+                print(
+                    "🚨 V12 ULTRA VERIFY",
+                    verify,
+                    flush=True,
+                )
+
+                review = await send_verified_reviews(
+                    core,
+                    reviewer,
+                )
+
+                if review["sent"] or review["retry"]:
+                    print(
+                        "🚨 V12 ULTRA REVIEWS",
+                        review,
+                        flush=True,
+                    )
+
+        except Exception as exc:
+            print(
+                "⚠️ V12 AMAZON ULTRA DELIVERY ERROR",
+                repr(exc),
+                flush=True,
+            )
+
+        await asyncio.sleep(2)
 
 
 async def amazon_ultra_loop(core):
@@ -260,6 +315,13 @@ async def main():
 
     ultra_task = asyncio.create_task(
         amazon_ultra_loop(core)
+    )
+
+    ultra_delivery_task = asyncio.create_task(
+        amazon_ultra_delivery_loop(
+            core,
+            reviewer,
+        )
     )
 
     last_scan = 0.0
@@ -369,6 +431,11 @@ async def main():
 
     try:
         await ultra_task
+    except asyncio.CancelledError:
+        pass
+
+    try:
+        await ultra_delivery_task
     except asyncio.CancelledError:
         pass
 

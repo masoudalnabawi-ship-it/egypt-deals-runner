@@ -201,6 +201,53 @@ class DealQueue:
                 else "updated"
             )
 
+    def claim_ultra_due(self, limit=4):
+        now = int(time.time())
+
+        with connect() as con:
+            con.execute("BEGIN IMMEDIATE")
+
+            rows = con.execute(
+                """
+                SELECT *
+                FROM queue_items
+                WHERE status IN ('pending','retry')
+                  AND next_attempt_at <= ?
+                  AND priority >= 960
+                ORDER BY priority DESC,
+                         discovered_at ASC
+                LIMIT ?
+                """,
+                (now, int(limit)),
+            ).fetchall()
+
+            claimed = []
+
+            for row in rows:
+                changed = con.execute(
+                    """
+                    UPDATE queue_items
+                    SET status='processing',
+                        attempts=attempts+1,
+                        updated_at=?
+                    WHERE fingerprint=?
+                      AND status IN ('pending','retry')
+                    """,
+                    (now, row["fingerprint"]),
+                ).rowcount
+
+                if changed:
+                    item = dict(row)
+                    item["status"] = "processing"
+                    item["attempts"] = int(
+                        item.get("attempts") or 0
+                    ) + 1
+                    claimed.append(item)
+
+            con.commit()
+
+        return claimed
+
     def get_ultra_due(self, limit=4):
         now = int(time.time())
 
