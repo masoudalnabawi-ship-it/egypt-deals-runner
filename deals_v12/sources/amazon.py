@@ -304,6 +304,46 @@ RADAR_ROTATION_GROUPS = (
 class AmazonSource:
     name = "amazon"
 
+    @staticmethod
+    def _is_accessory_like(title):
+        """
+        Prevent obvious accessories/replacement parts from being promoted
+        as catastrophic price collapses based only on a crossed-out price.
+
+        This does NOT reject the deal itself. A genuine >=50% discount can
+        still be routed normally to Ultra.
+        """
+        text = str(title or "").lower()
+
+        accessory_terms = (
+            "remote control",
+            "replacement remote",
+            "replacement for",
+            "ريموت",
+            "ريموت كنترول",
+            "بديل لـ",
+            "بديل ل",
+            "case for",
+            "cover for",
+            "حافظة",
+            "جراب",
+            "screen protector",
+            "واقي شاشة",
+            "cable for",
+            "كابل",
+            "adapter for",
+            "محول",
+            "charger for",
+            "شاحن",
+            "stand for",
+            "حامل",
+            "strap for",
+            "replacement part",
+            "spare part",
+        )
+
+        return any(term in text for term in accessory_terms)
+
     def __init__(self):
         self.last_request_at = 0.0
         self.min_gap = 2.0
@@ -590,6 +630,7 @@ class AmazonSource:
                 if (
                     anomaly_ratio_limit > 0
                     and price_ratio <= anomaly_ratio_limit
+                    and not self._is_accessory_like(title)
                 ):
                     price_anomaly = True
                     anomaly_category = "verified_price_collapse"
@@ -737,6 +778,7 @@ class AmazonSource:
                     if (
                         previous_price >= 1000
                         and deal.current_price > 0
+                        and not self._is_accessory_like(deal.title)
                     ):
                         ratio = (
                             deal.current_price

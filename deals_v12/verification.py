@@ -163,6 +163,46 @@ class AmazonVerifier:
             (deal.metadata or {}).get("price_anomaly")
         )
 
+        # Defense-in-depth:
+        # obvious accessories/replacement parts must not be verified
+        # as catastrophic price anomalies merely from a crossed-out price.
+        # They can still continue through normal discount verification.
+        accessory_terms = (
+            "remote control",
+            "replacement remote",
+            "replacement for",
+            "ريموت",
+            "ريموت كنترول",
+            "بديل لـ",
+            "بديل ل",
+            "case for",
+            "cover for",
+            "حافظة",
+            "جراب",
+            "screen protector",
+            "واقي شاشة",
+            "cable for",
+            "كابل",
+            "adapter for",
+            "محول",
+            "charger for",
+            "شاحن",
+            "stand for",
+            "حامل",
+            "strap for",
+            "replacement part",
+            "spare part",
+        )
+
+        title_lower = str(deal.title or "").lower()
+        accessory_like = any(
+            term in title_lower
+            for term in accessory_terms
+        )
+
+        if accessory_like:
+            incoming_anomaly = False
+
         anomaly_threshold = float(
             (deal.metadata or {}).get("anomaly_threshold")
             or 0
