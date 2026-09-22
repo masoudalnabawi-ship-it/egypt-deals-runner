@@ -12,6 +12,10 @@ from deals_v12.orchestrator import V12Orchestrator
 from deals_v12.review import TelegramReviewer
 
 
+ULTRA_RADAR_INTERVAL = int(
+    os.getenv("V12_AMAZON_ULTRA_INTERVAL", "5")
+)
+
 RADAR_INTERVAL = int(
     os.getenv("V12_AMAZON_RADAR_INTERVAL", "25")
 )
@@ -192,6 +196,51 @@ def _checkpoint_v12_db():
         )
 
 
+async def amazon_ultra_loop(core):
+    """
+    Independent emergency Amazon radar.
+
+    It must never wait for the broad scan, verification,
+    screenshots, or Telegram review delivery.
+    """
+    print(
+        "⚡ V12 AMAZON ULTRA FAST LOOP STARTED",
+        flush=True,
+    )
+
+    while not STOP_REQUESTED:
+        started = time.monotonic()
+
+        try:
+            result = await core.scan_amazon_ultra_fast_once()
+
+            if (
+                result["fetched"]
+                or result["new"]
+                or result["reopened"]
+            ):
+                print(
+                    "⚡ V12 AMAZON ULTRA FAST",
+                    result,
+                    f"elapsed={time.monotonic() - started:.1f}s",
+                    flush=True,
+                )
+
+        except Exception as exc:
+            print(
+                "⚠️ V12 AMAZON ULTRA FAST ERROR",
+                repr(exc),
+                flush=True,
+            )
+
+        await asyncio.sleep(ULTRA_RADAR_INTERVAL)
+
+    print(
+        "⚡ V12 AMAZON ULTRA FAST LOOP STOPPED",
+        flush=True,
+    )
+
+
 async def main():
     core = V12Orchestrator()
     reviewer = TelegramReviewer()
@@ -208,6 +257,10 @@ async def main():
             pass
 
     core.queue.recover_stuck()
+
+    ultra_task = asyncio.create_task(
+        amazon_ultra_loop(core)
+    )
 
     last_scan = 0.0
     last_radar = 0.0
@@ -313,6 +366,11 @@ async def main():
         await asyncio.sleep(
             LOOP_INTERVAL
         )
+
+    try:
+        await ultra_task
+    except asyncio.CancelledError:
+        pass
 
     _checkpoint_v12_db()
 

@@ -1036,6 +1036,51 @@ class AmazonSource:
             reverse=True,
         )
 
+    async def scan_ultra_fast_once(self):
+        """
+        Emergency Amazon lane.
+
+        Scan only the strongest percentage surfaces so 70%+
+        deals do not wait behind the broad radar/full scan.
+        """
+        found = {}
+
+        ultra_surfaces = (
+            ULTRA_PERCENTAGE_RADAR[0],  # 90%+
+            ULTRA_PERCENTAGE_RADAR[1],  # 80%+
+            ULTRA_PERCENTAGE_RADAR[2],  # 70%+
+        )
+
+        async with httpx.AsyncClient() as client:
+            for name, url in ultra_surfaces:
+                try:
+                    items = await self.scan_surface(
+                        client,
+                        name,
+                        url,
+                    )
+                except Exception as exc:
+                    print(
+                        "⚠️ AMAZON ULTRA FAST SKIPPED",
+                        name,
+                        repr(exc),
+                        flush=True,
+                    )
+                    continue
+
+                for deal in items:
+                    meta = deal.metadata or {}
+
+                    if (
+                        bool(meta.get("price_anomaly"))
+                        or bool(meta.get("flash_deal"))
+                        or deal.discount_percent >= 70
+                    ):
+                        found[deal.fingerprint] = deal
+
+        return list(found.values())
+
+
     async def scan_fast_radar_once(self):
         """
         Smart high-frequency Amazon radar.

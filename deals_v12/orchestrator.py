@@ -9,11 +9,21 @@ class V12Orchestrator:
     def __init__(self):
         self.health = HealthMonitor()
         self.queue = DealQueue()
+
+        # Separate Amazon clients/state for the emergency lane
+        # and the broader discovery lane. Both feed the same queue.
         self.amazon = AmazonSource()
+        self.amazon_ultra = AmazonSource()
+
+    async def scan_amazon_ultra_fast_once(self):
+        items = await self.amazon_ultra.scan_ultra_fast_once()
+        return self._enqueue_amazon_radar_items(items)
 
     async def scan_amazon_radar_once(self):
         items = await self.amazon.scan_fast_radar_once()
+        return self._enqueue_amazon_radar_items(items)
 
+    def _enqueue_amazon_radar_items(self, items):
         new_count = 0
         reopened_count = 0
 
