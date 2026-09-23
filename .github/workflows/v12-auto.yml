@@ -1,0 +1,84 @@
+name: V12 Amazon Auto
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "7 */5 * * *"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: v12-amazon-auto
+  cancel-in-progress: false
+
+jobs:
+  worker:
+    runs-on: ubuntu-latest
+    timeout-minutes: 330
+
+    env:
+      TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+      CLOUD_API_URL: ${{ secrets.CLOUD_API_URL }}
+      CLOUD_API_KEY: ${{ secrets.CLOUD_API_KEY }}
+      AMAZON_NORMAL_REVIEW_CHAT_ID: ${{ secrets.AMAZON_NORMAL_REVIEW_CHAT_ID }}
+      AMAZON_REVIEW_GROUP_ID: ${{ secrets.AMAZON_REVIEW_GROUP_ID }}
+      V12_AMAZON_RADAR_INTERVAL: "25"
+      V12_AMAZON_SCAN_INTERVAL: "45"
+      V12_LOOP_INTERVAL: "10"
+      V12_VERIFY_LIMIT: "8"
+      V12_REVIEW_LIMIT: "10"
+
+    steps:
+      - name: Checkout V12
+        uses: actions/checkout@v4
+        with:
+          ref: v12-clean-core
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+
+      - name: Restore V12 state
+        uses: actions/cache/restore@v4
+        with:
+          path: |
+            .runtime_state/v12.db
+            .runtime_state/v12.db-wal
+            .runtime_state/v12.db-shm
+            .runtime_state/v12_health.json
+            .runtime_state/v12_seen_ledger.json
+          key: v12-auto-state-${{ github.run_id }}
+          restore-keys: |
+            v12-auto-state-
+            v12-state-
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install httpx beautifulsoup4 playwright pillow arabic-reshaper python-bidi
+          python -m playwright install --with-deps chromium
+
+      - name: Run V12
+        run: |
+          set +e
+          PYTHONPATH=. timeout --signal=TERM 300m python scripts/run_v12.py
+          code=$?
+          if [ "$code" -eq 124 ] || [ "$code" -eq 143 ]; then
+            echo "V12 worker window completed normally"
+            exit 0
+          fi
+          exit "$code"
+
+      - name: Save V12 state
+        if: always()
+        uses: actions/cache/save@v4
+        with:
+          path: |
+            .runtime_state/v12.db
+            .runtime_state/v12.db-wal
+            .runtime_state/v12.db-shm
+            .runtime_state/v12_health.json
+            .runtime_state/v12_seen_ledger.json
+          key: v12-auto-state-${{ github.run_id }}
