@@ -276,12 +276,29 @@ class TelegramReviewer:
             str(deal.store).lower() == "amazon"
         )
 
-        is_ultra_discount = (
-            deal.discount_percent >= 50
+        meta = deal.metadata or {}
+
+        visible_discount = float(
+            deal.discount_percent or 0
         )
 
+        try:
+            effective_discount = float(
+                meta.get("effective_discount") or 0
+            )
+        except (TypeError, ValueError):
+            effective_discount = 0.0
+
+        # Use the strongest real discount, including coupons/promos.
+        best_discount = max(
+            visible_discount,
+            effective_discount,
+        )
+
+        is_ultra_discount = best_discount >= 50
+
         is_verified_anomaly = bool(
-            (deal.metadata or {}).get("price_anomaly")
+            meta.get("price_anomaly")
         )
 
         if (
