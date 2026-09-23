@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 
 import asyncio
+from concurrent.futures import ThreadPoolExecutor
 import signal
 import json
 import os
@@ -102,7 +103,9 @@ async def send_verified_reviews(
                 flush=True,
             )
 
-            capture = await asyncio.to_thread(
+            loop = asyncio.get_running_loop()
+            capture = await loop.run_in_executor(
+                CAPTURE_EXECUTOR,
                 capture_amazon_page,
                 deal.url,
                 deal.external_id or "product",
@@ -176,6 +179,7 @@ async def send_verified_reviews(
 
 
 REVIEW_LOCK = asyncio.Lock()
+CAPTURE_EXECUTOR = ThreadPoolExecutor(max_workers=1, thread_name_prefix="amazon-capture")
 
 STOP_REQUESTED = False
 
