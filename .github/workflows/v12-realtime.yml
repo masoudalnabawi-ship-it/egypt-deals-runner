@@ -2,6 +2,8 @@ name: V12 Amazon Realtime
 
 on:
   workflow_dispatch:
+  schedule:
+    - cron: "7 */5 * * *"
 
 permissions:
   contents: read
