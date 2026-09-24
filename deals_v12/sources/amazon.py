@@ -1049,6 +1049,9 @@ class AmazonSource:
             ULTRA_PERCENTAGE_RADAR[0],  # 90%+
             ULTRA_PERCENTAGE_RADAR[1],  # 80%+
             ULTRA_PERCENTAGE_RADAR[2],  # 70%+
+            ULTRA_PERCENTAGE_RADAR[3],  # 60%+
+            ULTRA_PERCENTAGE_RADAR[4],  # 50%+
+            PROMO_RADAR_SURFACES[3],    # coupons
         )
 
         async with httpx.AsyncClient() as client:
