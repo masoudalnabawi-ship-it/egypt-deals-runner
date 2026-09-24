@@ -1045,6 +1045,27 @@ class AmazonSource:
         """
         found = {}
 
+        # Ultra discovery must not depend only on searches such as
+        # "50% off deals". Amazon often returns very few cards for those
+        # queries. Scan real deal/category surfaces too and calculate the
+        # discount from every discovered product.
+        priority_count = 2
+
+        start = int(
+            getattr(self, "_ultra_priority_rotation", 0)
+        ) % len(PRIORITY_SURFACES)
+
+        rotating_priority = tuple(
+            PRIORITY_SURFACES[
+                (start + i) % len(PRIORITY_SURFACES)
+            ]
+            for i in range(priority_count)
+        )
+
+        self._ultra_priority_rotation = (
+            start + priority_count
+        ) % len(PRIORITY_SURFACES)
+
         ultra_surfaces = (
             ULTRA_PERCENTAGE_RADAR[0],  # 90%+
             ULTRA_PERCENTAGE_RADAR[1],  # 80%+
@@ -1052,6 +1073,7 @@ class AmazonSource:
             ULTRA_PERCENTAGE_RADAR[3],  # 60%+
             ULTRA_PERCENTAGE_RADAR[4],  # 50%+
             PROMO_RADAR_SURFACES[3],    # coupons
+            *rotating_priority,
         )
 
         async with httpx.AsyncClient() as client:
@@ -1074,10 +1096,27 @@ class AmazonSource:
                 for deal in items:
                     meta = deal.metadata or {}
 
+                    promo = bool(
+                        str(meta.get("promo_text") or "").strip()
+                    )
+
+                    try:
+                        effective_discount = float(
+                            meta.get("effective_discount") or 0
+                        )
+                    except (TypeError, ValueError):
+                        effective_discount = 0.0
+
+                    best_discount = max(
+                        float(deal.discount_percent or 0),
+                        effective_discount,
+                    )
+
                     if (
                         bool(meta.get("price_anomaly"))
                         or bool(meta.get("flash_deal"))
-                        or deal.discount_percent >= 70
+                        or promo
+                        or best_discount >= 50
                     ):
                         found[deal.fingerprint] = deal
 
