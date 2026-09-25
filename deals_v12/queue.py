@@ -158,9 +158,39 @@ class DealQueue:
                 new_discount >= old_discount + 5.0
             )
 
+            meta = deal.metadata or {}
+
+            try:
+                effective_discount = float(
+                    meta.get("effective_discount") or 0
+                )
+            except (TypeError, ValueError):
+                effective_discount = 0.0
+
+            best_discount = max(
+                new_discount,
+                effective_discount,
+            )
+
+            is_ultra = (
+                bool(meta.get("price_anomaly"))
+                or bool(meta.get("flash_deal"))
+                or best_discount >= 50.0
+            )
+
+            old_priority = int(row["priority"] or 0)
+
+            # If a previously known normal deal becomes Ultra,
+            # promote and reopen it immediately.
+            became_ultra = (
+                is_ultra
+                and old_priority < 960
+            )
+
             reopen = (
                 price_improved
                 or discount_improved
+                or became_ultra
             )
 
             status = row["status"]
