@@ -65,6 +65,7 @@ async def send_verified_reviews(
     reviewer,
     *,
     use_lock=True,
+    ultra_only=False,
 ):
     if use_lock:
         async with REVIEW_LOCK:
@@ -72,6 +73,7 @@ async def send_verified_reviews(
                 core,
                 reviewer,
                 use_lock=False,
+                ultra_only=ultra_only,
             )
     ultra_limit = max(
         1,
@@ -81,11 +83,14 @@ async def send_verified_reviews(
         ),
     )
 
-    ultra_rows = core.queue.get_verified(
-        limit=ultra_limit
-    )
-
-    rows = ultra_rows
+    if ultra_only:
+        rows = core.queue.get_ultra_verified(
+            limit=ultra_limit
+        )
+    else:
+        rows = core.queue.get_normal_verified(
+            limit=REVIEW_LIMIT
+        )
 
     sent = 0
     retried = 0
@@ -236,6 +241,7 @@ async def amazon_ultra_delivery_loop(core, reviewer):
                 review = await send_verified_reviews(
                     core,
                     reviewer,
+                    ultra_only=True,
                 )
 
                 if review["sent"] or review["retry"]:
