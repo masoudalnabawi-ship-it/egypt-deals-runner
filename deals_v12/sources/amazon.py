@@ -435,7 +435,10 @@ class AmazonSource:
         )
 
         if proxy.status_code != 200:
-            raise RuntimeError(f"amazon_proxy_http_{proxy.status_code}")
+            raise RuntimeError(
+                f"direct={direct_error or 'unknown'} | "
+                f"proxy=amazon_proxy_http_{proxy.status_code}"
+            )
 
         if proxy_protected:
             raise RuntimeError("amazon_proxy_protection_page")
@@ -1049,30 +1052,56 @@ class AmazonSource:
         # "50% off deals". Amazon often returns very few cards for those
         # queries. Scan real deal/category surfaces too and calculate the
         # discount from every discovered product.
-        priority_count = 2
+        # Rotate discovery surfaces instead of hammering the same
+        # percentage searches on every Ultra cycle.
+        priority_count = 4
+        percentage_count = 2
 
-        start = int(
+        priority_start = int(
             getattr(self, "_ultra_priority_rotation", 0)
         ) % len(PRIORITY_SURFACES)
 
         rotating_priority = tuple(
             PRIORITY_SURFACES[
-                (start + i) % len(PRIORITY_SURFACES)
+                (priority_start + i) % len(PRIORITY_SURFACES)
             ]
             for i in range(priority_count)
         )
 
         self._ultra_priority_rotation = (
-            start + priority_count
+            priority_start + priority_count
         ) % len(PRIORITY_SURFACES)
 
+        percentage_start = int(
+            getattr(self, "_ultra_percentage_rotation", 0)
+        ) % len(ULTRA_PERCENTAGE_RADAR)
+
+        rotating_percentage = tuple(
+            ULTRA_PERCENTAGE_RADAR[
+                (percentage_start + i) % len(ULTRA_PERCENTAGE_RADAR)
+            ]
+            for i in range(percentage_count)
+        )
+
+        self._ultra_percentage_rotation = (
+            percentage_start + percentage_count
+        ) % len(ULTRA_PERCENTAGE_RADAR)
+
+        promo_rotation = int(
+            getattr(self, "_ultra_promo_rotation", 0)
+        )
+
+        rotating_promo = (
+            (PROMO_RADAR_SURFACES[3],)
+            if promo_rotation % 2 == 0
+            else ()
+        )
+
+        self._ultra_promo_rotation = promo_rotation + 1
+
         ultra_surfaces = (
-            ULTRA_PERCENTAGE_RADAR[0],  # 90%+
-            ULTRA_PERCENTAGE_RADAR[1],  # 80%+
-            ULTRA_PERCENTAGE_RADAR[2],  # 70%+
-            ULTRA_PERCENTAGE_RADAR[3],  # 60%+
-            ULTRA_PERCENTAGE_RADAR[4],  # 50%+
-            PROMO_RADAR_SURFACES[3],    # coupons
+            *rotating_percentage,
+            *rotating_promo,
             *rotating_priority,
         )
 
