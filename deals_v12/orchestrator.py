@@ -299,44 +299,16 @@ class V12Orchestrator:
         from .models import DealCandidate
         from .verification import AmazonVerifier
 
-        ultra_limit = max(
-            1,
-            min(
-                4,
-                int(limit),
-            ),
-        )
-
-        ultra_rows = [
+        # Normal verifier must never consume Ultra rows.
+        # Priority >= 960 is handled exclusively by
+        # verify_amazon_ultra_batch().
+        rows = [
             row
-            for row in self.queue.get_ultra_due(
-                limit=ultra_limit
+            for row in self.queue.get_normal_due(
+                limit=int(limit)
             )
             if row.get("store") == "amazon"
         ]
-
-        used = {
-            row["fingerprint"]
-            for row in ultra_rows
-        }
-
-        remaining_limit = max(
-            0,
-            int(limit) - len(ultra_rows),
-        )
-
-        normal_rows = [
-            row
-            for row in self.queue.get_due(
-                limit=remaining_limit
-            )
-            if (
-                row.get("store") == "amazon"
-                and row["fingerprint"] not in used
-            )
-        ]
-
-        rows = ultra_rows + normal_rows
 
         verifier = AmazonVerifier()
 
