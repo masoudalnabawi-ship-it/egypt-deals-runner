@@ -610,6 +610,8 @@ class DealQueue:
                 verification_priority = 980
             elif effective_discount >= 70 or verified_discount >= 70:
                 verification_priority = 970
+            elif effective_discount >= 50 or verified_discount >= 50:
+                verification_priority = 965
             elif verified_flash:
                 verification_priority = 960
 
