@@ -14,7 +14,10 @@ from deals_v12.review import TelegramReviewer
 
 
 ULTRA_RADAR_INTERVAL = int(
-    os.getenv("V12_AMAZON_ULTRA_INTERVAL", "5")
+    os.getenv(
+        "V12_AMAZON_ULTRA_RADAR_INTERVAL",
+        os.getenv("V12_AMAZON_ULTRA_INTERVAL", "5"),
+    )
 )
 
 RADAR_INTERVAL = int(
@@ -306,6 +309,90 @@ async def amazon_ultra_loop(core):
     )
 
 
+async def amazon_radar_loop(core):
+    print("📡 V12 AMAZON RADAR LOOP STARTED", flush=True)
+
+    while not STOP_REQUESTED:
+        started = time.monotonic()
+        try:
+            result = await core.scan_amazon_radar_once()
+            if result["fetched"] or result["new"] or result["reopened"]:
+                print(
+                    "🚨 V12 AMAZON FAST RADAR",
+                    result,
+                    f"elapsed={time.monotonic()-started:.1f}s",
+                    flush=True,
+                )
+        except Exception as exc:
+            print("⚠️ V12 AMAZON FAST RADAR ERROR", repr(exc), flush=True)
+
+        await asyncio.sleep(RADAR_INTERVAL)
+
+
+async def amazon_full_scan_loop(core):
+    print("🔎 V12 AMAZON FULL SCAN LOOP STARTED", flush=True)
+
+    while not STOP_REQUESTED:
+        started = time.monotonic()
+        try:
+            result = await core.scan_amazon_once()
+            print(
+                "🔎 V12 AMAZON SCAN",
+                result,
+                f"elapsed={time.monotonic()-started:.1f}s",
+                flush=True,
+            )
+        except Exception as exc:
+            print("⚠️ V12 AMAZON SCAN ERROR", repr(exc), flush=True)
+
+        await asyncio.sleep(SCAN_INTERVAL)
+
+
+async def amazon_normal_delivery_loop(core, reviewer):
+    print("📦 V12 AMAZON NORMAL DELIVERY LOOP STARTED", flush=True)
+
+    while not STOP_REQUESTED:
+        try:
+            verify = await core.verify_amazon_batch(limit=VERIFY_LIMIT)
+
+            if verify["processed"]:
+                print("🔬 V12 VERIFY", verify, flush=True)
+
+            review = await send_verified_reviews(core, reviewer)
+
+            if review["sent"] or review["retry"]:
+                print("📨 V12 REVIEWS", review, flush=True)
+
+        except Exception as exc:
+            print("⚠️ V12 NORMAL DELIVERY ERROR", repr(exc), flush=True)
+
+        core.queue.recover_stuck()
+        await asyncio.sleep(LOOP_INTERVAL)
+
+
+async def health_watchdog_loop(core):
+    print("❤️ V12 HEALTH WATCHDOG STARTED", flush=True)
+
+    while not STOP_REQUESTED:
+        try:
+            stats = core.queue.stats()
+
+            print(
+                "❤️ V12 HEALTH",
+                stats,
+                flush=True,
+            )
+
+        except Exception as exc:
+            print(
+                "⚠️ V12 HEALTH WATCHDOG ERROR",
+                repr(exc),
+                flush=True,
+            )
+
+        await asyncio.sleep(60)
+
+
 async def main():
     core = V12Orchestrator()
     reviewer = TelegramReviewer()
@@ -334,8 +421,21 @@ async def main():
         )
     )
 
-    last_scan = 0.0
-    last_radar = 0.0
+    radar_task = asyncio.create_task(
+        amazon_radar_loop(core)
+    )
+
+    full_scan_task = asyncio.create_task(
+        amazon_full_scan_loop(core)
+    )
+
+    normal_delivery_task = asyncio.create_task(
+        amazon_normal_delivery_loop(core, reviewer)
+    )
+
+    health_task = asyncio.create_task(
+        health_watchdog_loop(core)
+    )
 
     print(
         "🚀 V12 AMAZON CONTINUOUS WORKER STARTED",
@@ -343,101 +443,7 @@ async def main():
     )
 
     while not STOP_REQUESTED:
-        now = time.monotonic()
-
-        if (
-            last_radar == 0
-            or now - last_radar >= RADAR_INTERVAL
-        ):
-            try:
-                radar = await core.scan_amazon_radar_once()
-
-                if (
-                    radar["fetched"]
-                    or radar["new"]
-                    or radar["reopened"]
-                ):
-                    print(
-                        "🚨 V12 AMAZON FAST RADAR",
-                        radar,
-                        flush=True,
-                    )
-
-            except Exception as exc:
-                print(
-                    "⚠️ V12 AMAZON FAST RADAR ERROR",
-                    repr(exc),
-                    flush=True,
-                )
-
-            last_radar = time.monotonic()
-
-        if (
-            last_scan == 0
-            or now - last_scan >= SCAN_INTERVAL
-        ):
-            try:
-                result = await core.scan_amazon_once()
-
-                print(
-                    "🔎 V12 AMAZON SCAN",
-                    result,
-                    flush=True,
-                )
-
-            except Exception as exc:
-                print(
-                    "⚠️ V12 AMAZON SCAN ERROR",
-                    repr(exc),
-                    flush=True,
-                )
-
-            last_scan = time.monotonic()
-
-        try:
-            verify = await core.verify_amazon_batch(
-                limit=VERIFY_LIMIT
-            )
-
-            if verify["processed"]:
-                print(
-                    "🔬 V12 VERIFY",
-                    verify,
-                    flush=True,
-                )
-
-        except Exception as exc:
-            print(
-                "⚠️ V12 VERIFY ERROR",
-                repr(exc),
-                flush=True,
-            )
-
-        try:
-            review = await send_verified_reviews(
-                core,
-                reviewer,
-            )
-
-            if review["sent"] or review["retry"]:
-                print(
-                    "📨 V12 REVIEWS",
-                    review,
-                    flush=True,
-                )
-
-        except Exception as exc:
-            print(
-                "⚠️ V12 REVIEW LOOP ERROR",
-                repr(exc),
-                flush=True,
-            )
-
-        core.queue.recover_stuck()
-
-        await asyncio.sleep(
-            LOOP_INTERVAL
-        )
+        await asyncio.sleep(1)
 
     try:
         await ultra_task
@@ -448,6 +454,17 @@ async def main():
         await ultra_delivery_task
     except asyncio.CancelledError:
         pass
+
+    for task in (
+        radar_task,
+        full_scan_task,
+        normal_delivery_task,
+        health_task,
+    ):
+        try:
+            await task
+        except asyncio.CancelledError:
+            pass
 
     _checkpoint_v12_db()
 

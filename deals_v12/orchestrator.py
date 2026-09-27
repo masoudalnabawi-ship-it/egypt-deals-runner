@@ -134,25 +134,38 @@ class V12Orchestrator:
             reopened_count = 0
 
             for deal in candidates:
-                if (deal.metadata or {}).get("price_anomaly"):
-                    priority = 1000
+                meta = deal.metadata or {}
 
-                elif (deal.metadata or {}).get("promo_text"):
-                    priority = max(
-                        650,
-                        int(
-                            min(
-                                1000,
-                                deal.discount_percent * 10,
-                            )
-                        ),
+                try:
+                    effective_discount = float(
+                        meta.get("effective_discount") or 0
                     )
+                except (TypeError, ValueError):
+                    effective_discount = 0.0
+
+                best_discount = max(
+                    float(deal.discount_percent or 0),
+                    effective_discount,
+                )
+
+                if meta.get("price_anomaly"):
+                    priority = 1000
+                elif best_discount >= 90:
+                    priority = 990
+                elif best_discount >= 80:
+                    priority = 980
+                elif best_discount >= 70:
+                    priority = 970
+                elif best_discount >= 50:
+                    priority = 965
+                elif meta.get("flash_deal"):
+                    priority = 960
+                elif meta.get("promo_text"):
+                    priority = 900
                 else:
-                    priority = int(
-                        min(
-                            1000,
-                            deal.discount_percent * 10,
-                        )
+                    priority = max(
+                        100,
+                        int(min(959, best_discount * 10)),
                     )
 
                 result = self.queue.enqueue(
