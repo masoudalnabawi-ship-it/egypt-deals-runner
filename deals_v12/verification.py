@@ -1,5 +1,6 @@
 import re
 import asyncio
+import os
 
 import httpx
 from bs4 import BeautifulSoup
@@ -75,33 +76,102 @@ class AmazonVerifier:
         async with self._lock:
             await asyncio.sleep(self.min_gap)
 
-        r = await client.get(
-            deal.url,
-            headers=HEADERS,
-            timeout=20,
-            follow_redirects=True,
-        )
+        direct_error = None
+        body = ""
 
-        body = r.text or ""
-        low = body.lower()
-
-        if r.status_code in (403, 429):
-            raise RuntimeError(
-                f"amazon_verify_http_{r.status_code}"
+        try:
+            r = await client.get(
+                deal.url,
+                headers=HEADERS,
+                timeout=20,
+                follow_redirects=True,
             )
 
-        if (
-            "captcha" in low
-            or "robot check" in low
-            or "enter the characters you see below" in low
-        ):
-            raise RuntimeError(
-                "amazon_verify_protection"
+            body = r.text or ""
+            low = body.lower()
+
+            protected = (
+                "captcha" in low
+                or "robot check" in low
+                or "enter the characters you see below" in low
             )
 
-        if r.status_code != 200:
-            raise RuntimeError(
-                f"amazon_verify_http_{r.status_code}"
+            if r.status_code != 200:
+                direct_error = f"amazon_verify_http_{r.status_code}"
+            elif protected:
+                direct_error = "amazon_verify_protection"
+            else:
+                direct_error = None
+
+        except (httpx.TimeoutException, httpx.NetworkError) as exc:
+            direct_error = (
+                f"amazon_verify_network_{type(exc).__name__}"
+            )
+
+        if direct_error:
+            cloud_url = os.environ.get(
+                "CLOUD_API_URL", ""
+            ).strip()
+
+            cloud_key = os.environ.get(
+                "CLOUD_API_KEY", ""
+            ).strip()
+
+            if not cloud_url or not cloud_key:
+                raise RuntimeError(direct_error)
+
+            cloud_url = cloud_url.rstrip("/")
+
+            if cloud_url.endswith("/api/deals"):
+                cloud_url = cloud_url[:-len("/api/deals")]
+
+            proxy_url = cloud_url + "/api/store-proxy"
+
+            try:
+                proxy = await client.get(
+                    proxy_url,
+                    params={"url": deal.url},
+                    headers={
+                        "x-api-key": cloud_key,
+                        "Accept": "text/html",
+                    },
+                    timeout=30,
+                    follow_redirects=True,
+                )
+            except (
+                httpx.TimeoutException,
+                httpx.NetworkError,
+            ) as exc:
+                raise RuntimeError(
+                    f"{direct_error} | "
+                    f"amazon_verify_proxy_network_{type(exc).__name__}"
+                )
+
+            body = proxy.text or ""
+            low = body.lower()
+
+            protected = (
+                "captcha" in low
+                or "robot check" in low
+                or "enter the characters you see below" in low
+            )
+
+            if proxy.status_code != 200:
+                raise RuntimeError(
+                    f"{direct_error} | "
+                    f"amazon_verify_proxy_http_{proxy.status_code}"
+                )
+
+            if protected:
+                raise RuntimeError(
+                    f"{direct_error} | "
+                    "amazon_verify_proxy_protection"
+                )
+
+            print(
+                "☁️ AMAZON VERIFY CLOUD PROXY OK",
+                deal.external_id,
+                flush=True,
             )
 
         soup = BeautifulSoup(
