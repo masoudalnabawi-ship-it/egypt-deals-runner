@@ -26,15 +26,15 @@ SCAN_INTERVAL = int(
 )
 
 LOOP_INTERVAL = int(
-    os.getenv("V12_LOOP_INTERVAL", "15")
+    os.getenv("V12_LOOP_INTERVAL", "5")
 )
 
 VERIFY_LIMIT = int(
-    os.getenv("V12_VERIFY_LIMIT", "8")
+    os.getenv("V12_VERIFY_LIMIT", "20")
 )
 
 REVIEW_LIMIT = int(
-    os.getenv("V12_REVIEW_LIMIT", "5")
+    os.getenv("V12_REVIEW_LIMIT", "10")
 )
 
 

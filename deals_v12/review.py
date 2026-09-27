@@ -301,11 +301,16 @@ class TelegramReviewer:
             meta.get("price_anomaly")
         )
 
+        is_flash_deal = bool(
+            meta.get("flash_deal")
+        )
+
         if (
             store_is_amazon
             and (
                 is_ultra_discount
                 or is_verified_anomaly
+                or is_flash_deal
             )
         ):
             if not self.ultra_chat_id:

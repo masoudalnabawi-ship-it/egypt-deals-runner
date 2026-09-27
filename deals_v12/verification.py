@@ -64,7 +64,7 @@ def _coupon_percent(text):
 
 class AmazonVerifier:
     def __init__(self):
-        self.min_gap = 2.0
+        self.min_gap = 0.5
         self._lock = asyncio.Lock()
 
     async def verify(
