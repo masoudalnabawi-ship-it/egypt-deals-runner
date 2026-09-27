@@ -1,0 +1,40 @@
+name: V12 Ultra Test
+
+on:
+  workflow_dispatch:
+
+jobs:
+  ultra-test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout V12
+        uses: actions/checkout@v4
+        with:
+          ref: v12-clean-core
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install
+        run: pip install httpx beautifulsoup4
+
+      - name: Test Ultra
+        env:
+          CLOUD_API_URL: ${{ secrets.CLOUD_API_URL }}
+          CLOUD_API_KEY: ${{ secrets.CLOUD_API_KEY }}
+        run: |
+          PYTHONPATH=. python - <<'PY'
+          import asyncio
+          from deals_v12.orchestrator import V12Orchestrator
+
+          async def main():
+              core = V12Orchestrator()
+              result = await core.scan_amazon_ultra_fast_once()
+              print("=== ULTRA GITHUB TEST ===")
+              print(result)
+
+          asyncio.run(main())
+          PY
