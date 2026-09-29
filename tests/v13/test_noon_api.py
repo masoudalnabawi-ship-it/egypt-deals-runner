@@ -88,5 +88,119 @@ class NoonApiTests(unittest.TestCase):
         self.assertIn("noon_catalog_api", meta["http_via"])
 
 
+    def test_nested_price_object_does_not_use_discount_as_price(self):
+        incoming = DealCandidate(
+            store="noon",
+            external_id="N51438100A",
+            title="Sokany Turkish Coffee Maker 500 ml 600 W",
+            url=(
+                "https://www.noon.com/egypt-en/"
+                "turkish-coffee-maker/N51438100A/p/"
+            ),
+            current_price=390.75,
+            old_price=419.15,
+            category="appliances",
+            source="appliances",
+        )
+
+        payload = {
+            "product": {
+                "sku": "N51438100A",
+                "product_title":
+                    "Sokany Turkish Coffee Maker 500 ml 600 W",
+                "variants": [{
+                    "sku": "N51438100A",
+                    "offers": [{
+                        "price": {
+                            "amount": 419.15,
+                            "value": 419.15,
+                        },
+                        "sale_price": {
+                            "discount": 6,
+                            "value": 6,
+                            "amount": 390.75,
+                        },
+                        "is_buyable": True,
+                        "store_name": "noon",
+                    }],
+                }],
+            },
+        }
+
+        verifier = StoreVerifier(None)
+
+        deal, _meta = verifier._noon_api(
+            incoming,
+            json.dumps(payload),
+            "noon_cffi",
+        )
+
+        self.assertAlmostEqual(
+            deal.current_price,
+            390.75,
+            places=2,
+        )
+        self.assertAlmostEqual(
+            deal.old_price,
+            419.15,
+            places=2,
+        )
+        self.assertNotEqual(
+            deal.current_price,
+            6.0,
+        )
+
+    def test_search_nested_price_object_uses_amount_not_percent(self):
+        payload = {
+            "nbHits": 1,
+            "hits": [{
+                "sku": "N51438100A",
+                "name":
+                    "Sokany Turkish Coffee Maker 500 ml 600 W",
+                "price": {
+                    "amount": 419.15,
+                    "value": 419.15,
+                },
+                "sale_price": {
+                    "discount": 6,
+                    "value": 6,
+                    "amount": 390.75,
+                },
+                "url": "turkish-coffee-maker",
+                "is_buyable": True,
+            }],
+            "meta": {
+                "title": "Egypt products"
+            },
+        }
+
+        surface = Surface(
+            "appliances",
+            "appliances",
+            "https://example.invalid",
+            1.0,
+        )
+
+        deals = NoonDiscovery.parse_page(
+            json.dumps(payload),
+            surface,
+        )
+
+        self.assertEqual(
+            len(deals),
+            1,
+        )
+        self.assertAlmostEqual(
+            deals[0].current_price,
+            390.75,
+            places=2,
+        )
+        self.assertAlmostEqual(
+            deals[0].old_price,
+            419.15,
+            places=2,
+        )
+
+
 if __name__ == "__main__":
     unittest.main()

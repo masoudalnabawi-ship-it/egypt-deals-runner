@@ -250,6 +250,57 @@ class DealDatabase:
                     ),
                 )
 
+            noon_money_fix = conn.execute(
+                "SELECT 1 FROM events "
+                "WHERE event='noon_nested_money_v5_reset' LIMIT 1"
+            ).fetchone()
+
+            if not noon_money_fix:
+                now = int(time.time())
+
+                conn.execute(
+                    "DELETE FROM price_history WHERE store='noon'"
+                )
+
+                conn.execute(
+                    """
+                    UPDATE deals SET
+                        state='pending',
+                        old_price=NULL,
+                        effective_price=current_price,
+                        visible_discount=0,
+                        real_discount=0,
+                        lane='normal',
+                        score=0,
+                        confidence=0,
+                        attempts=0,
+                        next_attempt_at=0,
+                        lease_owner=NULL,
+                        lease_until=0,
+                        last_error='',
+                        updated_at=?
+                    WHERE store='noon'
+                      AND state!='sent'
+                    """,
+                    (now,),
+                )
+
+                conn.execute(
+                    """INSERT INTO events(
+                           ts,event,store,deal_key,payload_json
+                       ) VALUES(?,?,?,?,?)""",
+                    (
+                        now,
+                        "noon_nested_money_v5_reset",
+                        "noon",
+                        "",
+                        _json({
+                            "reason":
+                            "reverify_noon_after_percent_as_price_fix"
+                        }),
+                    ),
+                )
+
             conn.commit()
         finally:
             conn.close()

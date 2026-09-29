@@ -15,10 +15,68 @@ class VerificationRejected(RuntimeError):
     pass
 
 
-def _price(text) -> float:
-    text = str(text or "").translate(str.maketrans("٠١٢٣٤٥٦٧٨٩٫٬", "0123456789.,"))
+def _price(value) -> float:
+    """Safely extract an actual monetary amount.
+
+    Noon sometimes nests price data together with a discount percentage.
+    Never stringify a dict and grab its first number: 6% must never become
+    EGP 6.00.
+    """
+    if value is None or isinstance(value, bool):
+        return 0.0
+
+    if isinstance(value, (int, float)):
+        try:
+            v = float(value)
+            return v if v == v and abs(v) != float("inf") else 0.0
+        except Exception:
+            return 0.0
+
+    if isinstance(value, dict):
+        money_keys = (
+            "amount",
+            "price",
+            "final_price",
+            "finalPrice",
+            "sale_price",
+            "salePrice",
+            "lowPrice",
+            "formatted_value",
+            "formattedValue",
+            "display_value",
+            "displayValue",
+            "value",
+            "min",
+            "max",
+        )
+
+        for key in money_keys:
+            if key not in value:
+                continue
+            v = _price(value.get(key))
+            if v > 0:
+                return v
+
+        # Deliberately DO NOT iterate arbitrary dict values.
+        # Keys such as discount/discount_percentage/pct are not money.
+        return 0.0
+
+    if isinstance(value, (list, tuple)):
+        for item in value:
+            v = _price(item)
+            if v > 0:
+                return v
+        return 0.0
+
+    text = str(value).translate(
+        str.maketrans(
+            "٠١٢٣٤٥٦٧٨٩٫٬",
+            "0123456789.,",
+        )
+    )
     text = text.replace(",", "")
     m = re.search(r"(\d+(?:\.\d+)?)", text)
+
     try:
         return float(m.group(1)) if m else 0.0
     except Exception:

@@ -92,20 +92,65 @@ NOON_SURFACES = [
 
 
 def _number(value) -> float:
-    if value is None:
+    """Extract a monetary number without mistaking discount percentages
+    inside Noon price objects for the actual price.
+    """
+    if value is None or isinstance(value, bool):
         return 0.0
-    if isinstance(value, dict):
-        for key in ("value", "amount", "price", "min", "max"):
-            if key in value:
-                v = _number(value.get(key))
-                if v:
-                    return v
-        return 0.0
+
     if isinstance(value, (int, float)):
-        return float(value)
-    text = str(value).translate(str.maketrans("٠١٢٣٤٥٦٧٨٩٫٬", "0123456789.,"))
+        try:
+            v = float(value)
+            return v if v == v and abs(v) != float("inf") else 0.0
+        except Exception:
+            return 0.0
+
+    if isinstance(value, dict):
+        # IMPORTANT:
+        # Noon can return structures containing both:
+        #   discount/value = 6
+        #   amount = 390.75
+        # Money fields must win over generic "value".
+        money_keys = (
+            "amount",
+            "price",
+            "final_price",
+            "finalPrice",
+            "sale_price",
+            "salePrice",
+            "lowPrice",
+            "formatted_value",
+            "formattedValue",
+            "display_value",
+            "displayValue",
+            "value",
+            "min",
+            "max",
+        )
+        for key in money_keys:
+            if key not in value:
+                continue
+            v = _number(value.get(key))
+            if v > 0:
+                return v
+        return 0.0
+
+    if isinstance(value, (list, tuple)):
+        for item in value:
+            v = _number(item)
+            if v > 0:
+                return v
+        return 0.0
+
+    text = str(value).translate(
+        str.maketrans(
+            "٠١٢٣٤٥٦٧٨٩٫٬",
+            "0123456789.,",
+        )
+    )
     text = text.replace(",", "")
     m = re.search(r"(\d+(?:\.\d+)?)", text)
+
     try:
         return float(m.group(1)) if m else 0.0
     except Exception:

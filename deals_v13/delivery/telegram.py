@@ -4,6 +4,7 @@ import asyncio
 import html
 import json
 import os
+from urllib.parse import urlsplit, urlunsplit
 
 import httpx
 
@@ -20,6 +21,8 @@ class TelegramDelivery:
         self._pw = None
         self._browser = None
         self._context = None
+        self._noon_context = None
+        self._noon_warmed = False
         self._browser_lock = asyncio.Lock()
 
     def _chat_id(self, store: str, lane: str) -> str:
@@ -120,31 +123,66 @@ class TelegramDelivery:
         }
 
     async def _ensure_browser(self) -> None:
-        if self._context is not None:
+        if self._context is not None and self._noon_context is not None:
             return
+
         from playwright.async_api import async_playwright
 
-        self._pw = await async_playwright().start()
-        self._browser = await self._pw.chromium.launch(
-            headless=True,
-            args=[
-                "--no-sandbox",
-                "--disable-dev-shm-usage",
-                "--disable-quic",
-                "--disable-http2",
-            ],
-        )
-        self._context = await self._browser.new_context(
-            locale="ar-EG",
-            timezone_id="Africa/Cairo",
-            viewport={"width": 1280, "height": 900},
-            device_scale_factor=1,
-            user_agent=(
-                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
-                "AppleWebKit/537.36 (KHTML, like Gecko) "
-                "Chrome/140.0 Safari/537.36"
-            ),
-        )
+        if self._pw is None:
+            self._pw = await async_playwright().start()
+
+        if self._browser is None:
+            self._browser = await self._pw.chromium.launch(
+                headless=True,
+                args=[
+                    "--no-sandbox",
+                    "--disable-dev-shm-usage",
+                    "--disable-blink-features=AutomationControlled",
+                ],
+            )
+
+        if self._context is None:
+            self._context = await self._browser.new_context(
+                locale="ar-EG",
+                timezone_id="Africa/Cairo",
+                viewport={"width": 1280, "height": 900},
+                device_scale_factor=1,
+                user_agent=(
+                    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+                    "AppleWebKit/537.36 (KHTML, like Gecko) "
+                    "Chrome/140.0 Safari/537.36"
+                ),
+            )
+
+        if self._noon_context is None:
+            # Noon is more reliable using a real mobile storefront profile.
+            self._noon_context = await self._browser.new_context(
+                locale="en-EG",
+                timezone_id="Africa/Cairo",
+                viewport={"width": 520, "height": 1180},
+                device_scale_factor=1,
+                is_mobile=True,
+                has_touch=True,
+                user_agent=(
+                    "Mozilla/5.0 (Linux; Android 15; Pixel 8) "
+                    "AppleWebKit/537.36 (KHTML, like Gecko) "
+                    "Chrome/140.0 Mobile Safari/537.36"
+                ),
+                extra_http_headers={
+                    "Accept-Language":
+                        "en-EG,en;q=0.9,ar-EG;q=0.8,ar;q=0.7",
+                },
+            )
+
+            await self._noon_context.add_init_script(
+                """
+                Object.defineProperty(
+                    navigator,
+                    'webdriver',
+                    {get: () => undefined}
+                );
+                """
+            )
 
     @staticmethod
     def _protected_page(text: str) -> bool:
@@ -160,31 +198,319 @@ class TelegramDelivery:
             )
         )
 
+    @staticmethod
+    def _clean_noon_url(url: str) -> str:
+        try:
+            parts = urlsplit(str(url or ""))
+            return urlunsplit(
+                (
+                    parts.scheme or "https",
+                    parts.netloc,
+                    parts.path,
+                    "",
+                    "",
+                )
+            )
+        except Exception:
+            return str(url or "")
+
+    @staticmethod
+    def _currency_values(text: str) -> list[float]:
+        """Return only numbers explicitly attached to EGP/ج.م.
+
+        A bare 6% must never pass this function as EGP 6.
+        """
+        normalized = str(text or "").translate(
+            str.maketrans(
+                "٠١٢٣٤٥٦٧٨٩٫٬",
+                "0123456789.,",
+            )
+        )
+
+        patterns = (
+            r"(?:EGP|ج\.?\s*م\.?)\s*"
+            r"([0-9][0-9,]*(?:\.[0-9]+)?)",
+            r"([0-9][0-9,]*(?:\.[0-9]+)?)\s*"
+            r"(?:EGP|ج\.?\s*م\.?)",
+        )
+
+        out = []
+
+        for pattern in patterns:
+            for match in __import__("re").finditer(
+                pattern,
+                normalized,
+                __import__("re").I,
+            ):
+                try:
+                    value = float(
+                        match.group(1).replace(",", "")
+                    )
+                except Exception:
+                    continue
+
+                if value > 0:
+                    out.append(round(value, 2))
+
+        # Stable de-duplication.
+        return list(dict.fromkeys(out))
+
+    @staticmethod
+    def _fetch_noon_html_sync(url: str) -> str:
+        """Fetch the real Noon HTML using a Chrome TLS fingerprint.
+
+        Used only as a rendering fallback when cloud Chromium itself
+        cannot navigate to the storefront URL.
+        """
+        try:
+            from curl_cffi import requests as cffi_requests
+
+            response = cffi_requests.get(
+                url,
+                headers={
+                    "accept": (
+                        "text/html,application/xhtml+xml,"
+                        "application/xml;q=0.9,*/*;q=0.8"
+                    ),
+                    "accept-language":
+                        "en-EG,en;q=0.9,ar-EG;q=0.8",
+                    "referer":
+                        "https://www.noon.com/egypt-en/",
+                    "x-locale": "en-eg",
+                    "x-platform": "web",
+                    "x-mp": "noon",
+                    "x-mp-country": "eg",
+                    "x-country-code": "eg",
+                },
+                impersonate="chrome",
+                timeout=22,
+                allow_redirects=True,
+            )
+
+            text = response.text or ""
+            low = text.lower()
+
+            if response.status_code != 200:
+                return ""
+
+            if len(text) < 800:
+                return ""
+
+            if any(
+                marker in low
+                for marker in (
+                    "access denied",
+                    "captcha",
+                    "robot check",
+                    "unusual traffic",
+                )
+            ):
+                return ""
+
+            return text
+
+        except Exception:
+            return ""
+
+    async def _open_noon_product(self, page, url: str) -> None:
+        clean_url = self._clean_noon_url(url)
+
+        if not self._noon_warmed:
+            warm = await self._noon_context.new_page()
+            try:
+                await warm.goto(
+                    "https://www.noon.com/egypt-en/",
+                    wait_until="domcontentloaded",
+                    timeout=15000,
+                )
+                await warm.wait_for_timeout(700)
+            except Exception:
+                pass
+            finally:
+                await warm.close()
+
+            self._noon_warmed = True
+
+        targets = []
+
+        for item in (clean_url, str(url or "")):
+            if item and item not in targets:
+                targets.append(item)
+
+        last_error = None
+
+        for target in targets:
+            try:
+                response = await page.goto(
+                    target,
+                    wait_until="domcontentloaded",
+                    timeout=30000,
+                )
+
+                if response is not None and response.status >= 400:
+                    last_error = RuntimeError(
+                        f"noon_browser_http_{response.status}"
+                    )
+                    continue
+
+                await page.wait_for_timeout(2200)
+                return
+
+            except Exception as exc:
+                last_error = exc
+
+        # Fallback: fetch the actual Noon HTML live with curl_cffi,
+        # then render that exact response at the genuine Noon URL.
+        html_text = await asyncio.to_thread(
+            self._fetch_noon_html_sync,
+            clean_url,
+        )
+
+        if not html_text:
+            raise RuntimeError(
+                "noon_live_page_unavailable"
+            ) from last_error
+
+        async def fulfill_noon(route):
+            await route.fulfill(
+                status=200,
+                content_type="text/html; charset=utf-8",
+                body=html_text,
+            )
+
+        await page.route(clean_url, fulfill_noon)
+
+        response = await page.goto(
+            clean_url,
+            wait_until="domcontentloaded",
+            timeout=18000,
+        )
+
+        if response is not None and response.status >= 400:
+            raise RuntimeError(
+                f"noon_render_http_{response.status}"
+            )
+
+        await page.wait_for_timeout(2500)
+
     async def _capture_product_screenshot(self, row: dict) -> bytes | None:
-        if os.getenv("V13_PRODUCT_SCREENSHOTS", "1").strip().lower() not in {
-            "1", "true", "yes", "on"
+        if os.getenv(
+            "V13_PRODUCT_SCREENSHOTS",
+            "1",
+        ).strip().lower() not in {
+            "1",
+            "true",
+            "yes",
+            "on",
         }:
             return None
 
         async with self._browser_lock:
             await self._ensure_browser()
-            page = await self._context.new_page()
+
+            is_noon = row["store"] == "noon"
+
+            context = (
+                self._noon_context
+                if is_noon
+                else self._context
+            )
+
+            page = await context.new_page()
+
             try:
-                response = await page.goto(
-                    row["url"],
-                    wait_until="domcontentloaded",
-                    timeout=18000,
-                )
-                if response is not None and response.status >= 400:
-                    return None
+                if is_noon:
+                    await self._open_noon_product(
+                        page,
+                        row["url"],
+                    )
+                else:
+                    response = await page.goto(
+                        row["url"],
+                        wait_until="domcontentloaded",
+                        timeout=18000,
+                    )
 
-                await page.wait_for_timeout(1700)
-                body_text = await page.locator("body").inner_text(timeout=4000)
+                    if (
+                        response is not None
+                        and response.status >= 400
+                    ):
+                        return None
+
+                    await page.wait_for_timeout(1700)
+
+                body_text = await page.locator(
+                    "body"
+                ).inner_text(timeout=6000)
+
                 if self._protected_page(body_text):
+                    if is_noon:
+                        raise RuntimeError(
+                            "noon_page_protected"
+                        )
                     return None
 
-                # Hide navigation/header elements so the Telegram screenshot is
-                # focused on the product, price and offer area.
+                # FINAL NOON PRICE GATE.
+                #
+                # The exact price in our DB must physically appear on the
+                # live Noon product page with EGP/ج.م next to it.
+                # If API/parser says EGP 6 but page says EGP 390.75,
+                # the offer is NOT allowed to reach Telegram.
+                if is_noon:
+                    expected = float(
+                        row.get("current_price") or 0
+                    )
+
+                    if expected <= 0:
+                        raise RuntimeError(
+                            "noon_expected_price_invalid"
+                        )
+
+                    visible_prices = self._currency_values(
+                        body_text
+                    )
+
+                    if not visible_prices:
+                        # Give React/lazy content one final chance.
+                        await page.wait_for_timeout(2200)
+                        body_text = await page.locator(
+                            "body"
+                        ).inner_text(timeout=6000)
+                        visible_prices = (
+                            self._currency_values(
+                                body_text
+                            )
+                        )
+
+                    if not visible_prices:
+                        raise RuntimeError(
+                            "noon_visible_price_missing"
+                        )
+
+                    nearest = min(
+                        visible_prices,
+                        key=lambda value:
+                            abs(value - expected),
+                    )
+
+                    tolerance = max(
+                        1.50,
+                        expected * 0.015,
+                    )
+
+                    if abs(nearest - expected) > tolerance:
+                        sample = ",".join(
+                            f"{v:.2f}"
+                            for v in visible_prices[:8]
+                        )
+
+                        raise RuntimeError(
+                            "noon_visible_price_mismatch:"
+                            f"expected={expected:.2f}:"
+                            f"visible={sample}"
+                        )
+
+                # Remove only navigation/chrome around the product.
                 hide = [
                     "header",
                     "#navbar",
@@ -194,53 +520,126 @@ class TelegramDelivery:
                     "#nav-progressive-subnav",
                     ".navLeftFooter",
                     "#rhf",
+                    "footer",
                     ".cookie-banner",
+                    "[class*='Cookie']",
+                    "[class*='BottomNav']",
                 ]
+
                 for selector in hide:
                     try:
-                        await page.locator(selector).evaluate_all(
-                            "(els) => els.forEach(e => e.style.display='none')"
+                        await page.locator(
+                            selector
+                        ).evaluate_all(
+                            "(els) => "
+                            "els.forEach("
+                            "e => e.style.display='none'"
+                            ")"
                         )
                     except Exception:
                         pass
 
-                # Never screenshot the whole #dp-container/#ppd element:
-                # it is very tall and can make Playwright jump into specs/reviews.
-                anchors = (
-                    ["#ppd", "#title_feature_div", "#centerCol", "#dp-container"]
-                    if row["store"] == "amazon"
-                    else ["[data-qa='product-page']", "main", "#__next"]
-                )
-
-                anchored = False
-                for selector in anchors:
+                if is_noon:
+                    # Real Noon mobile product page: start at the product hero,
+                    # so the image/title/current price are captured together.
                     try:
-                        loc = page.locator(selector).first
-                        if await loc.count() and await loc.is_visible():
-                            await loc.evaluate(
-                                "el => { const y = el.getBoundingClientRect().top + window.scrollY; "
-                                "window.scrollTo(0, Math.max(0, y - 8)); }"
+                        main = page.locator("main").first
+
+                        if (
+                            await main.count()
+                            and await main.is_visible()
+                        ):
+                            await main.evaluate(
+                                """
+                                el => {
+                                  const y =
+                                    el.getBoundingClientRect().top
+                                    + window.scrollY;
+                                  window.scrollTo(
+                                    0,
+                                    Math.max(0, y - 4)
+                                  );
+                                }
+                                """
                             )
-                            anchored = True
-                            break
+                        else:
+                            await page.evaluate(
+                                "window.scrollTo(0, 0)"
+                            )
                     except Exception:
-                        continue
+     
+                        await page.evaluate(
+                            "window.scrollTo(0, 0)"
+                        )
 
-                if not anchored:
-                    await page.evaluate("window.scrollTo(0, 0)")
+                else:
+                    anchors = [
+                        "#ppd",
+                        "#title_feature_div",
+                        "#centerCol",
+                        "#dp-container",
+                    ]
 
-                await page.wait_for_timeout(350)
+                    anchored = False
+
+                    for selector in anchors:
+                        try:
+                            loc = page.locator(
+                                selector
+                            ).first
+
+                            if (
+                                await loc.count()
+                                and await loc.is_visible()
+                            ):
+                                await loc.evaluate(
+                                    """
+                                    el => {
+                                      const y =
+                                        el.getBoundingClientRect().top
+                                        + window.scrollY;
+                                      window.scrollTo(
+                                        0,
+                                        Math.max(0, y - 8)
+                                      );
+                                    }
+                                    """
+                                )
+                                anchored = True
+                                break
+
+                        except Exception:
+                            continue
+
+                    if not anchored:
+                        await page.evaluate(
+                            "window.scrollTo(0, 0)"
+                        )
+
+                await page.wait_for_timeout(500)
+
                 return await page.screenshot(
                     type="png",
                     full_page=False,
                     animations="disabled",
                 )
+
             except Exception:
+                if is_noon:
+                    raise
                 return None
+
             finally:
                 await page.close()
 
     async def aclose(self) -> None:
+        if self._noon_context is not None:
+            try:
+                await self._noon_context.close()
+            except Exception:
+                pass
+            self._noon_context = None
+
         if self._context is not None:
             try:
                 await self._context.close()
@@ -272,9 +671,14 @@ class TelegramDelivery:
             try:
                 screenshot = await asyncio.wait_for(
                     self._capture_product_screenshot(row),
-                    timeout=24,
+                    timeout=60 if row["store"] == "noon" else 24,
                 )
-            except Exception:
+            except Exception as exc:
+                if row["store"] == "noon":
+                    raise RuntimeError(
+                        "noon_live_screenshot_failed:"
+                        + str(exc)
+                    ) from exc
                 screenshot = None
 
             if screenshot:
@@ -294,6 +698,11 @@ class TelegramDelivery:
                         return data["result"]
                 except Exception:
                     pass
+
+            if row["store"] == "noon":
+                raise RuntimeError(
+                    "noon_real_product_screenshot_required"
+                )
 
             image = (row.get("image_url") or "").strip()
             if image:
@@ -367,9 +776,14 @@ class TelegramDelivery:
             try:
                 screenshot = await asyncio.wait_for(
                     self._capture_product_screenshot(row),
-                    timeout=24,
+                    timeout=60 if row["store"] == "noon" else 24,
                 )
-            except Exception:
+            except Exception as exc:
+                if row["store"] == "noon":
+                    raise RuntimeError(
+                        "noon_live_screenshot_failed:"
+                        + str(exc)
+                    ) from exc
                 screenshot = None
 
             if screenshot:
@@ -389,6 +803,11 @@ class TelegramDelivery:
                         return data["result"]
                 except Exception:
                     pass
+
+            if row["store"] == "noon":
+                raise RuntimeError(
+                    "noon_real_product_screenshot_required"
+                )
 
             image = (row.get("image_url") or "").strip()
             if image:
