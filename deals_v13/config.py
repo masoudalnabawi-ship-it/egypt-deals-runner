@@ -36,7 +36,6 @@ class Settings:
     ultra_chat_id: str
     noon_normal_chat_id: str
     noon_ultra_chat_id: str
-
     ultra_min_discount: float
     normal_min_discount: float
     min_confidence_normal: float
@@ -76,11 +75,14 @@ class Settings:
             normal_chat_id=normal,
             ultra_chat_id=ultra,
             noon_normal_chat_id=(
-                os.getenv("NOON_NORMAL_REVIEW_CHAT_ID", "").strip() or normal
+                os.getenv("NOON_REVIEW_BOT_CHAT_ID", "").strip()
+                or os.getenv("NOON_NORMAL_REVIEW_CHAT_ID", "").strip()
+                or normal
             ),
-            noon_ultra_chat_id=(
-                os.getenv("NOON_ULTRA_REVIEW_CHAT_ID", "").strip() or ultra
-            ),
+
+            # Noon >=50% goes to exactly the same Ultra chat as Amazon.
+            noon_ultra_chat_id=ultra,
+
             ultra_min_discount=_float("V13_ULTRA_MIN_DISCOUNT", 50.0),
             normal_min_discount=_float("V13_NORMAL_MIN_DISCOUNT", 10.0),
             min_confidence_normal=_float("V13_MIN_CONFIDENCE_NORMAL", 0.62),
