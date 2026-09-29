@@ -197,6 +197,8 @@ class StoreHttpClient:
                 "--disable-dev-shm-usage",
                 "--no-sandbox",
                 "--disable-blink-features=AutomationControlled",
+                "--disable-http2",
+                "--disable-quic",
             ],
         )
         self._browser_context = await self._browser.new_context(
@@ -223,12 +225,15 @@ class StoreHttpClient:
             page = await self._browser_context.new_page()
             try:
                 # Establish the Egypt storefront before opening the target.
-                await page.goto(
-                    "https://www.noon.com/egypt-en/",
-                    wait_until="domcontentloaded",
-                    timeout=30000,
-                )
-                await page.wait_for_timeout(900)
+                try:
+                    await page.goto(
+                        "https://www.noon.com/egypt-en/",
+                        wait_until="domcontentloaded",
+                        timeout=20000,
+                    )
+                    await page.wait_for_timeout(500)
+                except Exception:
+                    pass
 
                 response = await page.goto(
                     target,
