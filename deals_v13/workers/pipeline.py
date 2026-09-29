@@ -211,19 +211,52 @@ class V13Pipeline:
                     verified.current_price or 0
                 )
 
+                http_via = str(
+                    vmeta.get("http_via") or ""
+                )
+                noon_catalog_verified = (
+                    "noon_catalog_api" in http_via
+                )
+
+                # Noon discounts >=50% must come from the product catalog API.
+                # The generic storefront fallback is useful for discovery,
+                # but is not strong enough for automatic Ultra routing.
+                if (
+                    store == "noon"
+                    and decision.real_discount >= 50.0
+                    and not noon_catalog_verified
+                ):
+                    await asyncio.to_thread(
+                        self.db.mark_rejected,
+                        deal_key,
+                        "noon_high_discount_needs_catalog_confirmation",
+                    )
+                    log.warning(
+                        "NOON HIGH DISCOUNT BLOCKED id=%s discount=%.1f via=%s",
+                        verified.external_id,
+                        decision.real_discount,
+                        http_via,
+                    )
+                    continue
+
                 irrational_price = bool(
                     old_live >= 1000
                     and current_live > 0
                     and current_live <= old_live * 0.30
                     and signals >= 2
+                    and decision.confidence
+                    >= self.settings.min_confidence_ultra
                 )
 
                 hot_priority = bool(
-                    decision.anomaly
-                    or anomaly
-                    or irrational_price
+                    irrational_price
+                    or (
+                        decision.anomaly
+                        and decision.confidence >= 0.90
+                    )
                     or (
                         decision.real_discount >= 70.0
+                        and signals >= 2
                         and decision.confidence
                         >= self.settings.min_confidence_ultra
                     )
@@ -241,7 +274,12 @@ class V13Pipeline:
                             "irrational_verified_price"
                         )
 
-                elif decision.real_discount >= 50.0:
+                elif (
+                    decision.real_discount >= 50.0
+                    and signals >= 2
+                    and decision.confidence
+                    >= self.settings.min_confidence_ultra
+                ):
                     decision.lane = Lane.ULTRA
                     decision.score = max(
                         decision.score,
@@ -251,6 +289,22 @@ class V13Pipeline:
                         decision.reasons.append(
                             "strict50_ultra"
                         )
+
+                elif decision.real_discount >= 50.0:
+                    await asyncio.to_thread(
+                        self.db.mark_rejected,
+                        deal_key,
+                        "high_discount_needs_stronger_verification",
+                    )
+                    log.warning(
+                        "HIGH DISCOUNT BLOCKED store=%s id=%s discount=%.1f signals=%s confidence=%.2f",
+                        store,
+                        verified.external_id,
+                        decision.real_discount,
+                        signals,
+                        decision.confidence,
+                    )
+                    continue
 
                 else:
                     decision.lane = Lane.NORMAL

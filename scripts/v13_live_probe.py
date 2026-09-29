@@ -16,7 +16,27 @@ from deals_v13.verification.verifier import StoreVerifier, VerificationRejected
 async def probe_store(store: str, adapter, http: StoreHttpClient, verifier: StoreVerifier, surface_limit: int, verify_limit: int):
     report = {"store": store, "surfaces": [], "verified": [], "errors": []}
     candidates = []
-    for surface in list(adapter.surfaces)[:surface_limit]:
+
+    all_surfaces = list(adapter.surfaces)
+
+    if store == "amazon":
+        # Diagnose the same priority surfaces production forces every cycle.
+        hot_names = ("90off", "70off", "50off")
+        hot = [
+            s for s in all_surfaces
+            if s.name in hot_names
+        ]
+        baseline = [
+            s for s in all_surfaces
+            if s.name not in hot_names
+        ]
+        selected_surfaces = (
+            hot + baseline
+        )[:max(surface_limit, len(hot))]
+    else:
+        selected_surfaces = all_surfaces[:surface_limit]
+
+    for surface in selected_surfaces:
         started = time.monotonic()
         try:
             result = await http.fetch(surface.url, store)

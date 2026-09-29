@@ -143,6 +143,28 @@ def _amazon_coupon_percent(soup: BeautifulSoup) -> float:
     return max(values) if values else 0.0
 
 
+NOON_INVALID_TITLES = {
+    "",
+    "placeholder",
+    "product",
+    "item",
+    "unknown",
+    "none",
+    "null",
+    "n/a",
+    "na",
+}
+
+
+def _valid_noon_title(title: str) -> bool:
+    clean = " ".join(str(title or "").split()).strip()
+    if len(clean) < 5:
+        return False
+    if clean.lower() in NOON_INVALID_TITLES:
+        return False
+    return bool(re.search(r"[A-Za-z\u0600-\u06FF]", clean))
+
+
 class StoreVerifier:
     def __init__(self, http: StoreHttpClient):
         self.http = http
@@ -329,6 +351,11 @@ class StoreVerifier:
             or incoming.title
         ).strip()
 
+        if not _valid_noon_title(title):
+            raise VerificationRejected(
+                "noon_invalid_product_title"
+            )
+
         images = product.get("image_urls")
         image = incoming.image_url
         if isinstance(images, list) and images:
@@ -464,20 +491,50 @@ class StoreVerifier:
 
         candidates.sort(key=rank)
         current, old, title, source = candidates[0]
+
+        verified_title = title or incoming.title
+        if not _valid_noon_title(verified_title):
+            raise VerificationRejected(
+                "noon_invalid_product_title"
+            )
+
         if target > 0 and abs(current - target) / target > 0.45 and len(candidates) == 1:
             raise VerificationRejected("noon_price_identity_uncertain")
 
         page = soup.get_text(" ", strip=True)
         low = page.lower()
-        coupon = _coupon_percent(page)
+        # Noon pages contain percentages for cards, banners,
+        # instalments and unrelated products. Never treat a page-wide
+        # percentage as a universal coupon.
+        coupon = 0.0
         flash = any(x in low for x in (
             "limited time", "deal", "flash", "عرض محدود", "لفترة محدودة"
         ))
 
+        verification_signals = (
+            2
+            if source.startswith("json") and visible
+            else 1
+        )
+
+        live_discount = (
+            ((old - current) / old) * 100.0
+            if old > current > 0
+            else 0.0
+        )
+
+        # An extreme Noon discount is allowed only when two independent
+        # live signals confirm it. This blocks prices such as 20 vs 27,999
+        # extracted from an unrelated banner/instalment/promo.
+        if live_discount >= 50.0 and verification_signals < 2:
+            raise VerificationRejected(
+                "noon_extreme_discount_unconfirmed"
+            )
+
         verified = DealCandidate(
             store="noon",
             external_id=incoming.external_id,
-            title=title or incoming.title,
+            title=verified_title,
             url=incoming.url,
             current_price=current,
             old_price=old or None,
@@ -490,6 +547,6 @@ class StoreVerifier:
             "http_via": via,
             "coupon_percent": coupon,
             "flash": flash,
-            "verification_signals": 2 if source.startswith("json") and visible else 1,
+            "verification_signals": verification_signals,
         }
         return verified, meta

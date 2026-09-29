@@ -196,6 +196,60 @@ class DealDatabase:
                     ),
                 )
 
+            noon_recovery = conn.execute(
+                "SELECT 1 FROM events "
+                "WHERE event='noon_live_parser_v4_reopen' LIMIT 1"
+            ).fetchone()
+
+            if not noon_recovery:
+                now = int(time.time())
+
+                # Remove any Noon history produced by the old unsafe parser.
+                conn.execute(
+                    "DELETE FROM price_history WHERE store='noon'"
+                )
+
+                # Parser/transport now works. Reopen all unsent Noon rows,
+                # including rows previously rejected while Noon returned 0.
+                conn.execute(
+                    """
+                    UPDATE deals SET
+                        state='pending',
+                        old_price=NULL,
+                        effective_price=current_price,
+                        visible_discount=0,
+                        real_discount=0,
+                        lane='normal',
+                        score=0,
+                        confidence=0,
+                        attempts=0,
+                        next_attempt_at=0,
+                        lease_owner=NULL,
+                        lease_until=0,
+                        last_error='',
+                        updated_at=?
+                    WHERE store='noon'
+                      AND state!='sent'
+                    """,
+                    (now,),
+                )
+
+                conn.execute(
+                    """INSERT INTO events(
+                           ts,event,store,deal_key,payload_json
+                       ) VALUES(?,?,?,?,?)""",
+                    (
+                        now,
+                        "noon_live_parser_v4_reopen",
+                        "noon",
+                        "",
+                        _json({
+                            "reason":
+                            "reverify_noon_after_live_parser_recovery"
+                        }),
+                    ),
+                )
+
             conn.commit()
         finally:
             conn.close()
