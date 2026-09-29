@@ -117,6 +117,30 @@ class DealDatabase:
         conn = sqlite3.connect(self.path, timeout=30)
         try:
             conn.executescript(SCHEMA)
+
+            # One-time cleanup: previous V13 versions mixed discovery/search
+            # prices with verified history, which could create fake discounts.
+            migrated = conn.execute(
+                "SELECT 1 FROM events WHERE event='trusted_history_v1_reset' LIMIT 1"
+            ).fetchone()
+
+            if not migrated:
+                conn.execute("DELETE FROM price_history")
+                conn.execute(
+                    """INSERT INTO events(
+                           ts,event,store,deal_key,payload_json
+                       ) VALUES(?,?,?,?,?)""",
+                    (
+                        int(time.time()),
+                        "trusted_history_v1_reset",
+                        "",
+                        "",
+                        _json({
+                            "reason": "remove_unverified_discovery_price_history"
+                        }),
+                    ),
+                )
+
             conn.commit()
         finally:
             conn.close()
@@ -204,17 +228,8 @@ class DealDatabase:
                     ),
                 )
 
-            recent_same = conn.execute(
-                """SELECT 1 FROM price_history
-                   WHERE deal_key=? AND ABS(price-?)<0.01 AND observed_at>?
-                   LIMIT 1""",
-                (deal.key, deal.current_price, now - 600),
-            ).fetchone()
-            if not recent_same:
-                conn.execute(
-                    "INSERT INTO price_history(deal_key,store,price,old_price,observed_at) VALUES(?,?,?,?,?)",
-                    (deal.key, deal.store, deal.current_price, deal.old_price, now),
-                )
+            # Discovery/search prices are intentionally NOT stored in trusted
+            # history. price_history is populated only after live verification.
 
         return {"new_or_reopened": should_reopen, "deal_key": deal.key}
 
