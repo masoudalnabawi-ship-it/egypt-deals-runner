@@ -83,8 +83,38 @@ class V13Pipeline:
         adapter = self.discovery[store]
         selector = self.selectors[store]
         while not self.stop_event.is_set():
-            health = await asyncio.to_thread(self.db.source_health, store)
-            surfaces = selector.pick(self.settings.surface_batch_size, health)
+            health = await asyncio.to_thread(
+                self.db.source_health,
+                store,
+            )
+            surfaces = selector.pick(
+                self.settings.surface_batch_size,
+                health,
+            )
+
+            if store == "amazon":
+                hot_names = {
+                    "90off",
+                    "70off",
+                    "50off",
+                }
+                mandatory_hot = [
+                    item
+                    for item in adapter.surfaces
+                    if item.name in hot_names
+                ]
+
+                merged = mandatory_hot + surfaces
+                unique_surfaces = []
+                seen_surface_names = set()
+
+                for item in merged:
+                    if item.name in seen_surface_names:
+                        continue
+                    seen_surface_names.add(item.name)
+                    unique_surfaces.append(item)
+
+                surfaces = unique_surfaces
 
             for surface in surfaces:
                 started = time.monotonic()

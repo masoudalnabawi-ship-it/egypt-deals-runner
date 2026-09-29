@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import os
 import random
+import re
 import time
 from urllib.parse import parse_qs, quote_plus, urlparse
 
@@ -197,6 +198,24 @@ class StoreHttpClient:
                 "noon_cffi_empty_storefront"
             )
 
+        if not api_target:
+            low_text = text.lower()
+            has_product_evidence = bool(
+                re.search(
+                    r"/[a-z0-9]{8,24}/p/?",
+                    low_text,
+                    re.I,
+                )
+                or '"sku"' in low_text
+                or '"catalog_sku"' in low_text
+                or "productcard" in low_text
+                or "product-box" in low_text
+            )
+            if not has_product_evidence:
+                raise StoreHttpError(
+                    "noon_cffi_unrendered_storefront"
+                )
+
         return FetchResult(
             url=str(r.url or url),
             text=text,
@@ -330,7 +349,32 @@ class StoreHttpClient:
                     wait_until="domcontentloaded",
                     timeout=22000 if api_target else 35000,
                 )
-                await page.wait_for_timeout(500 if api_target else 3000)
+                await page.wait_for_timeout(
+                    500 if api_target else 1800
+                )
+
+                if not api_target:
+                    try:
+                        await page.wait_for_selector(
+                            "a[href*='/p/']",
+                            timeout=9000,
+                        )
+                    except Exception:
+                        pass
+
+                    # Trigger lazy product grids.
+                    try:
+                        await page.evaluate(
+                            "window.scrollTo(0, "
+                            "Math.min(document.body.scrollHeight, 1800))"
+                        )
+                        await page.wait_for_timeout(900)
+                        await page.evaluate(
+                            "window.scrollTo(0, 0)"
+                        )
+                    except Exception:
+                        pass
+
                 if api_target:
                     text = await page.locator("body").inner_text(timeout=5000)
                 else:

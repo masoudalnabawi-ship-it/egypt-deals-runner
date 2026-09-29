@@ -346,6 +346,168 @@ class NoonDiscovery:
                 )
             )
 
+        # Noon changes CSS class names frequently. If its structured
+        # product cards were not recognised, recover products from canonical
+        # /SKU/p/ links and the nearest price-bearing container.
+        if not out:
+            seen_links = set()
+
+            for link in soup.select("a[href*='/p/']"):
+                href = str(link.get("href") or "").strip()
+                if not href or href in seen_links:
+                    continue
+                seen_links.add(href)
+
+                m = re.search(
+                    r"/([A-Z0-9]{8,24})/p/?",
+                    href,
+                    re.I,
+                )
+                if not m:
+                    continue
+
+                sku = m.group(1).upper()
+
+                card = link
+                chosen = None
+
+                # Walk upward until we reach a compact product container
+                # containing an actual EGP price.
+                for _ in range(7):
+                    parent = getattr(card, "parent", None)
+                    if parent is None:
+                        break
+
+                    card = parent
+                    text = card.get_text(
+                        " ",
+                        strip=True,
+                    )
+
+                    if (
+                        len(text) <= 3500
+                        and re.search(
+                            r"(?:EGP|ج\.?م\.?)\s*"
+                            r"[0-9٠-٩][0-9٠-٩,.٬٫]*",
+                            text,
+                            re.I,
+                        )
+                    ):
+                        chosen = card
+                        break
+
+                if chosen is None:
+                    continue
+
+                title = str(
+                    link.get("aria-label")
+                    or link.get("title")
+                    or ""
+                ).strip()
+
+                img = link.select_one("img")
+                if not title and img:
+                    title = str(
+                        img.get("alt") or ""
+                    ).strip()
+
+                if not title:
+                    title_node = chosen.select_one(
+                        "h1,h2,h3,h4,"
+                        "[class*='title'],"
+                        "[class*='name'],"
+                        "[data-qa*='name']"
+                    )
+                    if title_node:
+                        title = title_node.get_text(
+                            " ",
+                            strip=True,
+                        )
+
+                if not title:
+                    continue
+
+                values = []
+
+                for node in chosen.select(
+                    "[class*='price'],"
+                    "[data-qa*='price'],"
+                    "[data-testid*='price']"
+                ):
+                    txt = node.get_text(
+                        " ",
+                        strip=True,
+                    )
+                    if not re.search(
+                        r"(?:EGP|ج\.?م\.?)",
+                        txt,
+                        re.I,
+                    ):
+                        continue
+
+                    value = _number(txt)
+                    if value >= 5:
+                        values.append(value)
+
+                if not values:
+                    text = chosen.get_text(
+                        " ",
+                        strip=True,
+                    )
+
+                    for price_text in re.findall(
+                        r"(?:EGP|ج\.?م\.?)\s*"
+                        r"([0-9٠-٩][0-9٠-٩,.٬٫]*)",
+                        text,
+                        re.I,
+                    ):
+                        value = _number(price_text)
+                        if value >= 5:
+                            values.append(value)
+
+                if not values:
+                    continue
+
+                values = sorted(
+                    set(round(v, 2) for v in values)
+                )
+
+                current = values[0]
+                old = (
+                    values[-1]
+                    if len(values) > 1
+                    and values[-1] > current * 1.01
+                    else 0.0
+                )
+
+                image = ""
+                if img:
+                    image = str(
+                        img.get("src")
+                        or img.get("data-src")
+                        or img.get("data-lazy-src")
+                        or ""
+                    )
+
+                out.append(
+                    DealCandidate(
+                        store="noon",
+                        external_id=sku,
+                        title=title,
+                        current_price=current,
+                        old_price=old or None,
+                        url=urljoin(BASE, href),
+                        image_url=image,
+                        category=surface.category,
+                        source=surface.name,
+                        metadata={
+                            "locale": "en-eg",
+                            "currency": "EGP",
+                            "parser": "canonical_link_fallback",
+                        },
+                    )
+                )
+
         unique: dict[str, DealCandidate] = {}
         for deal in out:
             key = deal.external_id or deal.url
