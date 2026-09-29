@@ -14,7 +14,7 @@ permissions:
 
 concurrency:
   group: v13-production
-  cancel-in-progress: false
+  cancel-in-progress: true
 
 jobs:
   production:
