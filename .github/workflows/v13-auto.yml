@@ -1,0 +1,93 @@
+name: V13 Amazon Noon Production
+
+on:
+  schedule:
+    - cron: "17 */4 * * *"
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/v13-auto.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: v13-production
+  cancel-in-progress: false
+
+jobs:
+  production:
+    runs-on: ubuntu-latest
+    timeout-minutes: 235
+
+    env:
+      TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+      REVIEW_CHAT_ID: ${{ secrets.REVIEW_CHAT_ID }}
+      AMAZON_NORMAL_REVIEW_CHAT_ID: ${{ secrets.AMAZON_NORMAL_REVIEW_CHAT_ID }}
+      AMAZON_REVIEW_GROUP_ID: ${{ secrets.AMAZON_REVIEW_GROUP_ID }}
+      NOON_NORMAL_REVIEW_CHAT_ID: ${{ secrets.NOON_NORMAL_REVIEW_CHAT_ID }}
+      NOON_ULTRA_REVIEW_CHAT_ID: ${{ secrets.NOON_ULTRA_REVIEW_CHAT_ID }}
+
+      CLOUD_API_URL: ${{ secrets.CLOUD_API_URL }}
+      CLOUD_API_KEY: ${{ secrets.CLOUD_API_KEY }}
+
+      V13_DB_PATH: .runtime_state/v13.db
+
+      V13_DISCOVERY_INTERVAL: "20"
+      V13_VERIFICATION_INTERVAL: "2"
+      V13_DELIVERY_INTERVAL: "2"
+      V13_HEALTH_INTERVAL: "60"
+
+      V13_VERIFY_WORKERS_PER_STORE: "2"
+      V13_SURFACE_BATCH_SIZE: "5"
+      V13_EXPLORATION_RATE: "0.22"
+
+      V13_AMAZON_PROXY_FIRST: "false"
+      V13_NOON_PROXY_FIRST: "true"
+      V13_NOON_BROWSER_FALLBACK: "true"
+
+    steps:
+      - name: Checkout V13
+        uses: actions/checkout@v4
+        with:
+          ref: v13-rebuild
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Restore V13 state
+        uses: actions/cache/restore@v4
+        with:
+          path: |
+            .runtime_state/v13.db
+            .runtime_state/v13.db-wal
+            .runtime_state/v13.db-shm
+          key: v13-state-${{ github.run_id }}
+          restore-keys: |
+            v13-state-
+
+      - name: Install dependencies
+        run: |
+          python -m pip install -r requirements-v13.txt
+          python -m pip install "playwright>=1.55,<2"
+
+      - name: Install Chromium
+        run: python -m playwright install --with-deps chromium
+
+      - name: Run V13 production
+        run: |
+          mkdir -p .runtime_state
+          timeout --signal=TERM --kill-after=30s 13400s \
+            env PYTHONPATH=. python scripts/run_v13.py --duration 13200
+
+      - name: Save V13 state
+        if: always()
+        uses: actions/cache/save@v4
+        with:
+          path: |
+            .runtime_state/v13.db
+            .runtime_state/v13.db-wal
+            .runtime_state/v13.db-shm
+          key: v13-state-${{ github.run_id }}
