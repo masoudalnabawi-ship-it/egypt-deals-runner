@@ -25,21 +25,68 @@ def _price(text) -> float:
         return 0.0
 
 
+BANK_OFFER_MARKERS = (
+    "bank",
+    "credit card",
+    "debit card",
+    "cardholder",
+    "card holders",
+    "visa signature",
+    "installment",
+    "installments",
+    "nbe",
+    "cib",
+    "banque misr",
+    "emirates nbd",
+    "mashreq",
+    "hsbc",
+    "adcb",
+    "fab",
+    "بنك",
+    "البنك",
+    "البنك الأهلي",
+    "البنك الاهلي",
+    "بنك مصر",
+    "بطاقة ائتمان",
+    "بطاقة الائتمان",
+    "بطاقات الائتمان",
+    "بطاقة البنك",
+    "بطاقات البنك",
+    "حاملي البطاقات",
+    "تقسيط",
+    "أقساط",
+    "اقساط",
+)
+
+
 def _coupon_percent(text: str) -> float:
+    text = str(text or "")
+
     patterns = (
         r"(\d+(?:\.\d+)?)\s*%\s*(?:off)?\s*(?:coupon|خصم|كوبون)?",
         r"(?:coupon|كوبون|خصم)[^%]{0,50}(\d+(?:\.\d+)?)\s*%",
         r"(?:save|وفر)[^%]{0,40}(\d+(?:\.\d+)?)\s*%",
     )
+
     for pat in patterns:
-        m = re.search(pat, text or "", re.I)
-        if m:
+        for m in re.finditer(pat, text, re.I):
+            # نفحص الكلام حول الخصم نفسه.
+            # لو الخصم مشروط ببنك/بطاقة/تقسيط لا نعتبره كوبوناً عاماً.
+            left = max(0, m.start() - 180)
+            right = min(len(text), m.end() + 180)
+            context = text[left:right].lower()
+
+            if any(marker in context for marker in BANK_OFFER_MARKERS):
+                continue
+
             try:
-                v = float(m.group(1))
-                if 0 < v <= 90:
-                    return v
+                value = float(m.group(1))
             except Exception:
-                pass
+                continue
+
+            if 0 < value <= 90:
+                return value
+
     return 0.0
 
 
