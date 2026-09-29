@@ -11,15 +11,46 @@ from .scheduler import Surface
 
 
 BASE = "https://www.noon.com"
-CATALOG_SEARCH = f"{BASE}/_vs/nc/mp-customer-catalog-api/api/v3/u/search/"
+SEARCH = f"{BASE}/egypt-en/search/"
+
+PUBLIC_CATEGORY_URLS = {
+    "mobiles": (
+        f"{BASE}/egypt-en/electronics-and-mobiles/"
+        "mobiles-and-accessories/mobiles-20905/category/"
+        "?isCarouselView=false&limit=50"
+    ),
+    "laptops": (
+        f"{BASE}/egypt-en/electronics-and-mobiles/"
+        "computers-and-accessories/computers-new/laptops/"
+        "all-products-eg/?isCarouselView=false&limit=50"
+    ),
+    "appliances": (
+        f"{BASE}/egypt-en/home-and-kitchen/"
+        "home-appliances-31235/home-appliances-31235/"
+        "?isCarouselView=false&limit=50"
+    ),
+}
 
 
-def _surface(name: str, category: str, query: str, priority: float = 1.0) -> Surface:
-    # Public read-only catalog endpoint used by Noon's own storefront.
+def _surface(
+    name: str,
+    category: str,
+    query: str,
+    priority: float = 1.0,
+) -> Surface:
+    # Prefer real Egypt storefront category pages.
+    # Other categories use the public Egypt search page.
+    url = PUBLIC_CATEGORY_URLS.get(name)
+    if not url:
+        url = (
+            f"{SEARCH}?q={quote_plus(query)}"
+            "&isCarouselView=false&limit=50"
+        )
+
     return Surface(
         name,
         category,
-        f"{CATALOG_SEARCH}?q={quote_plus(query)}&limit=100&page=1",
+        url,
         priority,
     )
 

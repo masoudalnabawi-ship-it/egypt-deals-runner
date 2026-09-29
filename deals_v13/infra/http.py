@@ -94,6 +94,13 @@ class StoreHttpClient:
 
     async def aclose(self) -> None:
         await self.client.aclose()
+
+        if self._noon_cffi_session is not None:
+            try:
+                self._noon_cffi_session.close()
+            except Exception:
+                pass
+            self._noon_cffi_session = None
         if self._browser_context is not None:
             try:
                 await self._browser_context.close()
@@ -136,58 +143,38 @@ class StoreHttpClient:
         started = time.monotonic()
 
         if self._noon_cffi_session is None:
-            last = None
+            self._noon_cffi_session = cffi_requests.Session(
+                impersonate="chrome"
+            )
 
-            for browser in ("chrome", "chrome124", "chrome120"):
-                for warmup in (
-                    "https://www.noon.com/egypt-en/",
-                    "https://www.noon.com/uae-en/",
-                ):
-                    session = None
-                    try:
-                        session = cffi_requests.Session(
-                            impersonate=browser
-                        )
-                        r = session.get(
-                            warmup,
-                            timeout=18,
-                        )
-                        if r.status_code == 200:
-                            self._noon_cffi_session = session
-                            session = None
-                            break
-                        last = RuntimeError(
-                            f"warmup_http_{r.status_code}"
-                        )
-                    except Exception as exc:
-                        last = exc
-                    finally:
-                        if session is not None:
-                            try:
-                                session.close()
-                            except Exception:
-                                pass
-
-                if self._noon_cffi_session is not None:
-                    break
-
-            if self._noon_cffi_session is None:
-                raise StoreHttpError(
-                    f"noon_cffi_warmup_failed:{last}"
-                )
+        api_target = _is_noon_catalog_api(url)
 
         headers = {
-            "accept": "application/json, text/plain, */*",
-            "accept-language": "en-GB,en-US;q=0.9,en;q=0.8",
-            "x-locale": "en-eg",
-            "x-mp-country": "eg",
+            "accept-language": "en-EG,en;q=0.9,ar-EG;q=0.8",
             "referer": "https://www.noon.com/egypt-en/",
         }
+
+        if api_target:
+            headers.update({
+                "accept": "application/json, text/plain, */*",
+                "x-locale": "en-eg",
+                "x-platform": "web",
+                "x-mp": "noon",
+                "x-mp-country": "eg",
+                "x-country-code": "eg",
+                "origin": "https://www.noon.com",
+            })
+        else:
+            headers["accept"] = (
+                "text/html,application/xhtml+xml,"
+                "application/xml;q=0.9,*/*;q=0.8"
+            )
 
         r = self._noon_cffi_session.get(
             url,
             headers=headers,
-            timeout=30,
+            timeout=18,
+            allow_redirects=True,
         )
 
         latency = int(
@@ -205,8 +192,13 @@ class StoreHttpClient:
                 "noon_cffi_protection"
             )
 
+        if not api_target and len(text) < 800:
+            raise StoreHttpError(
+                "noon_cffi_empty_storefront"
+            )
+
         return FetchResult(
-            url=url,
+            url=str(r.url or url),
             text=text,
             status_code=r.status_code,
             via="noon_cffi",
@@ -309,7 +301,7 @@ class StoreHttpClient:
         }:
             raise StoreHttpError("browser_fallback_disabled")
 
-        target = url if _is_noon_catalog_api(url) else _noon_storefront_url(url)
+        target = _noon_storefront_url(url) if _is_noon_catalog_api(url) else url
         started = time.monotonic()
 
         async with self._browser_lock:
@@ -338,7 +330,7 @@ class StoreHttpClient:
                     wait_until="domcontentloaded",
                     timeout=22000 if api_target else 35000,
                 )
-                await page.wait_for_timeout(500 if api_target else 1800)
+                await page.wait_for_timeout(500 if api_target else 3000)
                 if api_target:
                     text = await page.locator("body").inner_text(timeout=5000)
                 else:
@@ -386,9 +378,8 @@ class StoreHttpClient:
         sem = self._store_locks.get(store) or asyncio.Semaphore(2)
 
         async with sem:
-            # Noon catalog/API uses its own Chrome TLS fingerprint.
-            # Amazon never enters this transport path.
-            if store == "noon" and noon_api:
+            if store == "noon":
+                # 1) Independent Chrome TLS transport first.
                 try:
                     return await self._noon_cffi(url)
                 except Exception as exc:
@@ -396,24 +387,86 @@ class StoreHttpClient:
                         f"_noon_cffi:{type(exc).__name__}:{exc}"
                     )
 
-            for round_no in range(2):
+                # 2) For search/catalog API URLs, render the corresponding
+                # public Egypt storefront instead of repeatedly hitting
+                # the blocked internal endpoint.
+                if noon_api:
+                    mapped = _noon_storefront_url(url)
+
+                    if mapped != url:
+                        try:
+                            return await self._browser_noon(url)
+                        except Exception as exc:
+                            errors.append(
+                                f"_browser_noon:"
+                                f"{type(exc).__name__}:{exc}"
+                            )
+
+                    # Product-detail APIs have no q= search mapping.
+                    # Fail fast so verifier immediately tries the public
+                    # Noon product page.
+                    raise StoreHttpError(
+                        "fetch_failed | "
+                        + " | ".join(errors[-8:])
+                    )
+
+                # 3) Public Noon Egypt storefront through real Chromium.
+                try:
+                    return await self._browser_noon(url)
+                except Exception as exc:
+                    errors.append(
+                        f"_browser_noon:"
+                        f"{type(exc).__name__}:{exc}"
+                    )
+
+                # 4) Last-resort network transports.
                 for method in methods:
                     try:
-                        return await method(url, extra_headers)
+                        return await method(
+                            url,
+                            extra_headers,
+                        )
                     except (
                         StoreHttpError,
                         httpx.TimeoutException,
                         httpx.NetworkError,
                         httpx.HTTPError,
                     ) as exc:
-                        errors.append(f"{method.__name__}:{type(exc).__name__}:{exc}")
+                        errors.append(
+                            f"{method.__name__}:"
+                            f"{type(exc).__name__}:{exc}"
+                        )
+
+                raise StoreHttpError(
+                    "fetch_failed | "
+                    + " | ".join(errors[-8:])
+                )
+
+            # Amazon transport stays exactly as before.
+            for round_no in range(2):
+                for method in methods:
+                    try:
+                        return await method(
+                            url,
+                            extra_headers,
+                        )
+                    except (
+                        StoreHttpError,
+                        httpx.TimeoutException,
+                        httpx.NetworkError,
+                        httpx.HTTPError,
+                    ) as exc:
+                        errors.append(
+                            f"{method.__name__}:"
+                            f"{type(exc).__name__}:{exc}"
+                        )
+
                 if round_no == 0:
-                    await asyncio.sleep(0.30 + random.random() * 0.45)
+                    await asyncio.sleep(
+                        0.30 + random.random() * 0.45
+                    )
 
-            if store == "noon":
-                try:
-                    return await self._browser_noon(url)
-                except Exception as exc:
-                    errors.append(f"_browser_noon:{type(exc).__name__}:{exc}")
-
-        raise StoreHttpError("fetch_failed | " + " | ".join(errors[-5:]))
+        raise StoreHttpError(
+            "fetch_failed | "
+            + " | ".join(errors[-8:])
+        )

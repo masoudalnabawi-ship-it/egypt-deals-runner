@@ -5,17 +5,22 @@ from deals_v13.discovery.noon import NOON_SURFACES
 
 class HotNoonPolicyTests(unittest.TestCase):
 
-    def test_noon_uses_current_catalog_api(self):
+    def test_noon_uses_egypt_public_storefront(self):
         self.assertTrue(NOON_SURFACES)
-        self.assertIn(
-            "/_vs/nc/mp-customer-catalog-api"
-            "/api/v3/u/search/",
-            NOON_SURFACES[0].url,
-        )
 
-    def test_noon_requests_large_egypt_batch(self):
+        for surface in NOON_SURFACES[:3]:
+            self.assertIn(
+                "noon.com/egypt-en/",
+                surface.url,
+            )
+            self.assertNotIn(
+                "/_vs/nc/",
+                surface.url,
+            )
+
+    def test_noon_requests_useful_batch(self):
         self.assertIn(
-            "limit=100",
+            "limit=50",
             NOON_SURFACES[0].url,
         )
 
