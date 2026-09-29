@@ -305,7 +305,9 @@ class V13Pipeline:
         chat_id = str(chat.get("id") or "")
         allowed = {
             str(self.settings.normal_chat_id or ""),
+            str(self.settings.ultra_chat_id or ""),
             str(self.settings.noon_normal_chat_id or ""),
+            str(self.settings.noon_ultra_chat_id or ""),
         }
         return bool(chat_id and chat_id in allowed)
 

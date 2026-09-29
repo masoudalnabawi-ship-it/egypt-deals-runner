@@ -102,17 +102,9 @@ class TelegramDelivery:
         return "\n".join(lines)
 
     def _keyboard(self, row: dict) -> dict:
-        # Ultra deals already arrive directly in the group; no misleading
-        # publish/reject actions are shown there.
-        if str(row.get("lane") or "") == Lane.ULTRA.value:
-            return {
-                "inline_keyboard": [
-                    [{"text": "🔗 فتح المنتج", "url": row["url"]}]
-                ]
-            }
-
-        # Normal deals are review-only. Keep review controls until the callback
-        # service is migrated fully to V13.
+        # Every deal inside a review chat, including Ultra/HOT Ultra,
+        # must keep manual publish/reject controls.
+        # Public-channel posts use send_public() and only show Open Product.
         short = row["deal_key"][:16]
         return {
             "inline_keyboard": [

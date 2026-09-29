@@ -36,7 +36,7 @@ class Strict50UiTests(unittest.TestCase):
         self.assertNotIn("وقت المراجعة", c)
         self.assertNotIn("المرفق لقطة", c)
 
-    def test_ultra_has_no_broken_publish_buttons(self):
+    def test_ultra_has_publish_buttons(self):
         row = {
             "lane": "ultra",
             "url": "https://www.amazon.eg/dp/B012345678",
@@ -44,8 +44,9 @@ class Strict50UiTests(unittest.TestCase):
         }
         kb = self.t._keyboard(row)
         flat = str(kb)
-        self.assertNotIn("نشر عاجل", flat)
-        self.assertNotIn("نشر عادي", flat)
+        self.assertIn("نشر عاجل", flat)
+        self.assertIn("نشر عادي", flat)
+        self.assertIn("رفض", flat)
         self.assertIn("فتح المنتج", flat)
 
     def test_strict_chat_mapping(self):
