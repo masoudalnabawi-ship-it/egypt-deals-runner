@@ -90,6 +90,59 @@ def _coupon_percent(text: str) -> float:
     return 0.0
 
 
+AMAZON_COUPON_SELECTORS = (
+    "#couponText",
+    "#couponFeature",
+    "#coupon_feature_div",
+    "[data-feature-name='coupon']",
+    "span[id^='couponText']",
+    "label[for*='coupon']",
+    ".couponBadge",
+    ".couponLabel",
+)
+
+
+def _amazon_coupon_percent(soup: BeautifulSoup) -> float:
+    """Return only a coupon explicitly attached to this product.
+
+    Never scan the whole Amazon page for percentages. Product pages contain
+    bank offers, recommendations and unrelated promotional percentages.
+    """
+    values = []
+
+    for selector in AMAZON_COUPON_SELECTORS:
+        try:
+            nodes = soup.select(selector)
+        except Exception:
+            nodes = []
+
+        for node in nodes:
+            text = node.get_text(" ", strip=True)
+            if not text:
+                continue
+
+            low = text.lower()
+
+            # Require explicit coupon/voucher semantics.
+            if not any(
+                token in low
+                for token in (
+                    "coupon",
+                    "voucher",
+                    "كوبون",
+                    "قسيمة",
+                    "قسيمة خصم",
+                )
+            ):
+                continue
+
+            value = _coupon_percent(text)
+            if 0 < value <= 90:
+                values.append(value)
+
+    return max(values) if values else 0.0
+
+
 class StoreVerifier:
     def __init__(self, http: StoreHttpClient):
         self.http = http
@@ -183,7 +236,7 @@ class StoreVerifier:
 
         page = soup.get_text(" ", strip=True)
         low = page.lower()
-        coupon = _coupon_percent(page)
+        coupon = _amazon_coupon_percent(soup)
         flash = any(x in low for x in (
             "limited time deal", "lightning deal", "deal of the day",
             "عرض لفترة محدودة", "صفقة لفترة محدودة", "عرض محدود"
@@ -214,6 +267,11 @@ class StoreVerifier:
         meta = {
             "http_via": via,
             "coupon_percent": coupon,
+            "coupon_source": (
+                "explicit_product_coupon"
+                if coupon > 0
+                else ""
+            ),
             "flash": flash,
             "verification_signals": max(1, signal_count),
         }

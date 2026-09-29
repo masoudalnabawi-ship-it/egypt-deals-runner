@@ -1,6 +1,11 @@
 import unittest
 
-from deals_v13.verification.verifier import _coupon_percent
+from bs4 import BeautifulSoup
+
+from deals_v13.verification.verifier import (
+    _coupon_percent,
+    _amazon_coupon_percent,
+)
 
 
 class CouponEligibilityTests(unittest.TestCase):
@@ -33,6 +38,51 @@ class CouponEligibilityTests(unittest.TestCase):
         self.assertEqual(
             _coupon_percent("Apply 10% coupon"),
             10.0,
+        )
+
+
+    def test_unrelated_page_percentage_is_not_coupon(self):
+        soup = BeautifulSoup(
+            """
+            <html>
+              <div>خصم 90% على منتج آخر</div>
+              <div>NBE Visa Signature 10%</div>
+              <div id="productTitle">Current product</div>
+            </html>
+            """,
+            "html.parser",
+        )
+        self.assertEqual(
+            _amazon_coupon_percent(soup),
+            0.0,
+        )
+
+    def test_explicit_amazon_coupon_is_kept(self):
+        soup = BeautifulSoup(
+            """
+            <div id="couponFeature">
+              Apply 10% coupon
+            </div>
+            """,
+            "html.parser",
+        )
+        self.assertEqual(
+            _amazon_coupon_percent(soup),
+            10.0,
+        )
+
+    def test_bank_offer_inside_coupon_area_is_still_ignored(self):
+        soup = BeautifulSoup(
+            """
+            <div id="couponFeature">
+              Get 10% with NBE Visa Signature credit card coupon
+            </div>
+            """,
+            "html.parser",
+        )
+        self.assertEqual(
+            _amazon_coupon_percent(soup),
+            0.0,
         )
 
 

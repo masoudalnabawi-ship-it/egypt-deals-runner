@@ -141,6 +141,61 @@ class DealDatabase:
                     ),
                 )
 
+            coupon_fix = conn.execute(
+                "SELECT 1 FROM events "
+                "WHERE event='explicit_coupon_scope_v2_reset' LIMIT 1"
+            ).fetchone()
+
+            if not coupon_fix:
+                now = int(time.time())
+
+                # Anything not already sent must pass through the fixed
+                # verifier again. Do not trust previously calculated
+                # real_discount/effective_price/lane.
+                conn.execute(
+                    """
+                    UPDATE deals SET
+                        state='pending',
+                        old_price=NULL,
+                        effective_price=current_price,
+                        visible_discount=0,
+                        real_discount=0,
+                        lane='normal',
+                        score=0,
+                        confidence=0,
+                        attempts=0,
+                        next_attempt_at=0,
+                        lease_owner=NULL,
+                        lease_until=0,
+                        last_error='',
+                        updated_at=?
+                    WHERE state IN (
+                        'pending',
+                        'retry',
+                        'verifying',
+                        'verified',
+                        'delivering'
+                    )
+                    """,
+                    (now,),
+                )
+
+                conn.execute(
+                    """INSERT INTO events(
+                           ts,event,store,deal_key,payload_json
+                       ) VALUES(?,?,?,?,?)""",
+                    (
+                        now,
+                        "explicit_coupon_scope_v2_reset",
+                        "",
+                        "",
+                        _json({
+                            "reason":
+                            "reverify_unsent_deals_after_fake_coupon_fix"
+                        }),
+                    ),
+                )
+
             conn.commit()
         finally:
             conn.close()
