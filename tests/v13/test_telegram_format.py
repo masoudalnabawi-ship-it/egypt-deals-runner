@@ -40,8 +40,7 @@ class TelegramFormatTests(unittest.TestCase):
         self.assertNotIn("\\\\n", caption)
         self.assertIn("السعر الآن", caption)
         self.assertIn("الخصم الحقيقي", caption)
-        self.assertIn("تم التحقق من صفحة المنتج", caption)
-        self.assertIn("كوبون 10%", caption)
+        self.assertNotIn("تم التحقق من صفحة المنتج", caption)
         self.assertLessEqual(len(caption), 1024)
 
 

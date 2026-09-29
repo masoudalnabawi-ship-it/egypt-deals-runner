@@ -4,8 +4,6 @@ import asyncio
 import html
 import json
 import os
-from datetime import datetime
-from zoneinfo import ZoneInfo
 
 import httpx
 
@@ -25,6 +23,9 @@ class TelegramDelivery:
         self._browser_lock = asyncio.Lock()
 
     def _chat_id(self, store: str, lane: str) -> str:
+        # STRICT50:
+        # normal (<50%) -> private/review chat
+        # ultra (>=50% or exceptional) -> ultra group
         if store == "noon":
             chat = (
                 self.settings.noon_ultra_chat_id if lane == Lane.ULTRA.value
@@ -47,43 +48,14 @@ class TelegramDelivery:
         except Exception:
             return {}
 
-    @staticmethod
-    def _friendly_reasons(meta: dict) -> list[str]:
-        raw = meta.get("decision_reasons") or []
-        if not isinstance(raw, list):
-            raw = []
-
-        labels = {
-            "product_page_verified": "تم التحقق من صفحة المنتج",
-            "multi_signal_price": "السعر مؤكد بأكثر من إشارة",
-            "live_old_price": "السعر السابق ظاهر حاليًا",
-            "price_history_support": "تاريخ السعر يدعم الخصم",
-            "cross_store_advantage": "أفضل من المتجر المقارن",
-            "flash": "عرض سريع/محدود",
-            "verified": "تم التحقق المباشر",
-            "price_anomaly": "انخفاض سعر غير معتاد",
-        }
-
-        out: list[str] = []
-        for item in raw:
-            key = str(item)
-            if key.startswith("coupon_"):
-                pct = key.split("_", 1)[1]
-                label = f"كوبون {pct}%"
-            else:
-                label = labels.get(key, key.replace("_", " "))
-            if label not in out:
-                out.append(label)
-        return out[:3]
-
     def _caption(self, row: dict) -> str:
         is_amazon = row["store"] == "amazon"
         store = "Amazon Egypt" if is_amazon else "Noon Egypt"
         lane = str(row.get("lane") or "normal")
-        icon = "🚨" if lane == "ultra" else "🔥"
-        lane_ar = "ألترا" if lane == "ultra" else "عادي"
+        icon = "🚨" if lane == Lane.ULTRA.value else "🔥"
+        lane_ar = "ألترا" if lane == Lane.ULTRA.value else "مراجعة"
 
-        title = html.escape((row.get("title") or "منتج بدون اسم")[:180])
+        title = html.escape((row.get("title") or "منتج بدون اسم")[:190])
         current = float(row.get("current_price") or 0)
         old = float(row.get("old_price") or 0)
         real_discount = float(row.get("real_discount") or 0)
@@ -92,11 +64,6 @@ class TelegramDelivery:
         effective = float(row.get("effective_price") or current)
         external_id = html.escape(str(row.get("external_id") or ""))
         category = html.escape(str(row.get("category") or ""))[:70]
-        reviewed_at = datetime.now(ZoneInfo("Africa/Cairo")).strftime("%H:%M")
-
-        meta = self._read_meta(row)
-        reasons = self._friendly_reasons(meta)
-        cross = meta.get("cross_store")
 
         lines = [
             f"{icon} <b>V13 {lane_ar} • {store}</b>",
@@ -108,8 +75,13 @@ class TelegramDelivery:
 
         if old > current:
             lines.append(f"🏷 <b>السعر السابق:</b> <s>{old:,.2f}</s> ج.م")
+
+        # Only show the effective price when it is plausible.
+        # Never display impossible coupon math such as 6549 -> 654 from a fake 90% parse.
         if effective > 0 and effective < current * 0.999:
-            lines.append(f"🎟 <b>بعد الكوبون/العرض:</b> {effective:,.2f} ج.م")
+            implied = (current - effective) / current * 100 if current else 0
+            if 0 < implied <= 60:
+                lines.append(f"🎟 <b>بعد الكوبون/العرض:</b> {effective:,.2f} ج.م")
 
         lines.extend([
             f"📉 <b>الخصم الحقيقي:</b> {real_discount:.1f}%",
@@ -123,26 +95,24 @@ class TelegramDelivery:
         if category:
             lines.append(f"📂 <b>القسم:</b> {category}")
 
-        if isinstance(cross, dict) and cross.get("price"):
-            cross_store = html.escape(str(cross.get("store") or "المتجر الآخر").title())
-            lines.append(
-                f"🔎 <b>مقارنة السوق:</b> {cross_store} — {float(cross['price']):,.2f} ج.م"
-            )
-
-        if reasons:
-            lines.append("")
-            lines.append("✅ <b>التحقق:</b>")
-            lines.extend(f"• {html.escape(reason)}" for reason in reasons)
-
-        lines.extend([
-            "",
-            f"🕒 <b>وقت المراجعة:</b> {reviewed_at}",
-            "📸 <i>المرفق لقطة فعلية من صفحة المنتج وقت المراجعة.</i>",
-        ])
-
+        # Deliberately removed:
+        # - verification block
+        # - review time
+        # - screenshot explanatory line
         return "\n".join(lines)
 
     def _keyboard(self, row: dict) -> dict:
+        # Ultra deals already arrive directly in the group; no misleading
+        # publish/reject actions are shown there.
+        if str(row.get("lane") or "") == Lane.ULTRA.value:
+            return {
+                "inline_keyboard": [
+                    [{"text": "🔗 فتح المنتج", "url": row["url"]}]
+                ]
+            }
+
+        # Normal deals are review-only. Keep review controls until the callback
+        # service is migrated fully to V13.
         short = row["deal_key"][:16]
         return {
             "inline_keyboard": [
@@ -160,10 +130,7 @@ class TelegramDelivery:
     async def _ensure_browser(self) -> None:
         if self._context is not None:
             return
-        try:
-            from playwright.async_api import async_playwright
-        except Exception as exc:
-            raise RuntimeError(f"playwright_unavailable:{type(exc).__name__}") from exc
+        from playwright.async_api import async_playwright
 
         self._pw = await async_playwright().start()
         self._browser = await self._pw.chromium.launch(
@@ -224,10 +191,51 @@ class TelegramDelivery:
                 if self._protected_page(body_text):
                     return None
 
-                # Keep store header + product hero/price visible.
-                await page.evaluate("window.scrollTo(0, 0)")
-                await page.wait_for_timeout(300)
+                # Hide navigation/header elements so the Telegram screenshot is
+                # focused on the product, price and offer area.
+                hide = [
+                    "header",
+                    "#navbar",
+                    "#nav-belt",
+                    "#nav-main",
+                    "#nav-subnav",
+                    "#nav-progressive-subnav",
+                    ".navLeftFooter",
+                    "#rhf",
+                    ".cookie-banner",
+                ]
+                for selector in hide:
+                    try:
+                        await page.locator(selector).evaluate_all(
+                            "(els) => els.forEach(e => e.style.display='none')"
+                        )
+                    except Exception:
+                        pass
 
+                targets = (
+                    ["#dp-container", "#ppd", "#centerCol", "main"]
+                    if row["store"] == "amazon"
+                    else ["main", "[data-qa='product-page']", "#__next"]
+                )
+
+                for selector in targets:
+                    try:
+                        loc = page.locator(selector).first
+                        if await loc.count() and await loc.is_visible():
+                            await loc.scroll_into_view_if_needed()
+                            await page.wait_for_timeout(250)
+                            shot = await loc.screenshot(
+                                type="png",
+                                animations="disabled",
+                            )
+                            if shot and len(shot) > 5000:
+                                return shot
+                    except Exception:
+                        continue
+
+                # Last screenshot fallback is viewport-only, never full page.
+                await page.evaluate("window.scrollTo(0, 120)")
+                await page.wait_for_timeout(250)
                 return await page.screenshot(
                     type="png",
                     full_page=False,
@@ -266,7 +274,6 @@ class TelegramDelivery:
         photo_api = f"https://api.telegram.org/bot{token}/sendPhoto"
 
         async with httpx.AsyncClient(timeout=30, follow_redirects=True) as client:
-            # First choice: genuine screenshot of the live product page.
             screenshot = None
             try:
                 screenshot = await asyncio.wait_for(
@@ -294,20 +301,15 @@ class TelegramDelivery:
                 except Exception:
                     pass
 
-            # Second choice: product image from the store.
             image = (row.get("image_url") or "").strip()
             if image:
-                fallback_caption = caption.replace(
-                    "📸 <i>المرفق لقطة فعلية من صفحة المنتج وقت المراجعة.</i>",
-                    "🖼 <i>تعذر التقاط الصفحة؛ المرفق صورة المنتج من المتجر.</i>",
-                )
                 try:
                     r = await client.post(
                         photo_api,
                         json={
                             "chat_id": chat_id,
                             "photo": image,
-                            "caption": fallback_caption,
+                            "caption": caption,
                             "parse_mode": "HTML",
                             "reply_markup": keyboard,
                         },
@@ -318,12 +320,8 @@ class TelegramDelivery:
                 except Exception:
                     pass
 
-            # Final fallback: verified text, so media can never lose a deal.
             text_api = f"https://api.telegram.org/bot{token}/sendMessage"
-            text = caption.replace(
-                "📸 <i>المرفق لقطة فعلية من صفحة المنتج وقت المراجعة.</i>",
-                "⚠️ <i>تعذر إرفاق صورة؛ بيانات العرض ما زالت متحققة.</i>",
-            ) + "\n\n🔗 " + html.escape(row["url"])
+            text = caption + "\n\n🔗 " + html.escape(row["url"])
             r = await client.post(
                 text_api,
                 json={
