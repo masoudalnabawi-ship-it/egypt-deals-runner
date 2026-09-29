@@ -11,7 +11,7 @@ from .scheduler import Surface
 
 
 BASE = "https://www.noon.com"
-CATALOG_SEARCH = f"{BASE}/_svc/catalog/api/v3/u/search/"
+CATALOG_SEARCH = f"{BASE}/_vs/nc/mp-customer-catalog-api/api/v3/u/search/"
 
 
 def _surface(name: str, category: str, query: str, priority: float = 1.0) -> Surface:
@@ -19,7 +19,7 @@ def _surface(name: str, category: str, query: str, priority: float = 1.0) -> Sur
     return Surface(
         name,
         category,
-        f"{CATALOG_SEARCH}?q={quote_plus(query)}",
+        f"{CATALOG_SEARCH}?q={quote_plus(query)}&limit=100&page=1",
         priority,
     )
 

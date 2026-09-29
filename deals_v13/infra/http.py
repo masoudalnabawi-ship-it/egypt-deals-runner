@@ -89,6 +89,8 @@ class StoreHttpClient:
         self._pw = None
         self._browser = None
         self._browser_context = None
+        self._noon_cffi_session = None
+        self._noon_cffi_lock = asyncio.Lock()
 
     async def aclose(self) -> None:
         await self.client.aclose()
@@ -127,6 +129,96 @@ class StoreHttpClient:
                 "Origin": "https://www.noon.com",
             }
         return {}
+
+    def _noon_cffi_sync(self, url: str) -> FetchResult:
+        from curl_cffi import requests as cffi_requests
+
+        started = time.monotonic()
+
+        if self._noon_cffi_session is None:
+            last = None
+
+            for browser in ("chrome", "chrome124", "chrome120"):
+                for warmup in (
+                    "https://www.noon.com/egypt-en/",
+                    "https://www.noon.com/uae-en/",
+                ):
+                    session = None
+                    try:
+                        session = cffi_requests.Session(
+                            impersonate=browser
+                        )
+                        r = session.get(
+                            warmup,
+                            timeout=18,
+                        )
+                        if r.status_code == 200:
+                            self._noon_cffi_session = session
+                            session = None
+                            break
+                        last = RuntimeError(
+                            f"warmup_http_{r.status_code}"
+                        )
+                    except Exception as exc:
+                        last = exc
+                    finally:
+                        if session is not None:
+                            try:
+                                session.close()
+                            except Exception:
+                                pass
+
+                if self._noon_cffi_session is not None:
+                    break
+
+            if self._noon_cffi_session is None:
+                raise StoreHttpError(
+                    f"noon_cffi_warmup_failed:{last}"
+                )
+
+        headers = {
+            "accept": "application/json, text/plain, */*",
+            "accept-language": "en-GB,en-US;q=0.9,en;q=0.8",
+            "x-locale": "en-eg",
+            "x-mp-country": "eg",
+            "referer": "https://www.noon.com/egypt-en/",
+        }
+
+        r = self._noon_cffi_session.get(
+            url,
+            headers=headers,
+            timeout=30,
+        )
+
+        latency = int(
+            (time.monotonic() - started) * 1000
+        )
+        text = r.text or ""
+
+        if r.status_code != 200:
+            raise StoreHttpError(
+                f"noon_cffi_http_{r.status_code}"
+            )
+
+        if _is_protected(text):
+            raise StoreHttpError(
+                "noon_cffi_protection"
+            )
+
+        return FetchResult(
+            url=url,
+            text=text,
+            status_code=r.status_code,
+            via="noon_cffi",
+            latency_ms=latency,
+        )
+
+    async def _noon_cffi(self, url: str) -> FetchResult:
+        async with self._noon_cffi_lock:
+            return await asyncio.to_thread(
+                self._noon_cffi_sync,
+                url,
+            )
 
     async def _direct(self, url: str, extra_headers: dict[str, str] | None = None) -> FetchResult:
         started = time.monotonic()
@@ -294,6 +386,16 @@ class StoreHttpClient:
         sem = self._store_locks.get(store) or asyncio.Semaphore(2)
 
         async with sem:
+            # Noon catalog/API uses its own Chrome TLS fingerprint.
+            # Amazon never enters this transport path.
+            if store == "noon" and noon_api:
+                try:
+                    return await self._noon_cffi(url)
+                except Exception as exc:
+                    errors.append(
+                        f"_noon_cffi:{type(exc).__name__}:{exc}"
+                    )
+
             for round_no in range(2):
                 for method in methods:
                     try:

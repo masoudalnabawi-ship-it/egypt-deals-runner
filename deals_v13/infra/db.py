@@ -323,6 +323,10 @@ class DealDatabase:
                   AND d.next_attempt_at<=?
                   AND (d.lease_until=0 OR d.lease_until<?)
                 ORDER BY
+                  CASE
+                    WHEN d.real_discount>=70 OR d.score>=99
+                    THEN 0 ELSE 1
+                  END ASC,
                   (SELECT COUNT(*) FROM deals s
                    WHERE s.state='sent' AND s.lane=d.lane
                      AND s.store=d.store AND s.sent_at>?) ASC,

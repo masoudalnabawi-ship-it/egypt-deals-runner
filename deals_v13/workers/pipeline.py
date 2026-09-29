@@ -56,10 +56,25 @@ class V13Pipeline:
             flash=flash,
             history=[],
         )
-        if deal.discount_percent >= 50:
+        if deal.discount_percent >= 70:
             decision.lane = Lane.ULTRA
-            decision.score = max(decision.score, min(95, 55 + deal.discount_percent * 0.35))
-            decision.reasons.append("pre_ultra_surface_discount")
+            decision.score = 100.0
+            decision.reasons.append(
+                "pre_hot_ultra_70"
+            )
+        elif deal.discount_percent >= 50:
+            decision.lane = Lane.ULTRA
+            decision.score = max(
+                decision.score,
+                min(
+                    95,
+                    55
+                    + deal.discount_percent * 0.35,
+                ),
+            )
+            decision.reasons.append(
+                "pre_ultra_surface_discount"
+            )
         else:
             decision.lane = Lane.NORMAL
         return decision
@@ -158,27 +173,69 @@ class V13Pipeline:
                 # - verified real discount < 50% => review chat
                 # - verified real discount >= 50% => ultra group
                 # - exceptional/anomalous price => ultra group with maximum priority
-                exceptional = anomaly or ("price_anomaly" in decision.reasons)
-                if exceptional:
+                signals = int(
+                    vmeta.get("verification_signals") or 0
+                )
+                old_live = float(verified.old_price or 0)
+                current_live = float(
+                    verified.current_price or 0
+                )
+
+                irrational_price = bool(
+                    old_live >= 1000
+                    and current_live > 0
+                    and current_live <= old_live * 0.30
+                    and signals >= 2
+                )
+
+                hot_priority = bool(
+                    decision.anomaly
+                    or anomaly
+                    or irrational_price
+                    or (
+                        decision.real_discount >= 70.0
+                        and decision.confidence
+                        >= self.settings.min_confidence_ultra
+                    )
+                )
+
+                if hot_priority:
                     decision.lane = Lane.ULTRA
-                    decision.score = max(decision.score, 99.0)
-                    if "exceptional_price_priority" not in decision.reasons:
-                        decision.reasons.append("exceptional_price_priority")
+                    decision.score = 100.0
+                    if "hot_ultra_priority" not in decision.reasons:
+                        decision.reasons.append(
+                            "hot_ultra_priority"
+                        )
+                    if irrational_price:
+                        decision.reasons.append(
+                            "irrational_verified_price"
+                        )
+
                 elif decision.real_discount >= 50.0:
                     decision.lane = Lane.ULTRA
-                    decision.score = max(decision.score, 90.0)
+                    decision.score = max(
+                        decision.score,
+                        90.0,
+                    )
                     if "strict50_ultra" not in decision.reasons:
-                        decision.reasons.append("strict50_ultra")
+                        decision.reasons.append(
+                            "strict50_ultra"
+                        )
+
                 else:
                     decision.lane = Lane.NORMAL
                     if "strict50_review" not in decision.reasons:
-                        decision.reasons.append("strict50_review")
+                        decision.reasons.append(
+                            "strict50_review"
+                        )
 
                 meta = dict(verified.metadata or {})
                 meta.update(vmeta)
                 meta["decision_reasons"] = decision.reasons
                 meta["strict50_route"] = decision.lane.value
-                meta["exceptional_priority"] = exceptional
+                meta["exceptional_priority"] = hot_priority
+                meta["irrational_price"] = irrational_price
+                meta["hot_priority"] = hot_priority
                 if cross:
                     meta["cross_store"] = {
                         "store": cross.get("store"),
