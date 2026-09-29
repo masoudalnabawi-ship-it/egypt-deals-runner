@@ -216,44 +216,201 @@ class TelegramDelivery:
 
     @staticmethod
     def _currency_values(text: str) -> list[float]:
-        """Return only numbers explicitly attached to EGP/ج.م.
+        """Extract only explicitly Egyptian-currency prices.
 
-        A bare 6% must never pass this function as EGP 6.
+        Supported examples:
+          EGP 390.75
+          390.75 EGP
+          390.75 ج.م
+          390.75 جنيه
+          390.75 جنيه مصري
+          L.E. 390.75
+
+        Percentages such as 6% are never treated as prices.
         """
-        normalized = str(text or "").translate(
-            str.maketrans(
-                "٠١٢٣٤٥٦٧٨٩٫٬",
-                "0123456789.,",
+        import re
+
+        normalized = (
+            str(text or "")
+            .replace("\u00a0", " ")
+            .replace("\u202f", " ")
+            .translate(
+                str.maketrans(
+                    "٠١٢٣٤٥٦٧٨٩٫٬",
+                    "0123456789.,",
+                )
             )
         )
 
+        currency = (
+            r"(?:"
+            r"EGP|E£|"
+            r"L\.?\s*E\.?|"
+            r"ج\.?\s*م\.?|"
+            r"جنيه(?:\s+مصري)?"
+            r")"
+        )
+
+        number = (
+            r"([0-9]"
+            r"(?:[0-9,\s]*[0-9])?"
+            r"(?:\.[0-9]+)?)"
+        )
+
         patterns = (
-            r"(?:EGP|ج\.?\s*م\.?)\s*"
-            r"([0-9][0-9,]*(?:\.[0-9]+)?)",
-            r"([0-9][0-9,]*(?:\.[0-9]+)?)\s*"
-            r"(?:EGP|ج\.?\s*م\.?)",
+            currency + r"\s*" + number,
+            number + r"\s*" + currency,
         )
 
         out = []
 
         for pattern in patterns:
-            for match in __import__("re").finditer(
+            for match in re.finditer(
                 pattern,
                 normalized,
-                __import__("re").I,
+                re.I,
             ):
                 try:
-                    value = float(
-                        match.group(1).replace(",", "")
+                    raw = (
+                        match.group(1)
+                        .replace(",", "")
+                        .replace(" ", "")
                     )
+                    value = float(raw)
                 except Exception:
                     continue
 
                 if value > 0:
                     out.append(round(value, 2))
 
-        # Stable de-duplication.
         return list(dict.fromkeys(out))
+
+    @staticmethod
+    def _plain_price_numbers(text: str) -> list[float]:
+        """Numbers from a DOM element already identified as a price.
+
+        A number immediately followed by % is explicitly ignored.
+        """
+        import re
+
+        normalized = (
+            str(text or "")
+            .replace("\u00a0", " ")
+            .replace("\u202f", " ")
+            .translate(
+                str.maketrans(
+                    "٠١٢٣٤٥٦٧٨٩٫٬",
+                    "0123456789.,",
+                )
+            )
+        )
+
+        out = []
+
+        pattern = (
+            r"(?<![0-9])"
+            r"([0-9][0-9,]*(?:\.[0-9]+)?)"
+            r"(?![0-9])"
+        )
+
+        for match in re.finditer(pattern, normalized):
+            tail = normalized[match.end():]
+
+            if __import__("re").match(
+                r"\s*%",
+                tail,
+            ):
+                continue
+
+            try:
+                value = float(
+                    match.group(1).replace(",", "")
+                )
+            except Exception:
+                continue
+
+            if value > 0:
+                out.append(round(value, 2))
+
+        return list(dict.fromkeys(out))
+
+    async def _visible_noon_price_values(
+        self,
+        page,
+    ) -> list[float]:
+        """Read only visible DOM nodes that look like price widgets."""
+        selectors = (
+            '[data-qa*="price" i]',
+            '[data-testid*="price" i]',
+            '[class*="price" i]',
+            '[aria-label*="EGP" i]',
+            '[aria-label*="جنيه"]',
+            '[itemprop="price"]',
+        )
+
+        values = []
+
+        for selector in selectors:
+            try:
+                locator = page.locator(selector)
+                count = min(
+                    await locator.count(),
+                    60,
+                )
+            except Exception:
+                continue
+
+            for index in range(count):
+                item = locator.nth(index)
+
+                try:
+                    if not await item.is_visible():
+                        continue
+
+                    parts = []
+
+                    try:
+                        parts.append(
+                            await item.inner_text(
+                                timeout=800
+                            )
+                        )
+                    except Exception:
+                        pass
+
+                    for attr in (
+                        "aria-label",
+                        "content",
+                        "data-price",
+                        "value",
+                    ):
+                        try:
+                            value = await item.get_attribute(
+                                attr
+                            )
+                            if value:
+                                parts.append(value)
+                        except Exception:
+                            pass
+
+                    text = " ".join(
+                        str(v)
+                        for v in parts
+                        if v
+                    )
+
+                    values.extend(
+                        self._currency_values(text)
+                    )
+
+                    values.extend(
+                        self._plain_price_numbers(text)
+                    )
+
+                except Exception:
+                    continue
+
+        return list(dict.fromkeys(values))
 
     @staticmethod
     def _fetch_noon_html_sync(url: str) -> str:
@@ -470,6 +627,16 @@ class TelegramDelivery:
                         body_text
                     )
 
+                    visible_prices.extend(
+                        await self._visible_noon_price_values(
+                            page
+                        )
+                    )
+
+                    visible_prices = list(
+                        dict.fromkeys(visible_prices)
+                    )
+
                     if not visible_prices:
                         # Give React/lazy content one final chance.
                         await page.wait_for_timeout(2200)
@@ -479,6 +646,18 @@ class TelegramDelivery:
                         visible_prices = (
                             self._currency_values(
                                 body_text
+                            )
+                        )
+
+                        visible_prices.extend(
+                            await self._visible_noon_price_values(
+                                page
+                            )
+                        )
+
+                        visible_prices = list(
+                            dict.fromkeys(
+                                visible_prices
                             )
                         )
 

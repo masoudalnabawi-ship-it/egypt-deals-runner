@@ -27,5 +27,39 @@ class NoonScreenshotPriceGuardTests(unittest.TestCase):
         self.assertIn(13999.0, values)
 
 
+    def test_arabic_pound_word_price(self):
+        values = TelegramDelivery._currency_values(
+            "السعر 390.75 جنيه "
+            "بدلاً من 419.15 جنيه"
+        )
+
+        self.assertIn(390.75, values)
+        self.assertIn(419.15, values)
+
+    def test_arabic_egyptian_pound_phrase(self):
+        values = TelegramDelivery._currency_values(
+            "390.75 جنيه مصري"
+        )
+
+        self.assertIn(390.75, values)
+
+    def test_le_price(self):
+        values = TelegramDelivery._currency_values(
+            "L.E. 390.75"
+        )
+
+        self.assertIn(390.75, values)
+
+    def test_percent_is_not_plain_price(self):
+        values = (
+            TelegramDelivery._plain_price_numbers(
+                "خصم 6% السعر 390.75"
+            )
+        )
+
+        self.assertNotIn(6.0, values)
+        self.assertIn(390.75, values)
+
+
 if __name__ == "__main__":
     unittest.main()
