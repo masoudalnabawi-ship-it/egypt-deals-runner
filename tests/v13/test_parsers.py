@@ -1,4 +1,3 @@
-\
 import unittest
 
 from deals_v13.discovery.amazon import AmazonDiscovery

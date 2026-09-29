@@ -1,4 +1,3 @@
-\
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -9,6 +8,7 @@ import statistics
 
 from .config import Settings
 from .models import DealCandidate, DealDecision, Lane
+from .identity import signature, compatibility
 
 
 GENERIC_TOKENS = {
@@ -34,24 +34,36 @@ def title_similarity(a: str, b: str) -> float:
     ta, tb = _tokens(a), _tokens(b)
     if not ta or not tb:
         return 0.0
+    sa, sb = signature(a), signature(b)
+    ok, evidence = compatibility(sa, sb)
+    if not ok:
+        return 0.0
     jaccard = len(ta & tb) / max(1, len(ta | tb))
     seq = SequenceMatcher(None, " ".join(sorted(ta)), " ".join(sorted(tb))).ratio()
-
-    ma = {m.upper().replace(" ", "") for m in MODEL_RE.findall(a or "")}
-    mb = {m.upper().replace(" ", "") for m in MODEL_RE.findall(b or "")}
-    model_bonus = 0.18 if ma and mb and (ma & mb) else 0.0
-    model_penalty = 0.18 if ma and mb and not (ma & mb) else 0.0
-    return max(0.0, min(1.0, 0.65 * jaccard + 0.35 * seq + model_bonus - model_penalty))
+    bonus = 0.0
+    if "model_match" in evidence:
+        bonus += 0.22
+    if "capacity_match" in evidence:
+        bonus += 0.08
+    if sa.brand and sb.brand and sa.brand == sb.brand:
+        bonus += 0.05
+    return max(0.0, min(1.0, 0.62 * jaccard + 0.38 * seq + bonus))
 
 
 def best_cross_store_match(deal: DealCandidate, rows: list[dict]) -> tuple[dict | None, float]:
     best = None
     best_sim = 0.0
+    sig = signature(deal.title)
     for row in rows:
-        sim = title_similarity(deal.title, row.get("title") or "")
+        other_title = row.get("title") or ""
+        ok, _ = compatibility(sig, signature(other_title))
+        if not ok:
+            continue
+        sim = title_similarity(deal.title, other_title)
         if sim > best_sim:
             best, best_sim = row, sim
-    if best_sim < 0.66:
+    # Require stronger evidence for market comparisons than generic de-dup.
+    if best_sim < 0.72:
         return None, best_sim
     return best, best_sim
 
@@ -160,8 +172,8 @@ class IntelligenceEngine:
             confidence -= 0.24
             anomaly = False
             reasons.append("accessory_anomaly_suppressed")
-        if impossible_ratio and not (hist_ref or verification_signals >= 2):
-            confidence -= 0.18
+        if impossible_ratio and not (hist_ref or verification_signals >= 2 or (cross_price and cross_store_similarity >= 0.86)):
+            confidence -= 0.30
             reasons.append("extreme_ratio_needs_confirmation")
         if current <= 0:
             confidence = 0.0
@@ -171,6 +183,10 @@ class IntelligenceEngine:
         score += min(48.0, real_discount * 0.58)
         score += min(15.0, market_advantage * 0.35)
         score += confidence * 24.0
+        # Absolute savings matters in Egypt: saving EGP 4,000 is usually more useful
+        # than the same percentage on a very cheap item, but it is capped.
+        absolute_saving = max(0.0, old - effective) if old > effective > 0 else 0.0
+        score += min(8.0, math.log10(absolute_saving + 1.0) * 2.0)
         if flash:
             score += 6
         if coupon:

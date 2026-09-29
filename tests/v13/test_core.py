@@ -1,4 +1,3 @@
-\
 import tempfile
 import unittest
 from pathlib import Path
@@ -89,6 +88,34 @@ class CoreTests(unittest.TestCase):
             db.upsert_candidate(d2, pre2)
             ultra = db.claim_for_verification("amazon", Lane.ULTRA, "u", 60)
             self.assertIsNotNone(ultra)
+
+
+    def test_delivery_claim_balances_without_sql_error(self):
+        with tempfile.TemporaryDirectory() as td:
+            db = DealDatabase(str(Path(td) / "v13.db"))
+            st = settings(db.path)
+            eng = IntelligenceEngine(st)
+            d = DealCandidate("amazon", "B0ABC12345", "Phone X100 256GB", "https://www.amazon.eg/dp/B0ABC12345", 4000, 10000)
+            pre = eng.evaluate(d, verified=True, history=[10000, 9800, 9900], verification_signals=2)
+            db.upsert_candidate(d, pre)
+            db.mark_verified(d.key, d, pre, {"decision_reasons": pre.reasons})
+            row = db.claim_for_delivery(pre.lane, "delivery-test", 60)
+            self.assertIsNotNone(row)
+            self.assertEqual(row["store"], "amazon")
+
+    def test_cross_store_pool_uses_trusted_rows_only(self):
+        with tempfile.TemporaryDirectory() as td:
+            db = DealDatabase(str(Path(td) / "v13.db"))
+            st = settings(db.path)
+            eng = IntelligenceEngine(st)
+            noisy = DealCandidate("noon", "N12345678", "Phone X100 256GB", "https://www.noon.com/egypt-en/x/N12345678/p/", 3000, 10000)
+            pre = eng.evaluate(noisy, verified=False)
+            db.upsert_candidate(noisy, pre)
+            self.assertEqual(db.recent_other_store("amazon"), [])
+            strong = eng.evaluate(noisy, verified=True, history=[10000,9800,9900], verification_signals=2)
+            db.mark_verified(noisy.key, noisy, strong, {"decision_reasons": strong.reasons})
+            rows = db.recent_other_store("amazon")
+            self.assertEqual(len(rows), 1)
 
     def test_scheduler_forces_diversity(self):
         surfaces = [

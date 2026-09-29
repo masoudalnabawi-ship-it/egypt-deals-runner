@@ -1,4 +1,3 @@
-\
 # Egypt Deals V13
 
 Clean rebuild for **Amazon Egypt + Noon Egypt only**.
@@ -73,3 +72,11 @@ PYTHONPATH=. python scripts/run_v13.py
 ```
 
 V12 is not modified by this bundle.
+
+## Milestone 2: identity + live validation
+
+V13 now uses structured product signatures (brand/model/capacity/RAM/size/pack count) before cross-store comparison. A 128GB product cannot be used as market evidence for a 256GB product, and conflicting model numbers are rejected.
+
+`v13_live_probe.py` performs a **no-send** live check against Amazon Egypt and Noon Egypt using the exact same HTTP/failover and verifier code as production. It writes `v13-live-probe.json`, which makes parser/proxy regressions visible before Telegram delivery is enabled.
+
+Delivery ordering balances both store and category over the recent six-hour window, so one easy source/category cannot monopolize the review feed.

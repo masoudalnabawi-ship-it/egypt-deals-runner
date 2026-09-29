@@ -1,4 +1,3 @@
-\
 from __future__ import annotations
 
 from contextlib import contextmanager
@@ -205,10 +204,17 @@ class DealDatabase:
                     ),
                 )
 
-            conn.execute(
-                "INSERT INTO price_history(deal_key,store,price,old_price,observed_at) VALUES(?,?,?,?,?)",
-                (deal.key, deal.store, deal.current_price, deal.old_price, now),
-            )
+            recent_same = conn.execute(
+                """SELECT 1 FROM price_history
+                   WHERE deal_key=? AND ABS(price-?)<0.01 AND observed_at>?
+                   LIMIT 1""",
+                (deal.key, deal.current_price, now - 600),
+            ).fetchone()
+            if not recent_same:
+                conn.execute(
+                    "INSERT INTO price_history(deal_key,store,price,old_price,observed_at) VALUES(?,?,?,?,?)",
+                    (deal.key, deal.store, deal.current_price, deal.old_price, now),
+                )
 
         return {"new_or_reopened": should_reopen, "deal_key": deal.key}
 
@@ -319,13 +325,15 @@ class DealDatabase:
                 ORDER BY
                   (SELECT COUNT(*) FROM deals s
                    WHERE s.state='sent' AND s.lane=d.lane
-                     AND s.category=d.category
-                     AND s.sent_at>?) ASC,
+                     AND s.store=d.store AND s.sent_at>?) ASC,
+                  (SELECT COUNT(*) FROM deals s
+                   WHERE s.state='sent' AND s.lane=d.lane
+                     AND s.category=d.category AND s.sent_at>?) ASC,
                   d.score DESC,
                   d.verified_at ASC
                 LIMIT 1
                 """,
-                (lane.value, now, now, now - 21600),
+                (lane.value, now, now, now - 21600, now - 21600),
             ).fetchone()
             if not row:
                 return None
@@ -405,6 +413,7 @@ class DealDatabase:
             """
             SELECT * FROM deals
             WHERE store<>? AND updated_at>=? AND current_price>0
+              AND state IN ('verified','sent') AND confidence>=0.62
             ORDER BY updated_at DESC LIMIT ?
             """,
             (store, cutoff, limit),
