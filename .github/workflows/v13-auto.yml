@@ -31,6 +31,8 @@ jobs:
       NOON_CHANNEL_ID: ${{ secrets.NOON_CHANNEL_ID }}
       NOON_NORMAL_REVIEW_CHAT_ID: ${{ secrets.NOON_NORMAL_REVIEW_CHAT_ID }}
       NOON_ULTRA_REVIEW_CHAT_ID: ${{ secrets.NOON_ULTRA_REVIEW_CHAT_ID }}
+      NOON_REVIEW_BOT_TOKEN: ${{ secrets.NOON_REVIEW_BOT_TOKEN }}
+      NOON_REVIEW_BOT_CHAT_ID: ${{ secrets.NOON_REVIEW_BOT_CHAT_ID }}
 
       CLOUD_API_URL: ${{ secrets.CLOUD_API_URL }}
       CLOUD_API_KEY: ${{ secrets.CLOUD_API_KEY }}
