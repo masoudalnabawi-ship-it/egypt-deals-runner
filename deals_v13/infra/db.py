@@ -420,6 +420,25 @@ class DealDatabase:
         ).fetchall()
         return [dict(r) for r in rows]
 
+    def find_by_prefix(self, short_key: str) -> dict | None:
+        short_key = str(short_key or "").strip()
+        if not short_key:
+            return None
+        rows = self._conn().execute(
+            "SELECT * FROM deals WHERE deal_key LIKE ? ORDER BY updated_at DESC LIMIT 2",
+            (short_key + "%",),
+        ).fetchall()
+        if len(rows) != 1:
+            return None
+        return dict(rows[0])
+
+    def has_event(self, deal_key: str, event: str) -> bool:
+        row = self._conn().execute(
+            "SELECT 1 FROM events WHERE deal_key=? AND event=? LIMIT 1",
+            (deal_key, event),
+        ).fetchone()
+        return bool(row)
+
     def source_result(
         self,
         store: str,

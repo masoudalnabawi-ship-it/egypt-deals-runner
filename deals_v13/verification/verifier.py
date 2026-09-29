@@ -58,8 +58,8 @@ class StoreVerifier:
             if incoming.external_id:
                 sku = quote(incoming.external_id, safe="")
                 api_url = (
-                    "https://www.noon.com/_vs/nc/"
-                    f"mp-customer-catalog-api/api/v1/u/{sku}/p"
+                    "https://www.noon.com/_svc/catalog/api/v3/u/"
+                    f"{sku}/p"
                 )
                 try:
                     result = await self.http.fetch(api_url, "noon", prefer_proxy=False)

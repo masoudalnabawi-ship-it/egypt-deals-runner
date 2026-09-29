@@ -217,31 +217,40 @@ class StoreHttpClient:
         }:
             raise StoreHttpError("browser_fallback_disabled")
 
-        target = _noon_storefront_url(url)
+        target = url if _is_noon_catalog_api(url) else _noon_storefront_url(url)
         started = time.monotonic()
 
         async with self._browser_lock:
             await self._ensure_browser()
             page = await self._browser_context.new_page()
             try:
-                # Establish the Egypt storefront before opening the target.
-                try:
-                    await page.goto(
-                        "https://www.noon.com/egypt-en/",
-                        wait_until="domcontentloaded",
-                        timeout=20000,
-                    )
-                    await page.wait_for_timeout(500)
-                except Exception:
-                    pass
+                api_target = _is_noon_catalog_api(target)
+                if api_target:
+                    headers = self._request_headers(target, "noon")
+                    if headers:
+                        await page.set_extra_http_headers(headers)
+                else:
+                    # Storefront warm-up is only useful for actual HTML pages.
+                    try:
+                        await page.goto(
+                            "https://www.noon.com/egypt-en/",
+                            wait_until="domcontentloaded",
+                            timeout=12000,
+                        )
+                        await page.wait_for_timeout(350)
+                    except Exception:
+                        pass
 
                 response = await page.goto(
                     target,
                     wait_until="domcontentloaded",
-                    timeout=35000,
+                    timeout=22000 if api_target else 35000,
                 )
-                await page.wait_for_timeout(2200)
-                text = await page.content()
+                await page.wait_for_timeout(500 if api_target else 1800)
+                if api_target:
+                    text = await page.locator("body").inner_text(timeout=5000)
+                else:
+                    text = await page.content()
                 status = response.status if response is not None else 200
 
                 if status >= 400:

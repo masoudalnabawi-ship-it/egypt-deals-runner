@@ -145,7 +145,7 @@ class TelegramDelivery:
         self._context = await self._browser.new_context(
             locale="ar-EG",
             timezone_id="Africa/Cairo",
-            viewport={"width": 1280, "height": 1100},
+            viewport={"width": 1280, "height": 900},
             device_scale_factor=1,
             user_agent=(
                 "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
@@ -212,30 +212,32 @@ class TelegramDelivery:
                     except Exception:
                         pass
 
-                targets = (
-                    ["#dp-container", "#ppd", "#centerCol", "main"]
+                # Never screenshot the whole #dp-container/#ppd element:
+                # it is very tall and can make Playwright jump into specs/reviews.
+                anchors = (
+                    ["#ppd", "#title_feature_div", "#centerCol", "#dp-container"]
                     if row["store"] == "amazon"
-                    else ["main", "[data-qa='product-page']", "#__next"]
+                    else ["[data-qa='product-page']", "main", "#__next"]
                 )
 
-                for selector in targets:
+                anchored = False
+                for selector in anchors:
                     try:
                         loc = page.locator(selector).first
                         if await loc.count() and await loc.is_visible():
-                            await loc.scroll_into_view_if_needed()
-                            await page.wait_for_timeout(250)
-                            shot = await loc.screenshot(
-                                type="png",
-                                animations="disabled",
+                            await loc.evaluate(
+                                "el => { const y = el.getBoundingClientRect().top + window.scrollY; "
+                                "window.scrollTo(0, Math.max(0, y - 8)); }"
                             )
-                            if shot and len(shot) > 5000:
-                                return shot
+                            anchored = True
+                            break
                     except Exception:
                         continue
 
-                # Last screenshot fallback is viewport-only, never full page.
-                await page.evaluate("window.scrollTo(0, 120)")
-                await page.wait_for_timeout(250)
+                if not anchored:
+                    await page.evaluate("window.scrollTo(0, 0)")
+
+                await page.wait_for_timeout(350)
                 return await page.screenshot(
                     type="png",
                     full_page=False,
@@ -336,3 +338,163 @@ class TelegramDelivery:
             if not data.get("ok"):
                 raise RuntimeError("telegram_send_failed:" + str(data.get("description") or data))
             return data["result"]
+
+    def _public_chat_id(self, store: str) -> str:
+        if store == "noon":
+            chat = (
+                os.getenv("NOON_CHANNEL_ID", "").strip()
+                or os.getenv("AMAZON_CHANNEL_ID", "").strip()
+                or os.getenv("TELEGRAM_CHANNEL_ID", "").strip()
+                or self.settings.noon_ultra_chat_id
+            )
+        else:
+            chat = (
+                os.getenv("AMAZON_CHANNEL_ID", "").strip()
+                or os.getenv("TELEGRAM_CHANNEL_ID", "").strip()
+                or self.settings.ultra_chat_id
+            )
+        if not chat:
+            raise RuntimeError(f"telegram_public_chat_missing:{store}")
+        return chat
+
+    async def send_public(self, row: dict, urgent: bool = False) -> dict:
+        token = self.settings.telegram_token
+        chat_id = self._public_chat_id(row["store"])
+        caption = self._caption(row)
+        prefix = "🚀 <b>نشر عاجل</b>\n\n" if urgent else "✅ <b>عرض معتمد</b>\n\n"
+        caption = prefix + caption
+        keyboard = {
+            "inline_keyboard": [
+                [{"text": "🔗 فتح المنتج", "url": row["url"]}]
+            ]
+        }
+        photo_api = f"https://api.telegram.org/bot{token}/sendPhoto"
+
+        async with httpx.AsyncClient(timeout=30, follow_redirects=True) as client:
+            screenshot = None
+            try:
+                screenshot = await asyncio.wait_for(
+                    self._capture_product_screenshot(row),
+                    timeout=24,
+                )
+            except Exception:
+                screenshot = None
+
+            if screenshot:
+                try:
+                    r = await client.post(
+                        photo_api,
+                        data={
+                            "chat_id": chat_id,
+                            "caption": caption[:1024],
+                            "parse_mode": "HTML",
+                            "reply_markup": json.dumps(keyboard, ensure_ascii=False),
+                        },
+                        files={"photo": ("product-hero.png", screenshot, "image/png")},
+                    )
+                    data = r.json()
+                    if data.get("ok"):
+                        return data["result"]
+                except Exception:
+                    pass
+
+            image = (row.get("image_url") or "").strip()
+            if image:
+                try:
+                    r = await client.post(
+                        photo_api,
+                        json={
+                            "chat_id": chat_id,
+                            "photo": image,
+                            "caption": caption[:1024],
+                            "parse_mode": "HTML",
+                            "reply_markup": keyboard,
+                        },
+                    )
+                    data = r.json()
+                    if data.get("ok"):
+                        return data["result"]
+                except Exception:
+                    pass
+
+            text_api = f"https://api.telegram.org/bot{token}/sendMessage"
+            text = caption + "\n\n🔗 " + html.escape(str(row["url"]))
+            r = await client.post(
+                text_api,
+                json={
+                    "chat_id": chat_id,
+                    "text": text,
+                    "parse_mode": "HTML",
+                    "disable_web_page_preview": False,
+                    "reply_markup": keyboard,
+                },
+            )
+            data = r.json()
+            if not data.get("ok"):
+                raise RuntimeError(
+                    "telegram_public_send_failed:"
+                    + str(data.get("description") or data)
+                )
+            return data["result"]
+
+    async def delete_webhook(self) -> None:
+        url = f"https://api.telegram.org/bot{self.settings.telegram_token}/deleteWebhook"
+        async with httpx.AsyncClient(timeout=15) as client:
+            try:
+                await client.post(url, json={"drop_pending_updates": False})
+            except Exception:
+                pass
+
+    async def get_updates(self, offset: int | None, timeout: int = 20) -> list[dict]:
+        url = f"https://api.telegram.org/bot{self.settings.telegram_token}/getUpdates"
+        payload = {
+            "timeout": timeout,
+            "allowed_updates": ["callback_query"],
+        }
+        if offset is not None:
+            payload["offset"] = offset
+        async with httpx.AsyncClient(timeout=timeout + 10) as client:
+            r = await client.post(url, json=payload)
+            data = r.json()
+            if not data.get("ok"):
+                raise RuntimeError(
+                    "telegram_get_updates_failed:"
+                    + str(data.get("description") or data)
+                )
+            return data.get("result") or []
+
+    async def answer_callback(
+        self,
+        callback_id: str,
+        text: str,
+        alert: bool = False,
+    ) -> None:
+        url = (
+            f"https://api.telegram.org/bot{self.settings.telegram_token}"
+            "/answerCallbackQuery"
+        )
+        async with httpx.AsyncClient(timeout=15) as client:
+            await client.post(
+                url,
+                json={
+                    "callback_query_id": callback_id,
+                    "text": text[:190],
+                    "show_alert": alert,
+                },
+            )
+
+    async def clear_buttons(self, chat_id: int | str, message_id: int) -> None:
+        url = (
+            f"https://api.telegram.org/bot{self.settings.telegram_token}"
+            "/editMessageReplyMarkup"
+        )
+        async with httpx.AsyncClient(timeout=15) as client:
+            await client.post(
+                url,
+                json={
+                    "chat_id": chat_id,
+                    "message_id": message_id,
+                    "reply_markup": {"inline_keyboard": []},
+                },
+            )
+

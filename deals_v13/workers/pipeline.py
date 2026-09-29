@@ -242,6 +242,152 @@ class V13Pipeline:
                 )
                 log.warning("SEND RETRY lane=%s | %s", lane.value, exc)
 
+    def _callback_allowed(self, cb: dict) -> bool:
+        message = cb.get("message") or {}
+        chat = message.get("chat") or {}
+        chat_id = str(chat.get("id") or "")
+        allowed = {
+            str(self.settings.normal_chat_id or ""),
+            str(self.settings.noon_normal_chat_id or ""),
+        }
+        return bool(chat_id and chat_id in allowed)
+
+    async def _handle_callback(self, cb: dict) -> None:
+        cb_id = str(cb.get("id") or "")
+        data = str(cb.get("data") or "")
+        message = cb.get("message") or {}
+
+        if not self._callback_allowed(cb):
+            await self.delivery.answer_callback(cb_id, "غير مصرح", True)
+            return
+
+        parts = data.split(":")
+        if len(parts) != 3 or parts[0] != "v13":
+            return
+
+        action, short_key = parts[1], parts[2]
+        row = await asyncio.to_thread(self.db.find_by_prefix, short_key)
+        if not row:
+            await self.delivery.answer_callback(
+                cb_id,
+                "العرض غير موجود في قاعدة V13",
+                True,
+            )
+            return
+
+        if action == "r":
+            await asyncio.to_thread(
+                self.db.event,
+                "manual_reject",
+                row["store"],
+                row["deal_key"],
+                {"action": "reject"},
+            )
+            await self.delivery.answer_callback(cb_id, "تم رفض العرض ❌")
+        elif action in {"p", "u"}:
+            if await asyncio.to_thread(
+                self.db.has_event,
+                row["deal_key"],
+                "manual_publish",
+            ):
+                await self.delivery.answer_callback(
+                    cb_id,
+                    "تم نشر العرض بالفعل",
+                )
+                return
+
+            incoming = self.db.row_to_candidate(row)
+            try:
+                fresh, _ = await self.verifier.verify(incoming)
+            except VerificationRejected:
+                await self.delivery.answer_callback(
+                    cb_id,
+                    "العرض لم يعد يحقق شروط التحقق",
+                    True,
+                )
+                return
+            except Exception as exc:
+                log.warning(
+                    "CALLBACK recheck failed key=%s | %s",
+                    row["deal_key"][:10],
+                    exc,
+                )
+                await self.delivery.answer_callback(
+                    cb_id,
+                    "تعذر إعادة التحقق الآن، جرّب مرة أخرى",
+                    True,
+                )
+                return
+
+            reviewed_price = float(row.get("current_price") or 0)
+            fresh_price = float(fresh.current_price or 0)
+            if reviewed_price > 0 and fresh_price > reviewed_price * 1.02:
+                await self.delivery.answer_callback(
+                    cb_id,
+                    "السعر ارتفع منذ المراجعة؛ لم يتم النشر",
+                    True,
+                )
+                return
+
+            public_row = dict(row)
+            public_row["title"] = fresh.title or row["title"]
+            public_row["url"] = fresh.url or row["url"]
+            public_row["image_url"] = (
+                fresh.image_url or row.get("image_url") or ""
+            )
+            public_row["current_price"] = fresh_price or reviewed_price
+            public_row["old_price"] = (
+                fresh.old_price or row.get("old_price")
+            )
+
+            await self.delivery.send_public(
+                public_row,
+                urgent=(action == "u"),
+            )
+            await asyncio.to_thread(
+                self.db.event,
+                "manual_publish",
+                row["store"],
+                row["deal_key"],
+                {"urgent": action == "u"},
+            )
+            await self.delivery.answer_callback(
+                cb_id,
+                "تم النشر العاجل 🚀"
+                if action == "u"
+                else "تم النشر ✅",
+            )
+        else:
+            return
+
+        try:
+            await self.delivery.clear_buttons(
+                int((message.get("chat") or {}).get("id")),
+                int(message.get("message_id")),
+            )
+        except Exception:
+            pass
+
+    async def callback_loop(self):
+        await self.delivery.delete_webhook()
+        offset = None
+        while not self.stop_event.is_set():
+            try:
+                updates = await self.delivery.get_updates(
+                    offset,
+                    timeout=20,
+                )
+                for update in updates:
+                    offset = int(update["update_id"]) + 1
+                    cb = update.get("callback_query")
+                    if cb:
+                        await self._handle_callback(cb)
+            except asyncio.CancelledError:
+                raise
+            except Exception as exc:
+                log.warning("V13 CALLBACK polling retry | %s", exc)
+                await asyncio.sleep(3)
+
     async def health_loop(self):
         while not self.stop_event.is_set():
             released = await asyncio.to_thread(self.db.release_stale_leases)
@@ -264,6 +410,7 @@ class V13Pipeline:
             asyncio.create_task(self.discovery_loop("noon"), name="discover-noon"),
             asyncio.create_task(self.delivery_loop(Lane.ULTRA), name="deliver-ultra"),
             asyncio.create_task(self.delivery_loop(Lane.NORMAL), name="deliver-normal"),
+            asyncio.create_task(self.callback_loop(), name="telegram-callbacks"),
             asyncio.create_task(self.health_loop(), name="health"),
         ]
 
@@ -278,7 +425,7 @@ class V13Pipeline:
                     )
 
         log.warning(
-            "V13 START | stores=amazon,noon | STRICT50 | discovery=%ss | workers/store/lane=%s",
+            "V13 START | stores=amazon,noon | STRICT50 | callbacks=v13 | discovery=%ss | workers/store/lane=%s",
             self.settings.discovery_interval,
             self.settings.verification_workers_per_store,
         )
