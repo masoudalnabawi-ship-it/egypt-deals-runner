@@ -1,9 +1,10 @@
 from __future__ import annotations
 
 import asyncio
+import os
 import random
 import time
-from urllib.parse import urlparse
+from urllib.parse import parse_qs, quote_plus, urlparse
 
 import httpx
 
@@ -48,12 +49,28 @@ def _is_noon_catalog_api(url: str) -> bool:
     )
 
 
-class StoreHttpClient:
-    """One HTTP path for discovery and verification.
+def _noon_storefront_url(url: str) -> str:
+    """Translate internal Noon catalog search URLs to Egypt storefront URLs.
 
-    V13 Milestone 3 adds a dedicated Noon catalog-API fast path using the
-    Egypt locale. This avoids the rendered Noon storefront, which was returning
-    403/timeouts from GitHub Actions.
+    Product-page URLs are already user-facing and are returned unchanged.
+    """
+    raw = str(url or "").strip()
+    p = urlparse(raw)
+    if "/_vs/nc/mp-customer-catalog-api/" in p.path:
+        q = parse_qs(p.query).get("q", [""])[0]
+        if q:
+            return "https://www.noon.com/egypt-en/search/?q=" + quote_plus(q)
+    return raw
+
+
+class StoreHttpClient:
+    """Central V13 transport for Amazon and Noon.
+
+    Noon transport ladder:
+      direct JSON/storefront -> cloud proxy -> rendered Egypt storefront browser.
+
+    The browser fallback is public-page rendering only. It does not solve or
+    defeat CAPTCHAs; protected responses are rejected.
     """
 
     def __init__(self, settings: Settings):
@@ -68,9 +85,28 @@ class StoreHttpClient:
             "amazon": asyncio.Semaphore(4),
             "noon": asyncio.Semaphore(4),
         }
+        self._browser_lock = asyncio.Lock()
+        self._pw = None
+        self._browser = None
+        self._browser_context = None
 
     async def aclose(self) -> None:
         await self.client.aclose()
+        if self._browser_context is not None:
+            try:
+                await self._browser_context.close()
+            except Exception:
+                pass
+        if self._browser is not None:
+            try:
+                await self._browser.close()
+            except Exception:
+                pass
+        if self._pw is not None:
+            try:
+                await self._pw.stop()
+            except Exception:
+                pass
 
     def _proxy_endpoint(self) -> str:
         base = self.settings.cloud_api_url.rstrip("/")
@@ -81,8 +117,6 @@ class StoreHttpClient:
     @staticmethod
     def _request_headers(url: str, store: str) -> dict[str, str]:
         if store == "noon" and _is_noon_catalog_api(url):
-            # Noon's catalog service understands marketplace locale through
-            # x-locale. Keep the browser-facing Accept-Language as a backup.
             return {
                 "Accept": "application/json,text/plain,*/*",
                 "Accept-Language": "en-EG,en;q=0.9,ar-EG;q=0.8,ar;q=0.7",
@@ -122,8 +156,6 @@ class StoreHttpClient:
             "x-api-key": self.settings.cloud_api_key,
             "Accept": "text/html,application/json;q=0.9,*/*;q=0.8",
         }
-        # If the Cloud proxy forwards request headers, this preserves the Noon
-        # Egypt context; if it does not, direct API remains the preferred path.
         if extra_headers:
             for key in ("Accept", "Accept-Language", "x-locale", "x-platform", "x-mp"):
                 if key in extra_headers:
@@ -150,6 +182,81 @@ class StoreHttpClient:
             latency_ms=latency,
         )
 
+    async def _ensure_browser(self):
+        if self._browser_context is not None:
+            return
+        try:
+            from playwright.async_api import async_playwright
+        except Exception as exc:
+            raise StoreHttpError(f"browser_unavailable:{type(exc).__name__}") from exc
+
+        self._pw = await async_playwright().start()
+        self._browser = await self._pw.chromium.launch(
+            headless=True,
+            args=[
+                "--disable-dev-shm-usage",
+                "--no-sandbox",
+                "--disable-blink-features=AutomationControlled",
+            ],
+        )
+        self._browser_context = await self._browser.new_context(
+            locale="en-EG",
+            timezone_id="Africa/Cairo",
+            user_agent=DEFAULT_HEADERS["User-Agent"],
+            viewport={"width": 1440, "height": 1100},
+            extra_http_headers={
+                "Accept-Language": "en-EG,en;q=0.9,ar-EG;q=0.8,ar;q=0.7",
+            },
+        )
+
+    async def _browser_noon(self, url: str) -> FetchResult:
+        if os.getenv("V13_NOON_BROWSER_FALLBACK", "1").strip().lower() not in {
+            "1", "true", "yes", "on"
+        }:
+            raise StoreHttpError("browser_fallback_disabled")
+
+        target = _noon_storefront_url(url)
+        started = time.monotonic()
+
+        async with self._browser_lock:
+            await self._ensure_browser()
+            page = await self._browser_context.new_page()
+            try:
+                # Establish the Egypt storefront before opening the target.
+                await page.goto(
+                    "https://www.noon.com/egypt-en/",
+                    wait_until="domcontentloaded",
+                    timeout=30000,
+                )
+                await page.wait_for_timeout(900)
+
+                response = await page.goto(
+                    target,
+                    wait_until="domcontentloaded",
+                    timeout=35000,
+                )
+                await page.wait_for_timeout(2200)
+                text = await page.content()
+                status = response.status if response is not None else 200
+
+                if status >= 400:
+                    raise StoreHttpError(f"browser_http_{status}")
+                if _is_protected(text):
+                    raise StoreHttpError("browser_protection")
+                if len(text) < 1000:
+                    raise StoreHttpError("browser_empty_page")
+
+                latency = int((time.monotonic() - started) * 1000)
+                return FetchResult(
+                    url=target,
+                    text=text,
+                    status_code=status,
+                    via="browser",
+                    latency_ms=latency,
+                )
+            finally:
+                await page.close()
+
     async def fetch(self, url: str, store: str, prefer_proxy: bool | None = None) -> FetchResult:
         host = urlparse(url).netloc.lower()
         if store == "amazon" and "amazon.eg" not in host:
@@ -165,9 +272,6 @@ class StoreHttpClient:
                 self.settings.noon_proxy_first if store == "noon"
                 else self.settings.amazon_proxy_first
             )
-
-        # Critical M3 behavior: the Noon JSON catalog API is substantially
-        # lighter than the storefront and should be attempted directly first.
         if noon_api:
             prefer_proxy = False
 
@@ -190,4 +294,10 @@ class StoreHttpClient:
                 if round_no == 0:
                     await asyncio.sleep(0.30 + random.random() * 0.45)
 
-        raise StoreHttpError("fetch_failed | " + " | ".join(errors[-4:]))
+            if store == "noon":
+                try:
+                    return await self._browser_noon(url)
+                except Exception as exc:
+                    errors.append(f"_browser_noon:{type(exc).__name__}:{exc}")
+
+        raise StoreHttpError("fetch_failed | " + " | ".join(errors[-5:]))
