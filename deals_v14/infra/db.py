@@ -118,7 +118,7 @@ class DealDatabase:
         try:
             conn.executescript(SCHEMA)
 
-            # One-time cleanup: previous V13 versions mixed discovery/search
+            # One-time cleanup: previous engine versions mixed discovery/search
             # prices with verified history, which could create fake discounts.
             migrated = conn.execute(
                 "SELECT 1 FROM events WHERE event='trusted_history_v1_reset' LIMIT 1"

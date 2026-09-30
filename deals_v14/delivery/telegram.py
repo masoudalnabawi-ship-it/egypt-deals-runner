@@ -69,7 +69,7 @@ class TelegramDelivery:
         category = html.escape(str(row.get("category") or ""))[:70]
 
         lines = [
-            f"{icon} <b>V13 {lane_ar} • {store}</b>",
+            f"{icon} <b>V14 {lane_ar} • {store}</b>",
             "",
             f"🛒 <b>{title}</b>",
             "",

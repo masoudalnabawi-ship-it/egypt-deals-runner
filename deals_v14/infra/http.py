@@ -65,7 +65,7 @@ def _noon_storefront_url(url: str) -> str:
 
 
 class StoreHttpClient:
-    """Central V13 transport for Amazon and Noon.
+    """Central V14 transport for Amazon and Noon.
 
     Noon transport ladder:
       direct JSON/storefront -> cloud proxy -> rendered Egypt storefront browser.
@@ -315,7 +315,7 @@ class StoreHttpClient:
         )
 
     async def _browser_noon(self, url: str) -> FetchResult:
-        if os.getenv("V13_NOON_BROWSER_FALLBACK", "1").strip().lower() not in {
+        if os.getenv("V14_NOON_BROWSER_FALLBACK", "1").strip().lower() not in {
             "1", "true", "yes", "on"
         }:
             raise StoreHttpError("browser_fallback_disabled")
