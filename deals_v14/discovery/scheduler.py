@@ -2,7 +2,10 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 import random
-import time
+
+from ..source_brain import (
+    source_learning_weight,
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -14,54 +17,158 @@ class Surface:
 
 
 class AdaptiveSurfaceSelector:
-    """Balances exploitation with forced exploration and category diversity."""
+    """
+    V14 self-learning radar.
 
-    def __init__(self, surfaces: list[Surface], exploration_rate: float = 0.22):
+    Balances:
+    - production quality
+    - verification success
+    - usefulness
+    - reliability
+    - speed
+    - category diversity
+    - guaranteed exploration
+    """
+
+    def __init__(
+        self,
+        surfaces: list[Surface],
+        exploration_rate: float = 0.22,
+    ):
         self.surfaces = list(surfaces)
-        self.exploration_rate = exploration_rate
+        self.exploration_rate = (
+            exploration_rate
+        )
         self._cursor = 0
 
-    def _weight(self, s: Surface, health: dict[str, dict]) -> float:
-        h = health.get(s.name) or {}
-        scans = max(0, int(h.get("scans") or 0))
-        candidates = max(0, int(h.get("candidates") or 0))
-        verified = max(0, int(h.get("verified") or 0))
-        sent = max(0, int(h.get("sent") or 0))
-        errors = max(0, int(h.get("consecutive_errors") or 0))
-        last_success = int(h.get("last_success_at") or 0)
+    def _weight(
+        self,
+        surface: Surface,
+        health: dict[str, dict],
+    ) -> float:
+        return source_learning_weight(
+            surface.priority,
+            health.get(surface.name) or {},
+        )
 
-        yield_rate = (candidates + 1.5) / (scans + 3.0)
-        quality_rate = (verified + sent * 1.5 + 1.0) / (candidates + 5.0)
-        freshness = min(2.0, max(0.5, (time.time() - last_success) / 900.0)) if last_success else 2.0
-        error_penalty = 1.0 / (1.0 + errors * 0.65)
-        return max(0.05, s.priority * (0.50 + yield_rate) * (0.75 + quality_rate) * freshness * error_penalty)
+    def pick(
+        self,
+        n: int,
+        health: dict[str, dict],
+    ) -> list[Surface]:
 
-    def pick(self, n: int, health: dict[str, dict]) -> list[Surface]:
         if not self.surfaces:
             return []
-        n = min(max(1, n), len(self.surfaces))
 
-        # Guaranteed exploration: round-robin items cannot starve forever.
-        explore_n = max(1, round(n * self.exploration_rate))
+        n = min(
+            max(1, n),
+            len(self.surfaces),
+        )
+
+        # ----------------------------------------------------
+        # Guaranteed exploration
+        # ----------------------------------------------------
+        explore_n = max(
+            1,
+            round(
+                n
+                * self.exploration_rate
+            ),
+        )
+
         explored = []
+
         for _ in range(explore_n):
-            explored.append(self.surfaces[self._cursor % len(self.surfaces)])
+            surface = self.surfaces[
+                self._cursor
+                % len(self.surfaces)
+            ]
+
+            explored.append(surface)
+
             self._cursor += 1
 
-        remaining = [s for s in self.surfaces if s not in explored]
-        chosen = list(explored)
-        category_counts: dict[str, int] = {}
-        for s in chosen:
-            category_counts[s.category] = category_counts.get(s.category, 0) + 1
+        remaining = [
+            surface
+            for surface in self.surfaces
+            if surface not in explored
+        ]
 
-        while remaining and len(chosen) < n:
+        chosen = list(explored)
+
+        category_counts: dict[
+            str,
+            int,
+        ] = {}
+
+        for surface in chosen:
+            category_counts[
+                surface.category
+            ] = (
+                category_counts.get(
+                    surface.category,
+                    0,
+                )
+                + 1
+            )
+
+        # ----------------------------------------------------
+        # Learned exploitation
+        # ----------------------------------------------------
+        while (
+            remaining
+            and len(chosen) < n
+        ):
             weights = []
-            for s in remaining:
-                diversity = 0.35 if category_counts.get(s.category, 0) >= 2 else 1.0
-                weights.append(self._weight(s, health) * diversity)
-            selected = random.choices(remaining, weights=weights, k=1)[0]
+
+            for surface in remaining:
+                learned = self._weight(
+                    surface,
+                    health,
+                )
+
+                # Prevent one productive category from
+                # swallowing the whole radar.
+                count = category_counts.get(
+                    surface.category,
+                    0,
+                )
+
+                if count >= 2:
+                    diversity = 0.32
+
+                elif count == 1:
+                    diversity = 0.72
+
+                else:
+                    diversity = 1.0
+
+                weights.append(
+                    max(
+                        0.01,
+                        learned
+                        * diversity,
+                    )
+                )
+
+            selected = random.choices(
+                remaining,
+                weights=weights,
+                k=1,
+            )[0]
+
             chosen.append(selected)
-            category_counts[selected.category] = category_counts.get(selected.category, 0) + 1
+
+            category_counts[
+                selected.category
+            ] = (
+                category_counts.get(
+                    selected.category,
+                    0,
+                )
+                + 1
+            )
+
             remaining.remove(selected)
 
         return chosen

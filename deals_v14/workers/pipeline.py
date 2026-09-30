@@ -762,7 +762,7 @@ class V14Pipeline:
             except asyncio.CancelledError:
                 raise
             except Exception as exc:
-                log.warning("V13 CALLBACK polling retry | %s", exc)
+                log.warning("V14 CALLBACK polling retry | %s", exc)
                 await asyncio.sleep(3)
 
     async def health_loop(self):
@@ -771,8 +771,45 @@ class V14Pipeline:
             stats = await asyncio.to_thread(self.db.stats)
             log.info(
                 "HEALTH V14 released=%s stats=%s",
-                released, json.dumps(stats, ensure_ascii=False),
+                released,
+                json.dumps(
+                    stats,
+                    ensure_ascii=False,
+                ),
             )
+
+            for store, selector in self.selectors.items():
+                health = await asyncio.to_thread(
+                    self.db.source_health,
+                    store,
+                )
+
+                ranked = sorted(
+                    (
+                        (
+                            surface.name,
+                            selector._weight(
+                                surface,
+                                health,
+                            ),
+                        )
+                        for surface
+                        in selector.surfaces
+                    ),
+                    key=lambda item: item[1],
+                    reverse=True,
+                )[:5]
+
+                log.info(
+                    "SOURCE BRAIN store=%s top=%s",
+                    store,
+                    ",".join(
+                        f"{name}:{weight:.2f}"
+                        for name, weight
+                        in ranked
+                    ),
+                )
+
             try:
                 await asyncio.wait_for(
                     self.stop_event.wait(),
