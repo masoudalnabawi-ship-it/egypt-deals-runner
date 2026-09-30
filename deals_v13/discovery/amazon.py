@@ -58,6 +58,31 @@ AMAZON_SURFACES = [
     _discount_surface("50filter", 50, 2.0),
     _discount_surface("70filter", 70, 2.1),
     _discount_surface("90filter", 90, 2.2),
+
+    _surface(
+        "electronics_50hot",
+        "electronics",
+        "electronics 50% off",
+        1.8,
+    ),
+    _surface(
+        "appliances_50hot",
+        "appliances",
+        "home appliances 50% off",
+        1.8,
+    ),
+    _surface(
+        "beauty_50hot",
+        "beauty",
+        "beauty 50% off",
+        1.6,
+    ),
+    _surface(
+        "fashion_50hot",
+        "fashion",
+        "fashion 50% off",
+        1.5,
+    ),
     _surface("mobiles", "mobiles", "mobile phones deals", 1.3),
     _surface("mobile_accessories", "mobiles", "mobile accessories deals"),
     _surface("laptops", "computers", "laptops deals", 1.3),
@@ -121,10 +146,58 @@ class AmazonDiscovery:
                 continue
 
             old = 0.0
-            for node in card.select(".a-text-price .a-offscreen, .a-price[data-a-strike='true'] .a-offscreen"):
-                val = _p(node.get_text(" ", strip=True))
+            for node in card.select(
+                ".a-text-price .a-offscreen, "
+                ".a-price[data-a-strike='true'] .a-offscreen"
+            ):
+                val = _p(
+                    node.get_text(" ", strip=True)
+                )
                 if val > current:
                     old = max(old, val)
+
+            # Amazon search sometimes shows only "-XX%" and omits
+            # the crossed-out price. This value is DISCOVERY ONLY;
+            # the product page must prove it again before Telegram.
+            if old <= current:
+                for node in card.select(
+                    ".savingsPercentage, "
+                    "[class*='savingsPercentage']"
+                ):
+                    text_pct = node.get_text(
+                        " ",
+                        strip=True,
+                    )
+
+                    match = re.search(
+                        r"-?\s*(\d+(?:\.\d+)?)\s*%",
+                        text_pct,
+                    )
+
+                    if not match:
+                        continue
+
+                    try:
+                        pct = float(match.group(1))
+                    except Exception:
+                        continue
+
+                    if 5.0 <= pct <= 90.0:
+                        derived = (
+                            current
+                            / (1.0 - pct / 100.0)
+                        )
+
+                        if (
+                            derived > current
+                            and derived
+                            <= current * 10
+                        ):
+                            old = round(
+                                derived,
+                                2,
+                            )
+                            break
 
             img = card.select_one("img.s-image, img[src]")
             image = ""

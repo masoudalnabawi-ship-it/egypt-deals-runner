@@ -78,6 +78,10 @@ class V13Pipeline:
                 "50filter": 50.0,
                 "70filter": 70.0,
                 "90filter": 90.0,
+                "electronics_50hot": 50.0,
+                "appliances_50hot": 50.0,
+                "beauty_50hot": 50.0,
+                "fashion_50hot": 50.0,
             }.get(
                 str(deal.source or "").lower(),
                 0.0,
@@ -145,8 +149,10 @@ class V13Pipeline:
                 health,
             )
 
+            mandatory_names = set()
+
             if store == "amazon":
-                hot_names = {
+                mandatory_names = {
                     "90off",
                     "70off",
                     "50off",
@@ -154,20 +160,36 @@ class V13Pipeline:
                     "70filter",
                     "50filter",
                 }
-                mandatory_hot = [
+
+            elif store == "noon":
+                # Never allow adaptive scoring to make Noon effectively
+                # a fashion-only scanner. These reliable non-fashion
+                # categories are checked every cycle.
+                mandatory_names = {
+                    "mobiles",
+                    "laptops",
+                    "appliances",
+                }
+
+            if mandatory_names:
+                mandatory = [
                     item
                     for item in adapter.surfaces
-                    if item.name in hot_names
+                    if item.name in mandatory_names
                 ]
 
-                merged = mandatory_hot + surfaces
+                merged = mandatory + surfaces
+
                 unique_surfaces = []
                 seen_surface_names = set()
 
                 for item in merged:
                     if item.name in seen_surface_names:
                         continue
-                    seen_surface_names.add(item.name)
+
+                    seen_surface_names.add(
+                        item.name
+                    )
                     unique_surfaces.append(item)
 
                 surfaces = unique_surfaces

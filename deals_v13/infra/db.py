@@ -344,6 +344,47 @@ class DealDatabase:
                     ),
                 )
 
+            amazon_v7 = conn.execute(
+                "SELECT 1 FROM events "
+                "WHERE event='amazon_savings_v7_reopen' "
+                "LIMIT 1"
+            ).fetchone()
+
+            if not amazon_v7:
+                now = int(time.time())
+
+                conn.execute(
+                    """
+                    UPDATE deals SET
+                        state='pending',
+                        attempts=0,
+                        next_attempt_at=0,
+                        lease_owner=NULL,
+                        lease_until=0,
+                        last_error='',
+                        updated_at=?
+                    WHERE store='amazon'
+                      AND state!='sent'
+                    """,
+                    (now,),
+                )
+
+                conn.execute(
+                    """INSERT INTO events(
+                        ts,event,store,deal_key,payload_json
+                    ) VALUES(?,?,?,?,?)""",
+                    (
+                        now,
+                        "amazon_savings_v7_reopen",
+                        "amazon",
+                        "",
+                        _json({
+                            "reason":
+                            "reverify_amazon_product_savings_percentage"
+                        }),
+                    ),
+                )
+
             conn.commit()
         finally:
             conn.close()

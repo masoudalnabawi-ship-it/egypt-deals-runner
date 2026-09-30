@@ -314,6 +314,85 @@ class StoreVerifier:
                 if v > current:
                     old = max(old, v)
 
+        # Amazon frequently exposes a genuine product saving as "-52%"
+        # inside the price module while omitting the list-price element.
+        # Read ONLY product-price selectors, never the whole page, so
+        # bank/card/recommendation percentages cannot become a deal.
+        savings_percent = 0.0
+
+        savings_selectors = (
+            "#corePrice_feature_div .savingsPercentage",
+            "#corePriceDisplay_desktop_feature_div .savingsPercentage",
+            "#corePrice_feature_div .priceBlockSavingsString",
+            "#corePriceDisplay_desktop_feature_div .priceBlockSavingsString",
+            "#regularprice_savings",
+            ".reinventPriceSavingsPercentageMargin",
+        )
+
+        for selector in savings_selectors:
+            try:
+                nodes = soup.select(selector)
+            except Exception:
+                nodes = []
+
+            for node in nodes:
+                text_value = node.get_text(
+                    " ",
+                    strip=True,
+                )
+
+                low_value = text_value.lower()
+
+                if any(
+                    bank_marker in low_value
+                    for bank_marker in BANK_OFFER_MARKERS
+                ):
+                    continue
+
+                match = re.search(
+                    r"-?\s*(\d+(?:\.\d+)?)\s*%",
+                    text_value,
+                    re.I,
+                )
+
+                if not match:
+                    continue
+
+                try:
+                    pct = float(match.group(1))
+                except Exception:
+                    continue
+
+                if 5.0 <= pct <= 90.0:
+                    savings_percent = max(
+                        savings_percent,
+                        pct,
+                    )
+
+        # Derive the reference price ONLY when Amazon's own
+        # product-price module provides the percentage.
+        if (
+            old <= current
+            and 5.0 <= savings_percent <= 90.0
+        ):
+            derived_old = (
+                current
+                / (1.0 - savings_percent / 100.0)
+            )
+
+            if (
+                derived_old >= current * 1.05
+                and derived_old <= current * 10
+            ):
+                old = round(
+                    derived_old,
+                    2,
+                )
+                signal_count = max(
+                    signal_count,
+                    2,
+                )
+
         # A genuine current price plus a separate crossed-out/list price
         # are two independent live monetary fields from this exact
         # product page. This allows legitimate >=50% Amazon deals to
@@ -364,6 +443,7 @@ class StoreVerifier:
                 else ""
             ),
             "flash": flash,
+            "amazon_savings_percent": savings_percent,
             "verification_signals": max(1, signal_count),
         }
         return verified, meta
