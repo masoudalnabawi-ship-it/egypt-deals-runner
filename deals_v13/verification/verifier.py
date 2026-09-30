@@ -314,6 +314,17 @@ class StoreVerifier:
                 if v > current:
                     old = max(old, v)
 
+        # A genuine current price plus a separate crossed-out/list price
+        # are two independent live monetary fields from this exact
+        # product page. This allows legitimate >=50% Amazon deals to
+        # satisfy the Ultra confidence requirement without trusting
+        # search-page percentages or bank/card promotions.
+        if old > current > 0:
+            signal_count = max(
+                signal_count,
+                2,
+            )
+
         page = soup.get_text(" ", strip=True)
         low = page.lower()
         coupon = _amazon_coupon_percent(soup)

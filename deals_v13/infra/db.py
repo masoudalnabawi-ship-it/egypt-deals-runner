@@ -301,6 +301,49 @@ class DealDatabase:
                     ),
                 )
 
+            amazon_reverify = conn.execute(
+                "SELECT 1 FROM events "
+                "WHERE event='amazon_live_signal_v6_reopen' "
+                "LIMIT 1"
+            ).fetchone()
+
+            if not amazon_reverify:
+                now = int(time.time())
+
+                # Re-check every unsent Amazon candidate once using the
+                # improved live verifier. Sent deals remain untouched.
+                conn.execute(
+                    """
+                    UPDATE deals SET
+                        state='pending',
+                        attempts=0,
+                        next_attempt_at=0,
+                        lease_owner=NULL,
+                        lease_until=0,
+                        last_error='',
+                        updated_at=?
+                    WHERE store='amazon'
+                      AND state!='sent'
+                    """,
+                    (now,),
+                )
+
+                conn.execute(
+                    """INSERT INTO events(
+                           ts,event,store,deal_key,payload_json
+                       ) VALUES(?,?,?,?,?)""",
+                    (
+                        now,
+                        "amazon_live_signal_v6_reopen",
+                        "amazon",
+                        "",
+                        _json({
+                            "reason":
+                            "reverify_unsent_amazon_after_live_signal_and_ultra_radar_fix"
+                        }),
+                    ),
+                )
+
             conn.commit()
         finally:
             conn.close()
@@ -335,12 +378,51 @@ class DealDatabase:
 
             should_reopen = False
             if old:
-                old_price_now = float(old["current_price"] or 0)
-                old_lane = old["lane"]
-                price_improved = deal.current_price > 0 and (
-                    old_price_now <= 0 or deal.current_price <= old_price_now * 0.985
+                old_price_now = float(
+                    old["current_price"] or 0
                 )
-                lane_upgrade = old_lane != Lane.ULTRA.value and preliminary.lane == Lane.ULTRA
+                old_lane = str(
+                    old["lane"] or Lane.NORMAL.value
+                )
+
+                incoming_lane = (
+                    preliminary.lane.value
+                )
+
+                price_improved = (
+                    deal.current_price > 0
+                    and (
+                        old_price_now <= 0
+                        or deal.current_price
+                        <= old_price_now * 0.985
+                    )
+                )
+
+                lane_upgrade = (
+                    old_lane != Lane.ULTRA.value
+                    and incoming_lane
+                    == Lane.ULTRA.value
+                )
+
+                # Sticky Ultra verification:
+                # If the same ASIN was found by a 50/70/90 radar,
+                # a later ordinary search result must not downgrade it
+                # before live verification is completed.
+                stored_lane = incoming_lane
+                stored_score = float(
+                    preliminary.score or 0
+                )
+
+                if (
+                    old_lane == Lane.ULTRA.value
+                    and incoming_lane
+                    != Lane.ULTRA.value
+                ):
+                    stored_lane = Lane.ULTRA.value
+                    stored_score = max(
+                        float(old["score"] or 0),
+                        stored_score,
+                    )
                 stale_sent = old["state"] == DealState.SENT.value and price_improved
                 should_reopen = lane_upgrade or stale_sent
 
@@ -362,7 +444,7 @@ class DealDatabase:
                     (
                         deal.external_id, deal.title, deal.url, deal.image_url,
                         deal.category, deal.source, deal.current_price, deal.old_price,
-                        deal.discount_percent, preliminary.lane.value, preliminary.score,
+                        deal.discount_percent, stored_lane, stored_score,
                         preliminary.confidence, state, now,
                         0 if should_reopen else int(old["next_attempt_at"] or 0),
                         1 if should_reopen else 0,

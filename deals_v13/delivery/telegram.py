@@ -155,18 +155,25 @@ class TelegramDelivery:
             )
 
         if self._noon_context is None:
-            # Noon is more reliable using a real mobile storefront profile.
+            # Use a compact desktop viewport for Telegram captures.
+            # 520px mobile rendering caused Noon desktop widgets to be
+            # squeezed and clipped horizontally.
             self._noon_context = await self._browser.new_context(
                 locale="en-EG",
                 timezone_id="Africa/Cairo",
-                viewport={"width": 520, "height": 1180},
+                viewport={
+                    "width": 840,
+                    "height": 1000,
+                },
                 device_scale_factor=1,
-                is_mobile=True,
-                has_touch=True,
+                is_mobile=False,
+                has_touch=False,
                 user_agent=(
-                    "Mozilla/5.0 (Linux; Android 15; Pixel 8) "
-                    "AppleWebKit/537.36 (KHTML, like Gecko) "
-                    "Chrome/140.0 Mobile Safari/537.36"
+                    "Mozilla/5.0 "
+                    "(Windows NT 10.0; Win64; x64) "
+                    "AppleWebKit/537.36 "
+                    "(KHTML, like Gecko) "
+                    "Chrome/140.0 Safari/537.36"
                 ),
                 extra_http_headers={
                     "Accept-Language":
@@ -719,9 +726,23 @@ class TelegramDelivery:
                         pass
 
                 if is_noon:
-                    # Real Noon mobile product page: start at the product hero,
-                    # so the image/title/current price are captured together.
+                    # Professional Noon hero capture:
+                    # image + product name + current/old price.
+                    # Stop BEFORE delivery/payment/variants so Telegram
+                    # receives a compact screenshot similar to Amazon.
                     try:
+                        await page.evaluate(
+                            """
+                            () => {
+                              window.scrollTo(0, 0);
+                              document.documentElement.style
+                                .overflowX = 'hidden';
+                              document.body.style
+                                .overflowX = 'hidden';
+                            }
+                            """
+                        )
+
                         main = page.locator("main").first
 
                         if (
@@ -736,20 +757,105 @@ class TelegramDelivery:
                                     + window.scrollY;
                                   window.scrollTo(
                                     0,
-                                    Math.max(0, y - 4)
+                                    Math.max(0, y)
                                   );
                                 }
                                 """
                             )
-                        else:
-                            await page.evaluate(
-                                "window.scrollTo(0, 0)"
-                            )
+
                     except Exception:
-     
                         await page.evaluate(
                             "window.scrollTo(0, 0)"
                         )
+
+                    await page.wait_for_timeout(500)
+
+                    try:
+                        delivery_y = await page.evaluate(
+                            """
+                            () => {
+                              const nodes =
+                                Array.from(
+                                  document.querySelectorAll(
+                                    'main *'
+                                  )
+                                );
+
+                              const found = nodes.find(el => {
+                                const text =
+                                  (el.innerText || '')
+                                    .trim();
+
+                                if (
+                                  !/delivery information/i
+                                    .test(text)
+                                ) {
+                                  return false;
+                                }
+
+                                const r =
+                                  el.getBoundingClientRect();
+
+                                return (
+                                  r.width > 20
+                                  && r.height > 5
+                                  && r.top > 280
+                                );
+                              });
+
+                              if (!found) return null;
+
+                              return found
+                                .getBoundingClientRect()
+                                .top;
+                            }
+                            """
+                        )
+                    except Exception:
+                        delivery_y = None
+
+                    if not isinstance(
+                        delivery_y,
+                        (int, float),
+                    ) or delivery_y < 320:
+                        delivery_y = 760
+
+                    viewport = (
+                        page.viewport_size
+                        or {
+                            "width": 840,
+                            "height": 1000,
+                        }
+                    )
+
+                    scroll_y = float(
+                        await page.evaluate(
+                            "window.scrollY"
+                        )
+                        or 0
+                    )
+
+                    hero_height = max(
+                        420,
+                        min(
+                            900,
+                            int(delivery_y - 10),
+                        ),
+                    )
+
+                    return await page.screenshot(
+                        type="png",
+                        full_page=False,
+                        animations="disabled",
+                        clip={
+                            "x": 0,
+                            "y":                                 scroll_y,
+                            "width": int(
+                                viewport["width"]
+                            ),
+                            "height": hero_height,
+                        },
+                    )
 
                 else:
                     anchors = [

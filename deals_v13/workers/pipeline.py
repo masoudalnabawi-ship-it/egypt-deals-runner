@@ -48,7 +48,10 @@ class V13Pipeline:
         await self.http.aclose()
 
     def _preliminary(self, deal: DealCandidate):
-        flash = bool((deal.metadata or {}).get("flash_hint"))
+        flash = bool(
+            (deal.metadata or {}).get("flash_hint")
+        )
+
         decision = self.intel.evaluate(
             deal,
             verified=False,
@@ -56,27 +59,77 @@ class V13Pipeline:
             flash=flash,
             history=[],
         )
-        if deal.discount_percent >= 70:
+
+        # Search cards frequently omit Amazon's crossed-out/list price.
+        # A product found through a dedicated hot radar is therefore sent
+        # to the Ultra VERIFICATION queue even when the search card itself
+        # cannot calculate the percentage.
+        #
+        # IMPORTANT:
+        # This does NOT publish it as Ultra.
+        # The product page must still prove a real >=50% discount later.
+        hot_floor = 0.0
+
+        if deal.store == "amazon":
+            hot_floor = {
+                "50off": 50.0,
+                "70off": 70.0,
+                "90off": 90.0,
+                "50filter": 50.0,
+                "70filter": 70.0,
+                "90filter": 90.0,
+            }.get(
+                str(deal.source or "").lower(),
+                0.0,
+            )
+
+        if hot_floor:
+            decision.lane = Lane.ULTRA
+            decision.score = max(
+                decision.score,
+                100.0 if hot_floor >= 70.0
+                else 94.0,
+            )
+
+            reason = (
+                "amazon_hot_radar_priority_"
+                f"{int(hot_floor)}"
+            )
+
+            if reason not in decision.reasons:
+                decision.reasons.append(reason)
+
+        elif deal.discount_percent >= 70:
             decision.lane = Lane.ULTRA
             decision.score = 100.0
-            decision.reasons.append(
-                "pre_hot_ultra_70"
-            )
+
+            if "pre_hot_ultra_70" not in decision.reasons:
+                decision.reasons.append(
+                    "pre_hot_ultra_70"
+                )
+
         elif deal.discount_percent >= 50:
             decision.lane = Lane.ULTRA
             decision.score = max(
                 decision.score,
                 min(
-                    95,
-                    55
+                    95.0,
+                    55.0
                     + deal.discount_percent * 0.35,
                 ),
             )
-            decision.reasons.append(
+
+            if (
                 "pre_ultra_surface_discount"
-            )
+                not in decision.reasons
+            ):
+                decision.reasons.append(
+                    "pre_ultra_surface_discount"
+                )
+
         else:
             decision.lane = Lane.NORMAL
+
         return decision
 
     async def discovery_loop(self, store: str):
@@ -97,6 +150,9 @@ class V13Pipeline:
                     "90off",
                     "70off",
                     "50off",
+                    "90filter",
+                    "70filter",
+                    "50filter",
                 }
                 mandatory_hot = [
                     item

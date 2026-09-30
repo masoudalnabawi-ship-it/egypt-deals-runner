@@ -25,6 +25,26 @@ def _surface(name: str, category: str, query: str, priority: float = 1.0) -> Sur
     return Surface(name, category, f"{BASE}/s?k={quote_plus(query)}", priority)
 
 
+def _discount_surface(
+    name: str,
+    percent: int,
+    priority: float = 1.0,
+) -> Surface:
+    # Amazon's percentage-off search filter.
+    # This is much stronger than merely searching the words "50% off".
+    url = (
+        f"{BASE}/s?"
+        f"k={quote_plus('deals')}"
+        f"&rh=p_8%3A{int(percent)}-"
+    )
+    return Surface(
+        name,
+        "global",
+        url,
+        priority,
+    )
+
+
 AMAZON_SURFACES = [
     _surface("limited_time", "global", "limited time deals", 1.8),
     _surface("clearance", "global", "clearance deals", 1.5),
@@ -32,6 +52,12 @@ AMAZON_SURFACES = [
     _surface("90off", "global", "90% off deals", 1.6),
     _surface("70off", "global", "70% off deals", 1.6),
     _surface("50off", "global", "50% off deals", 1.5),
+
+    # Dedicated Amazon discount filters.
+    # Final Ultra routing still requires live product-page verification.
+    _discount_surface("50filter", 50, 2.0),
+    _discount_surface("70filter", 70, 2.1),
+    _discount_surface("90filter", 90, 2.2),
     _surface("mobiles", "mobiles", "mobile phones deals", 1.3),
     _surface("mobile_accessories", "mobiles", "mobile accessories deals"),
     _surface("laptops", "computers", "laptops deals", 1.3),
