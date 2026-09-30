@@ -1,0 +1,200 @@
+name: V14 Shadow Validation
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: v14-shadow-validation
+  cancel-in-progress: true
+
+jobs:
+  shadow:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+
+    env:
+      # Fake non-empty token only because the base delivery class
+      # validates that a token exists during construction.
+      # Shadow mode never sends or polls Telegram.
+      TELEGRAM_BOT_TOKEN: shadow-disabled
+
+      CLOUD_API_URL: ${{ secrets.CLOUD_API_URL }}
+      CLOUD_API_KEY: ${{ secrets.CLOUD_API_KEY }}
+
+      V14_DB_PATH: .runtime_state/v14-shadow.db
+
+      V14_DISCOVERY_INTERVAL: "20"
+      V14_VERIFICATION_INTERVAL: "2"
+      V14_DELIVERY_INTERVAL: "2"
+      V14_HEALTH_INTERVAL: "60"
+
+      V14_VERIFY_WORKERS_PER_STORE: "2"
+      V14_SURFACE_BATCH_SIZE: "5"
+      V14_EXPLORATION_RATE: "0.22"
+
+      V14_AMAZON_PROXY_FIRST: "false"
+      V14_NOON_PROXY_FIRST: "true"
+      V14_NOON_BROWSER_FALLBACK: "true"
+
+      V14_ULTRA_HUNTER_INTERVAL: "12"
+      V14_ULTRA_HUNTER_BATCH_SIZE: "5"
+      V14_ULTRA_HUNTER_NOON_PROBE_FLOOR: "45"
+
+    steps:
+      - name: Checkout V14
+        uses: actions/checkout@v4
+        with:
+          ref: v14-smart-engine
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Restore V14 shadow state
+        uses: actions/cache/restore@v4
+        with:
+          path: |
+            .runtime_state/v14-shadow.db
+            .runtime_state/v14-shadow.db-wal
+            .runtime_state/v14-shadow.db-shm
+          key: v14-shadow-${{ github.run_id }}
+          restore-keys: |
+            v14-shadow-
+
+      - name: Install dependencies
+        run: |
+          python -m pip install -r requirements-v13.txt
+          python -m pip install "playwright>=1.55,<2"
+
+      - name: Install Chromium
+        run: python -m playwright install --with-deps chromium
+
+      - name: Run V14 tests
+        run: |
+          PYTHONPATH=. python -m unittest discover \
+            -s tests/v14 \
+            -p 'test_*.py' \
+            -v
+
+      - name: Run V14 shadow for 15 minutes
+        run: |
+          mkdir -p .runtime_state
+
+          timeout \
+            --preserve-status \
+            --signal=TERM \
+            --kill-after=30s \
+            900s \
+            env PYTHONPATH=. \
+            python scripts/run_v14_shadow.py
+
+      - name: V14 shadow report
+        if: always()
+        run: |
+          python - <<'PY'
+          import json
+          import sqlite3
+          from pathlib import Path
+
+          path = Path(".runtime_state/v14-shadow.db")
+
+          if not path.exists():
+              print("SHADOW REPORT: database missing")
+              raise SystemExit(0)
+
+          db = sqlite3.connect(path)
+          db.row_factory = sqlite3.Row
+
+          print("\n========== V14 SHADOW REPORT ==========")
+
+          print("\nDEALS BY STORE / LANE / STATE")
+          rows = db.execute("""
+              SELECT store, lane, state, COUNT(*) AS n
+              FROM deals
+              GROUP BY store, lane, state
+              ORDER BY store, lane, state
+          """).fetchall()
+
+          for r in rows:
+              print(
+                  r["store"],
+                  r["lane"],
+                  r["state"],
+                  r["n"],
+              )
+
+          print("\nVERIFIED HIGH DISCOUNTS")
+          rows = db.execute("""
+              SELECT
+                  store,
+                  external_id,
+                  ROUND(real_discount,1) AS discount,
+                  ROUND(confidence,2) AS confidence,
+                  ROUND(score,1) AS score,
+                  source
+              FROM deals
+              WHERE state='verified'
+                AND real_discount>=50
+              ORDER BY real_discount DESC, score DESC
+              LIMIT 20
+          """).fetchall()
+
+          if not rows:
+              print("none")
+
+          for r in rows:
+              print(dict(r))
+
+          print("\nSOURCE HEALTH")
+          rows = db.execute("""
+              SELECT
+                  store,
+                  source,
+                  scans,
+                  fetched,
+                  candidates,
+                  verified,
+                  errors,
+                  consecutive_errors,
+                  last_latency_ms
+              FROM source_health
+              ORDER BY store, verified DESC, candidates DESC
+              LIMIT 30
+          """).fetchall()
+
+          for r in rows:
+              print(dict(r))
+
+          print("\nANTI-FAKE BLOCKS")
+          rows = db.execute("""
+              SELECT store, last_error, COUNT(*) AS n
+              FROM deals
+              WHERE state='rejected'
+                AND last_error LIKE 'anti_fake:%'
+              GROUP BY store, last_error
+              ORDER BY n DESC
+              LIMIT 20
+          """).fetchall()
+
+          if not rows:
+              print("none")
+
+          for r in rows:
+              print(dict(r))
+
+          print("========================================")
+          PY
+
+      - name: Save V14 shadow state
+        if: always()
+        uses: actions/cache/save@v4
+        with:
+          path: |
+            .runtime_state/v14-shadow.db
+            .runtime_state/v14-shadow.db-wal
+            .runtime_state/v14-shadow.db-shm
+          key: v14-shadow-${{ github.run_id }}
