@@ -17,6 +17,7 @@ from ..infra.http import StoreHttpClient
 from ..intelligence import IntelligenceEngine, best_cross_store_match
 from ..price_intelligence import build_price_profile
 from ..ultra_hunter import UltraHunterPlanner
+from ..anomaly_shield import inspect_deal
 from ..models import DealCandidate, Lane
 from ..verification.verifier import StoreVerifier, VerificationRejected
 
@@ -396,6 +397,41 @@ class V14Pipeline:
                     verified.current_price,
                 )
 
+                shield = inspect_deal(
+                    incoming,
+                    verified,
+                    vmeta,
+                    price_profile,
+                )
+
+                if shield.hard_block:
+                    reason = (
+                        "anti_fake:"
+                        + ",".join(
+                            shield.reasons
+                        )
+                    )
+
+                    await asyncio.to_thread(
+                        self.db.mark_rejected,
+                        deal_key,
+                        reason,
+                    )
+
+                    log.warning(
+                        "ANTI-FAKE BLOCK "
+                        "store=%s id=%s risk=%.1f "
+                        "reasons=%s",
+                        store,
+                        verified.external_id,
+                        shield.risk_score,
+                        ",".join(
+                            shield.reasons
+                        ),
+                    )
+
+                    continue
+
                 others = await asyncio.to_thread(
                     self.db.recent_other_store,
                     store,
@@ -431,7 +467,17 @@ class V14Pipeline:
                 # - verified real discount >= 50% => ultra group
                 # - exceptional/anomalous price => ultra group with maximum priority
                 signals = int(
-                    vmeta.get("verification_signals") or 0
+                    vmeta.get(
+                        "verification_signals"
+                    )
+                    or 0
+                )
+
+                required_signals = max(
+                    2,
+                    int(
+                        shield.required_signals
+                    ),
                 )
                 old_live = float(verified.old_price or 0)
                 current_live = float(
@@ -470,7 +516,7 @@ class V14Pipeline:
                     old_live >= 1000
                     and current_live > 0
                     and current_live <= old_live * 0.30
-                    and signals >= 2
+                    and signals >= required_signals
                     and decision.confidence
                     >= self.settings.min_confidence_ultra
                 )
@@ -483,7 +529,7 @@ class V14Pipeline:
                     )
                     or (
                         decision.real_discount >= 70.0
-                        and signals >= 2
+                        and signals >= required_signals
                         and decision.confidence
                         >= self.settings.min_confidence_ultra
                     )
@@ -503,7 +549,7 @@ class V14Pipeline:
 
                 elif (
                     decision.real_discount >= 50.0
-                    and signals >= 2
+                    and signals >= required_signals
                     and decision.confidence
                     >= self.settings.min_confidence_ultra
                 ):
@@ -553,6 +599,23 @@ class V14Pipeline:
                 meta["deal_score_breakdown"] = (
                     decision.score_breakdown
                 )
+
+                meta["anti_fake_shield"] = {
+                    "risk_score":
+                        shield.risk_score,
+                    "required_signals":
+                        required_signals,
+                    "reasons":
+                        list(shield.reasons),
+                }
+
+                if shield.reasons:
+                    decision.reasons.extend(
+                        reason
+                        for reason in shield.reasons
+                        if reason
+                        not in decision.reasons
+                    )
 
                 if cross:
                     meta["cross_store"] = {

@@ -58,11 +58,39 @@ def signature(title: str) -> ProductSignature:
     words = [w for w in n.split() if len(w) >= 2 and w not in STOP and not w.isdigit()]
     brand = next((w for w in words if w in BRANDS), '')
 
-    models = {
-        re.sub(r"[\s-]+", '', m.upper())
-        for m in MODEL_RE.findall(raw)
-        if m
-    }
+    models = set()
+
+    for match in MODEL_RE.findall(raw):
+        if not match:
+            continue
+
+        model = re.sub(
+            r"[\s-]+",
+            "",
+            match.upper(),
+        )
+
+        # Storage / RAM values such as 256GB or 16GB
+        # are specifications, not product model numbers.
+        # Treating them as models can make:
+        # Galaxy A55 256GB
+        # and Galaxy S24 256GB
+        # look like the same model.
+        if re.fullmatch(
+            r"\d+(?:GB|TB|MB)",
+            model,
+            re.I,
+        ):
+            continue
+
+        if re.fullmatch(
+            r"\d+(?:GB|جيجا)?RAM",
+            model,
+            re.I,
+        ):
+            continue
+
+        models.add(model)
 
     capacities = set()
     for value, unit in CAPACITY_RE.findall(raw):
