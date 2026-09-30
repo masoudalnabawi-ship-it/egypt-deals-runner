@@ -10,6 +10,7 @@ from .config import Settings
 from .models import DealCandidate, DealDecision, Lane
 from .identity import signature, compatibility
 from .price_intelligence import PriceProfile
+from .deal_score import smart_deal_score
 
 
 GENERIC_TOKENS = {
@@ -244,44 +245,22 @@ class IntelligenceEngine:
             confidence = 0.0
         confidence = round(max(0.0, min(1.0, confidence)), 3)
 
-        score = 0.0
-        score += min(48.0, real_discount * 0.58)
-        score += min(15.0, market_advantage * 0.35)
-        score += confidence * 24.0
+        score_breakdown = smart_deal_score(
+            real_discount=real_discount,
+            confidence=confidence,
+            verification_signals=verification_signals,
+            effective_price=effective,
+            old_price=old,
+            market_advantage_pct=market_advantage,
+            price_profile=price_profile,
+            flash=flash,
+            coupon_percent=coupon,
+            anomaly=anomaly,
+            accessory_like=accessory_like,
+            impossible_ratio=impossible_ratio,
+        )
 
-        if price_profile is not None:
-            # Historical rarity is valuable, but capped so
-            # history can never dominate live verification.
-            score += min(
-                10.0,
-                float(
-                    price_profile
-                    .drop_from_reference_pct
-                    or 0
-                )
-                * 0.16,
-            )
-
-            if price_profile.new_verified_low:
-                score += 5.0
-
-            elif (
-                price_profile.near_historical_low
-                and price_profile.samples >= 5
-            ):
-                score += 2.0
-
-        # Absolute savings matters in Egypt: saving EGP 4,000 is usually more useful
-        # than the same percentage on a very cheap item, but it is capped.
-        absolute_saving = max(0.0, old - effective) if old > effective > 0 else 0.0
-        score += min(8.0, math.log10(absolute_saving + 1.0) * 2.0)
-        if flash:
-            score += 6
-        if coupon:
-            score += min(6.0, coupon * 0.12)
-        if anomaly and confidence >= 0.85:
-            score += 10
-        score = round(min(100.0, score), 2)
+        score = score_breakdown.total
 
         ultra = False
         if real_discount >= self.settings.ultra_min_discount and confidence >= self.settings.min_confidence_ultra:
@@ -310,6 +289,7 @@ class IntelligenceEngine:
             anomaly=anomaly,
             flash=flash,
             coupon_percent=coupon,
+            score_breakdown=score_breakdown.to_dict(),
         )
 
     def acceptable(self, decision: DealDecision) -> tuple[bool, str]:

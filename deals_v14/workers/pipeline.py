@@ -550,6 +550,9 @@ class V14Pipeline:
                 meta["price_intelligence"] = asdict(
                     price_profile
                 )
+                meta["deal_score_breakdown"] = (
+                    decision.score_breakdown
+                )
 
                 if cross:
                     meta["cross_store"] = {

@@ -137,6 +137,9 @@ class DealDecision:
     anomaly: bool = False
     flash: bool = False
     coupon_percent: float = 0.0
+    score_breakdown: dict[str, float] = field(
+        default_factory=dict
+    )
 
     def to_dict(self) -> dict[str, Any]:
         d = asdict(self)
