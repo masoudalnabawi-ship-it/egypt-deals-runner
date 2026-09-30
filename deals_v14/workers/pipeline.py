@@ -16,6 +16,7 @@ from ..infra.db import DealDatabase
 from ..infra.http import StoreHttpClient
 from ..intelligence import IntelligenceEngine, best_cross_store_match
 from ..price_intelligence import build_price_profile
+from ..ultra_hunter import UltraHunterPlanner
 from ..models import DealCandidate, Lane
 from ..verification.verifier import StoreVerifier, VerificationRejected
 
@@ -32,6 +33,8 @@ class V14Pipeline:
         self.verifier = StoreVerifier(self.http)
         self.delivery = TelegramDelivery(settings)
         self.stop_event = asyncio.Event()
+
+        self.ultra_hunter = UltraHunterPlanner()
 
         self.discovery = {
             "amazon": AmazonDiscovery(),
@@ -238,6 +241,132 @@ class V14Pipeline:
                     self.stop_event.wait(),
                     timeout=self.settings.discovery_interval,
                 )
+            except asyncio.TimeoutError:
+                pass
+
+    async def ultra_hunter_loop(
+        self,
+        store: str,
+    ):
+        """
+        Independent fast radar.
+
+        It only queues likely Ultra candidates for live verification.
+        The final Strict50 decision still happens in verification_loop().
+        """
+        adapter = self.discovery[store]
+
+        while not self.stop_event.is_set():
+            plan = self.ultra_hunter.pick_surfaces(
+                store,
+                list(adapter.surfaces),
+                self.settings.ultra_hunter_batch_size,
+            )
+
+            fetched_total = 0
+            queued_total = 0
+            errors = 0
+
+            for surface in plan.surfaces:
+                try:
+                    result = await self.http.fetch(
+                        surface.url,
+                        store,
+                    )
+
+                    deals = (
+                        adapter.parse_search(
+                            result.text,
+                            surface,
+                        )
+                        if store == "amazon"
+                        else adapter.parse_page(
+                            result.text,
+                            surface,
+                        )
+                    )
+
+                    fetched_total += len(deals)
+
+                    for deal in deals:
+                        if deal.current_price <= 0:
+                            continue
+
+                        preliminary = self._preliminary(
+                            deal
+                        )
+
+                        priority = (
+                            self.ultra_hunter
+                            .prioritize(
+                                deal,
+                                preliminary,
+                                noon_probe_floor=(
+                                    self.settings
+                                    .ultra_hunter_noon_probe_floor
+                                ),
+                            )
+                        )
+
+                        if not priority:
+                            continue
+
+                        metadata = dict(
+                            deal.metadata or {}
+                        )
+
+                        metadata.update({
+                            "v14_ultra_hunter": True,
+                            "v14_hunter_surface":
+                                surface.name,
+                            "v14_hunter_observed_discount":
+                                deal.discount_percent,
+                        })
+
+                        deal.metadata = metadata
+
+                        await asyncio.to_thread(
+                            self.db.upsert_candidate,
+                            deal,
+                            preliminary,
+                        )
+
+                        queued_total += 1
+
+                except Exception as exc:
+                    errors += 1
+
+                    log.warning(
+                        "ULTRA HUNTER %s/%s failed | %s:%s",
+                        store,
+                        surface.name,
+                        type(exc).__name__,
+                        exc,
+                    )
+
+            log.info(
+                "ULTRA HUNTER store=%s "
+                "surfaces=%s fetched=%s "
+                "priority_queued=%s errors=%s",
+                store,
+                ",".join(
+                    item.name
+                    for item in plan.surfaces
+                ),
+                fetched_total,
+                queued_total,
+                errors,
+            )
+
+            try:
+                await asyncio.wait_for(
+                    self.stop_event.wait(),
+                    timeout=(
+                        self.settings
+                        .ultra_hunter_interval
+                    ),
+                )
+
             except asyncio.TimeoutError:
                 pass
 
@@ -651,9 +780,29 @@ class V14Pipeline:
 
     async def run(self):
         tasks = [
-            asyncio.create_task(self.discovery_loop("amazon"), name="discover-amazon"),
-            asyncio.create_task(self.discovery_loop("noon"), name="discover-noon"),
-            asyncio.create_task(self.delivery_loop(Lane.ULTRA), name="deliver-ultra"),
+            asyncio.create_task(
+                self.discovery_loop("amazon"),
+                name="discover-amazon",
+            ),
+            asyncio.create_task(
+                self.discovery_loop("noon"),
+                name="discover-noon",
+            ),
+
+            # Separate fast high-discount hunters.
+            asyncio.create_task(
+                self.ultra_hunter_loop("amazon"),
+                name="ultra-hunter-amazon",
+            ),
+            asyncio.create_task(
+                self.ultra_hunter_loop("noon"),
+                name="ultra-hunter-noon",
+            ),
+
+            asyncio.create_task(
+                self.delivery_loop(Lane.ULTRA),
+                name="deliver-ultra",
+            ),
             asyncio.create_task(self.delivery_loop(Lane.NORMAL), name="deliver-normal"),
             asyncio.create_task(self.callback_loop(), name="telegram-callbacks"),
             asyncio.create_task(self.health_loop(), name="health"),
@@ -670,8 +819,11 @@ class V14Pipeline:
                     )
 
         log.warning(
-            "V14 START | stores=amazon,noon | STRICT50 | callbacks=v14 | discovery=%ss | workers/store/lane=%s",
+            "V14 START | stores=amazon,noon | "
+            "STRICT50 | callbacks=v14 | discovery=%ss | "
+            "ultra_hunter=%ss | workers/store/lane=%s",
             self.settings.discovery_interval,
+            self.settings.ultra_hunter_interval,
             self.settings.verification_workers_per_store,
         )
 

@@ -55,6 +55,10 @@ class Settings:
     exploration_rate: float
     surface_batch_size: int
 
+    ultra_hunter_interval: int
+    ultra_hunter_batch_size: int
+    ultra_hunter_noon_probe_floor: float
+
     @classmethod
     def from_env(cls) -> "Settings":
         normal = (
@@ -97,6 +101,47 @@ class Settings:
             lease_seconds=max(30, _int("V14_LEASE_SECONDS", 180)),
             amazon_proxy_first=_bool("V14_AMAZON_PROXY_FIRST", False),
             noon_proxy_first=_bool("V14_NOON_PROXY_FIRST", True),
-            exploration_rate=min(0.8, max(0.05, _float("V14_EXPLORATION_RATE", 0.22))),
-            surface_batch_size=max(1, _int("V14_SURFACE_BATCH_SIZE", 5)),
+            exploration_rate=min(
+                0.8,
+                max(
+                    0.05,
+                    _float(
+                        "V14_EXPLORATION_RATE",
+                        0.22,
+                    ),
+                ),
+            ),
+            surface_batch_size=max(
+                1,
+                _int(
+                    "V14_SURFACE_BATCH_SIZE",
+                    5,
+                ),
+            ),
+
+            # Dedicated high-discount radar.
+            ultra_hunter_interval=max(
+                6,
+                _int(
+                    "V14_ULTRA_HUNTER_INTERVAL",
+                    12,
+                ),
+            ),
+            ultra_hunter_batch_size=max(
+                3,
+                _int(
+                    "V14_ULTRA_HUNTER_BATCH_SIZE",
+                    5,
+                ),
+            ),
+            ultra_hunter_noon_probe_floor=min(
+                49.9,
+                max(
+                    40.0,
+                    _float(
+                        "V14_ULTRA_HUNTER_NOON_PROBE_FLOOR",
+                        45.0,
+                    ),
+                ),
+            ),
         )
