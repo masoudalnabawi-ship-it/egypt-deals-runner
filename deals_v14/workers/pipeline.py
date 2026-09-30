@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from dataclasses import asdict
 import asyncio
 import json
 import logging
@@ -14,11 +15,12 @@ from ..discovery.scheduler import AdaptiveSurfaceSelector
 from ..infra.db import DealDatabase
 from ..infra.http import StoreHttpClient
 from ..intelligence import IntelligenceEngine, best_cross_store_match
+from ..price_intelligence import build_price_profile
 from ..models import DealCandidate, Lane
 from ..verification.verifier import StoreVerifier, VerificationRejected
 
 
-log = logging.getLogger("v13")
+log = logging.getLogger("v14")
 
 
 class V14Pipeline:
@@ -255,8 +257,20 @@ class V14Pipeline:
             try:
                 verified, vmeta = await self.verifier.verify(incoming)
 
-                history = await asyncio.to_thread(self.db.recent_prices, deal_key)
-                others = await asyncio.to_thread(self.db.recent_other_store, store)
+                history = await asyncio.to_thread(
+                    self.db.recent_prices,
+                    deal_key,
+                )
+
+                price_profile = build_price_profile(
+                    history,
+                    verified.current_price,
+                )
+
+                others = await asyncio.to_thread(
+                    self.db.recent_other_store,
+                    store,
+                )
                 cross, similarity = best_cross_store_match(verified, others)
 
                 anomaly = bool((incoming.metadata or {}).get("price_anomaly"))
@@ -269,7 +283,13 @@ class V14Pipeline:
                     history=history,
                     cross_store_row=cross,
                     cross_store_similarity=similarity,
-                    verification_signals=int(vmeta.get("verification_signals") or 0),
+                    verification_signals=int(
+                        vmeta.get(
+                            "verification_signals"
+                        )
+                        or 0
+                    ),
+                    price_profile=price_profile,
                 )
                 ok, reason = self.intel.acceptable(decision)
                 if not ok:
@@ -398,6 +418,10 @@ class V14Pipeline:
                 meta["exceptional_priority"] = hot_priority
                 meta["irrational_price"] = irrational_price
                 meta["hot_priority"] = hot_priority
+                meta["price_intelligence"] = asdict(
+                    price_profile
+                )
+
                 if cross:
                     meta["cross_store"] = {
                         "store": cross.get("store"),
@@ -491,7 +515,7 @@ class V14Pipeline:
         if not row:
             await self.delivery.answer_callback(
                 cb_id,
-                "العرض غير موجود في قاعدة V13",
+                "العرض غير موجود في قاعدة V14",
                 True,
             )
             return

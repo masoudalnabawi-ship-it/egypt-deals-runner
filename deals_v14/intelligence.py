@@ -9,6 +9,7 @@ import statistics
 from .config import Settings
 from .models import DealCandidate, DealDecision, Lane
 from .identity import signature, compatibility
+from .price_intelligence import PriceProfile
 
 
 GENERIC_TOKENS = {
@@ -92,6 +93,7 @@ class IntelligenceEngine:
         cross_store_row: dict | None = None,
         cross_store_similarity: float = 0.0,
         verification_signals: int = 0,
+        price_profile: PriceProfile | None = None,
     ) -> DealDecision:
         current = max(0.0, float(deal.current_price or 0))
         old = float(deal.old_price or 0)
@@ -104,11 +106,47 @@ class IntelligenceEngine:
             if old > effective > 0 else visible_discount
         )
 
-        hist_ref = self._historical_reference(history or [], current)
+        hist_ref = None
+
+        if (
+            price_profile is not None
+            and price_profile.reference_price
+            and price_profile.samples >= 3
+        ):
+            hist_ref = float(
+                price_profile.reference_price
+            )
+        else:
+            hist_ref = self._historical_reference(
+                history or [],
+                current,
+            )
+
         historical_discount = (
-            round(((hist_ref - effective) / hist_ref) * 100, 2)
-            if hist_ref and hist_ref > effective > 0 else 0.0
+            round(
+                (
+                    (hist_ref - effective)
+                    / hist_ref
+                )
+                * 100,
+                2,
+            )
+            if (
+                hist_ref
+                and hist_ref > effective > 0
+            )
+            else 0.0
         )
+
+        if price_profile is not None:
+            historical_discount = max(
+                historical_discount,
+                float(
+                    price_profile
+                    .drop_from_reference_pct
+                    or 0
+                ),
+            )
 
         cross_price = None
         cross_store = None
@@ -155,6 +193,33 @@ class IntelligenceEngine:
         if hist_ref and historical_discount >= 10:
             confidence += 0.10
             reasons.append("history_confirms_drop")
+
+        if price_profile is not None:
+            if price_profile.mature_history:
+                reasons.append(
+                    "mature_verified_price_history"
+                )
+
+            if price_profile.new_verified_low:
+                confidence += 0.04
+                reasons.append(
+                    "new_verified_low"
+                )
+
+            elif (
+                price_profile.near_historical_low
+                and price_profile.samples >= 5
+            ):
+                confidence += 0.02
+                reasons.append(
+                    "near_verified_low"
+                )
+
+            if price_profile.strong_history_signal:
+                confidence += 0.04
+                reasons.append(
+                    "strong_history_signal"
+                )
         if cross_price and cross_store_similarity >= 0.74:
             confidence += 0.08
             reasons.append("cross_store_match")
@@ -183,6 +248,29 @@ class IntelligenceEngine:
         score += min(48.0, real_discount * 0.58)
         score += min(15.0, market_advantage * 0.35)
         score += confidence * 24.0
+
+        if price_profile is not None:
+            # Historical rarity is valuable, but capped so
+            # history can never dominate live verification.
+            score += min(
+                10.0,
+                float(
+                    price_profile
+                    .drop_from_reference_pct
+                    or 0
+                )
+                * 0.16,
+            )
+
+            if price_profile.new_verified_low:
+                score += 5.0
+
+            elif (
+                price_profile.near_historical_low
+                and price_profile.samples >= 5
+            ):
+                score += 2.0
+
         # Absolute savings matters in Egypt: saving EGP 4,000 is usually more useful
         # than the same percentage on a very cheap item, but it is capped.
         absolute_saving = max(0.0, old - effective) if old > effective > 0 else 0.0
