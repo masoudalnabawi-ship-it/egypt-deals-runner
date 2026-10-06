@@ -13,6 +13,105 @@ function workerId(prefix: string): string {
   return `${prefix}-${crypto.randomUUID().slice(0, 8)}`;
 }
 
+async function fetchNoonSurfaceWithFallback(
+  env: V14Env,
+  repo: D1Repository,
+  settings: Settings,
+  surface: Surface,
+): Promise<{text: string; latency: number}> {
+
+  try {
+    // Cheap path first. If Noon accepts normal Worker HTTP,
+    // Browser Run is not used at all.
+    return await fetchNoonSurface(surface);
+  } catch (directError) {
+
+    if (!env.BROWSER || settings.browser_daily_budget_ms <= 0) {
+      throw directError;
+    }
+
+    const day = new Date().toISOString().slice(0, 10);
+    const counterKey = `browser_ms:${day}`;
+    const alreadyUsed = await repo.counterGet(counterKey);
+
+    // Hard daily safety budget.
+    if (alreadyUsed >= settings.browser_daily_budget_ms) {
+      throw new Error(
+        `noon_browser_budget_exhausted:${alreadyUsed}`
+      );
+    }
+
+    const started = Date.now();
+
+    const response: Response =
+      await env.BROWSER.quickAction(
+        "content",
+        {
+          url: surface.url,
+
+          gotoOptions: {
+            waitUntil: "networkidle2",
+            timeout: 20000,
+          },
+
+          waitForTimeout: 900,
+
+          userAgent:
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) " +
+            "AppleWebKit/537.36 (KHTML, like Gecko) " +
+            "Chrome/140.0 Safari/537.36",
+
+          setExtraHTTPHeaders: {
+            "Accept-Language":
+              "en-EG,en;q=0.9,ar-EG;q=0.8,ar;q=0.7",
+            "x-locale": "en-eg",
+            "x-platform": "web",
+            "x-mp": "noon",
+            "x-mp-country": "eg",
+            "x-country-code": "eg",
+          },
+
+          // Product discovery needs HTML/JS, not heavy media.
+          rejectResourceTypes: [
+            "image",
+            "font",
+            "media",
+          ],
+        },
+      );
+
+    const browserMs = Number(
+      response.headers.get("X-Browser-Ms-Used") || 0
+    );
+
+    if (browserMs > 0) {
+      await repo.counterAdd(
+        counterKey,
+        browserMs,
+      );
+    }
+
+    if (!response.ok) {
+      throw new Error(
+        `noon_browser_http_${response.status}`
+      );
+    }
+
+    const text = await response.text();
+
+    if (!text || text.length < 1000) {
+      throw new Error(
+        "noon_browser_empty_page"
+      );
+    }
+
+    return {
+      text,
+      latency: Date.now() - started,
+    };
+  }
+}
+
 function bestCrossStoreMatch(deal: DealCandidate, rows: DealRow[]): { row: DealRow | null; similarity: number } {
   let best: DealRow | null = null; let bestSim = 0;
   const sig = signature(deal.title);
@@ -88,10 +187,10 @@ async function scanAmazonSurface(repo: D1Repository, settings: Settings, surface
   return { store: 'amazon', source: surface.name, fetched, queued, error: Boolean(error) };
 }
 
-async function scanNoonSurface(repo: D1Repository, settings: Settings, surface: Surface): Promise<Record<string, unknown>> {
+async function scanNoonSurface(env: V14Env, repo: D1Repository, settings: Settings, surface: Surface): Promise<Record<string, unknown>> {
   let fetched = 0, queued = 0, latency = 0, error = '';
   try {
-    const result = await fetchNoonSurface(surface); latency = result.latency;
+    const result = await fetchNoonSurfaceWithFallback(env, repo, settings, surface); latency = result.latency;
     const deals = parseNoon(result.text, surface); fetched = deals.length;
     queued = await admitNoon(repo, settings, deals);
   } catch (e) { error = `${e instanceof Error ? e.name : 'Error'}:${e instanceof Error ? e.message : String(e)}`; }
@@ -99,18 +198,85 @@ async function scanNoonSurface(repo: D1Repository, settings: Settings, surface: 
   return { store: 'noon', source: surface.name, fetched, queued, error: Boolean(error) };
 }
 
-async function discoveryStep(repo: D1Repository, settings: Settings): Promise<Record<string, unknown>[]> {
-  const cycle = await repo.counterAdd('cycle_count', 1);
-  const aCur = await repo.counterAdd('amazon_surface_cursor', 1);
-  const nCur = await repo.counterAdd('noon_surface_cursor', 1);
-  const amazonRegular = AMAZON_SURFACES.filter(x => x.name !== 'goldbox');
-  const aSurface = amazonRegular[(aCur - 1) % amazonRegular.length];
-  const nSurface = NOON_SURFACES[(nCur - 1) % NOON_SURFACES.length];
-  const tasks: Promise<Record<string, unknown>>[] = [scanAmazonSurface(repo, settings, aSurface), scanNoonSurface(repo, settings, nSurface)];
-  if (cycle % 5 === 0) {
-    const goldbox = AMAZON_SURFACES.find(x => x.name === 'goldbox');
-    if (goldbox) tasks.push(scanAmazonSurface(repo, settings, goldbox));
+async function discoveryStep(
+  env: V14Env,
+  repo: D1Repository,
+  settings: Settings,
+): Promise<Record<string, unknown>[]> {
+
+  const cycle = await repo.counterAdd(
+    "cycle_count",
+    1,
+  );
+
+  const aCur = await repo.counterAdd(
+    "amazon_surface_cursor",
+    1,
+  );
+
+  const amazonRegular =
+    AMAZON_SURFACES.filter(
+      x => x.name !== "goldbox"
+    );
+
+  const aSurface =
+    amazonRegular[
+      (aCur - 1)
+      % amazonRegular.length
+    ];
+
+  const tasks:
+    Promise<Record<string, unknown>>[] = [
+      scanAmazonSurface(
+        repo,
+        settings,
+        aSurface,
+      ),
+    ];
+
+  // Noon HTTP is currently returning 520 from Cloudflare.
+  // Browser fallback is deliberately rate-limited so the
+  // free Browser Run daily budget is preserved.
+  if (cycle % 10 === 0) {
+    const nCur = await repo.counterAdd(
+      "noon_surface_cursor",
+      1,
+    );
+
+    const nSurface =
+      NOON_SURFACES[
+        (nCur - 1)
+        % NOON_SURFACES.length
+      ];
+
+    tasks.push(
+      scanNoonSurface(
+        env,
+        repo,
+        settings,
+        nSurface,
+      ),
+    );
   }
+
+  // Today's Deals remains a frequent Amazon safety net.
+  if (cycle % 5 === 0) {
+    const goldbox =
+      AMAZON_SURFACES.find(
+        x => x.name === "goldbox"
+      );
+
+    if (goldbox) {
+      tasks.push(
+        scanAmazonSurface(
+          repo,
+          settings,
+          goldbox,
+        ),
+      );
+    }
+  }
+
   return Promise.all(tasks);
 }
 
@@ -218,7 +384,7 @@ async function deliveryStep(env: V14Env, repo: D1Repository, settings: Settings)
 export async function runCycle(env: V14Env, settings: Settings): Promise<Record<string, unknown>> {
   const repo = new D1Repository(env.egypt_deals_v14_db);
   const stale = await repo.releaseStaleLeases();
-  const discovery = await discoveryStep(repo, settings);
+  const discovery = await discoveryStep(env, repo, settings);
   const verified: Record<string, unknown>[] = [];
   for (let i=0;i<3;i++) { const x = await verifyOne(env, repo, settings); if (!x) break; verified.push(x); }
   const delivered = await deliveryStep(env, repo, settings);
