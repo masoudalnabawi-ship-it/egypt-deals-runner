@@ -1,6 +1,6 @@
 import type { DealCandidate, DealRow, Settings, V14Env } from "./types";
 import { D1Repository } from "./db";
-import { cleanText, isProtectedPage, parseNumber, pickAttr, safeJsonParse, stripTags } from "./util";
+import { cleanText, discountPercent, isProtectedPage, parseNumber, pickAttr, safeJsonParse, stripTags } from "./util";
 
 export class VerificationRejected extends Error {}
 
@@ -244,11 +244,15 @@ async function verifyNoon(env: V14Env, repo: D1Repository, settings: Settings, i
   if (!incoming.external_id) throw new VerificationRejected("noon_sku_missing");
   const sku = encodeURIComponent(incoming.external_id);
   const api = `https://www.noon.com/_vs/nc/mp-customer-catalog-api/api/v3/product/${sku}`;
-  const r = await fetch(api, { headers: {
-    "accept": "application/json,text/plain,*/*", "accept-language": "en-EG,en;q=0.9,ar-EG;q=0.8,ar;q=0.7",
-    "x-locale": "en-eg", "x-platform": "web", "x-mp": "noon", "x-mp-country": "eg", "x-country-code": "eg",
-    "referer": "https://www.noon.com/egypt-en/", "origin": "https://www.noon.com",
-  }, redirect: "follow" });
+  const r = await fetch(api, {
+    headers: {
+      "accept": "application/json,text/plain,*/*",
+      "x-locale": "en-eg",
+      "x-mp-country": "eg",
+      "referer": "https://www.noon.com/egypt-en/",
+    },
+    redirect: "follow"
+  });
   if (!r.ok) throw new VerificationRejected(`noon_api_http_${r.status}`);
   let data: any; try { data = await r.json(); } catch { throw new VerificationRejected("noon_api_invalid_json"); }
   const product = data?.product;
@@ -318,17 +322,121 @@ async function verifyNoon(env: V14Env, repo: D1Repository, settings: Settings, i
   return { deal, meta: { http_via: "direct:noon_catalog_api", coupon_percent: 0, flash, verification_signals: Math.min(signals,3) } };
 }
 
-export async function verifyRow(env: V14Env, repo: D1Repository, settings: Settings, row: DealRow): Promise<{deal: DealCandidate; meta: Record<string, unknown>}> {
+export async function verifyRow(
+  env: V14Env,
+  repo: D1Repository,
+  settings: Settings,
+  row: DealRow
+): Promise<{
+  deal: DealCandidate;
+  meta: Record<string, unknown>;
+}> {
+
   const incoming = repo.rowToCandidate(row);
-  if (incoming.store === "noon") return verifyNoon(env, repo, settings, incoming);
+
+  if (incoming.store === "noon") {
+    return verifyNoon(
+      env,
+      repo,
+      settings,
+      incoming
+    );
+  }
+
+  const discoveryMeta =
+    safeJsonParse<Record<string, unknown>>(
+      row.metadata_json,
+      {}
+    );
+
+  const discoveryVisible =
+    Number(row.visible_discount || 0);
+
+  // Browser is expensive, so only genuinely interesting Amazon
+  // candidates are eligible for a second rendering pass.
+  const strongCandidate = Boolean(
+    discoveryVisible >= 50
+    || discoveryMeta.coupon_probe
+    || discoveryMeta.coupon_hint
+    || discoveryMeta.flash_hint
+  );
+
   try {
-    const html = await fetchAmazonDirect(incoming.url);
-    return amazonFromHtml(incoming, html, "direct");
+    const html =
+      await fetchAmazonDirect(incoming.url);
+
+    const direct =
+      amazonFromHtml(
+        incoming,
+        html,
+        "direct"
+      );
+
+    const directVisible =
+      discountPercent(direct.deal);
+
+    const directCoupon =
+      Number(
+        direct.meta.coupon_percent || 0
+      );
+
+    const directSavings =
+      Number(
+        direct.meta.amazon_savings_percent
+        || 0
+      );
+
+    // Important:
+    // Discovery discount is NEVER accepted as proof.
+    // But a strong search/Goldbox lead should not be discarded just
+    // because Amazon's first HTML response omitted dynamic savings.
+    const weakDirectEvidence = Boolean(
+      directVisible
+        < settings.normal_min_discount
+      && directCoupon <= 0
+      && directSavings
+        < settings.normal_min_discount
+    );
+
+    if (
+      strongCandidate
+      && weakDirectEvidence
+      && env.BROWSER
+      && await canUseBrowser(
+        repo,
+        settings
+      )
+    ) {
+      try {
+        return await browserScrapeAmazon(
+          env,
+          repo,
+          settings,
+          incoming
+        );
+      } catch {
+        // Never invent evidence.
+        // If browser verification fails, keep the direct result,
+        // which will be judged by the normal confidence gates.
+        return direct;
+      }
+    }
+
+    return direct;
+
   } catch (error) {
-    const meta = safeJsonParse<Record<string, unknown>>(row.metadata_json, {});
-    const visible = Number(row.visible_discount || 0);
-    const strong = visible >= 50 || Boolean(meta.coupon_probe || meta.coupon_hint || meta.flash_hint || meta.goldbox);
-    if (!strong) throw error;
-    return browserScrapeAmazon(env, repo, settings, incoming);
+
+    if (!strongCandidate) {
+      throw error;
+    }
+
+    // Strong candidate whose direct page was protected/incomplete.
+    // Browser must still prove the deal before it can pass.
+    return browserScrapeAmazon(
+      env,
+      repo,
+      settings,
+      incoming
+    );
   }
 }

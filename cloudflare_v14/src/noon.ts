@@ -136,19 +136,141 @@ export function parseNoon(text: string, surface: Surface): DealCandidate[] {
   return out;
 }
 
-export async function fetchNoonSurface(surface: Surface): Promise<{text: string; latency: number}> {
-  const started = Date.now();
-  const res = await fetch(surface.url, {
+
+const NOON_QUERY_BY_SOURCE: Record<string, string> = {
+  mobiles: "mobile phones",
+  laptops: "laptops",
+  appliances: "home appliances",
+  tablets: "tablets",
+  tvs: "televisions",
+  audio: "headphones earbuds speakers",
+  gaming: "gaming",
+  smartwatches: "smart watches",
+  mobile_accessories: "mobile accessories",
+  computer_accessories: "computer accessories",
+  kitchen: "kitchen appliances",
+  small_appliances: "small appliances",
+  home: "home decor",
+  tools: "tools home improvement",
+  beauty: "beauty",
+  personal_care: "personal care",
+  men_fashion: "men fashion",
+  women_fashion: "women fashion",
+  kids_fashion: "kids fashion",
+  shoes: "shoes",
+  bags: "bags",
+  watches: "watches",
+  sports: "sports fitness",
+  toys: "toys",
+  baby: "baby",
+  grocery: "grocery",
+  coffee: "coffee",
+  detergents: "detergent cleaning",
+  automotive: "car accessories",
+  office: "office supplies",
+};
+
+function noonSurfaceQuery(surface: Surface): string {
+  try {
+    const u = new URL(surface.url);
+    const q = String(u.searchParams.get("q") || "").trim();
+    if (q) return q;
+  } catch {}
+
+  return NOON_QUERY_BY_SOURCE[surface.name] || surface.name;
+}
+
+async function fetchNoonApiUrl(url: string): Promise<string> {
+  const res = await fetch(url, {
     headers: {
-      "user-agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0 Safari/537.36",
-      "accept": "text/html,application/xhtml+xml,application/json;q=0.9,*/*;q=0.8",
-      "accept-language": "en-EG,en;q=0.9,ar-EG;q=0.8",
-      "x-locale": "en-eg", "x-platform": "web", "x-mp": "noon", "x-mp-country": "eg", "x-country-code": "eg",
+      "accept": "application/json,text/plain,*/*",
+      "x-locale": "en-eg",
+      "x-mp-country": "eg",
       "referer": "https://www.noon.com/egypt-en/",
     },
     redirect: "follow",
   });
+
   const text = await res.text();
-  if (!res.ok) throw new Error(`noon_http_${res.status}`);
-  return { text, latency: Date.now() - started };
+
+  if (!res.ok) {
+    throw new Error(`noon_api_http_${res.status}`);
+  }
+
+  const trimmed = text.trimStart();
+
+  if (!(trimmed.startsWith("{") || trimmed.startsWith("["))) {
+    throw new Error("noon_api_not_json");
+  }
+
+  let data: any;
+
+  try {
+    data = JSON.parse(trimmed);
+  } catch {
+    throw new Error("noon_api_invalid_json");
+  }
+
+  const metaText = JSON.stringify(
+    data?.meta || {}
+  ).toLowerCase();
+
+  if (
+    metaText.includes("dubai") ||
+    metaText.includes("abu dhabi") ||
+    metaText.includes("united arab emirates") ||
+    metaText.includes('"country":"ae"')
+  ) {
+    throw new Error("noon_api_wrong_market");
+  }
+
+  if (!Array.isArray(data?.hits)) {
+    throw new Error("noon_api_hits_missing");
+  }
+
+  // For the broad discovery queries used by V14, zero hits usually means
+  // the request was not routed to the intended Egypt catalog.
+  if (!data.hits.length) {
+    throw new Error("noon_api_empty_hits");
+  }
+
+  return text;
+}
+
+export async function fetchNoonSurface(
+  surface: Surface
+): Promise<{text: string; latency: number}> {
+
+  const started = Date.now();
+  const query = noonSurfaceQuery(surface);
+
+  const q = encodeURIComponent(query);
+
+  // Noon has exposed both forms over time.
+  // Try both safely and accept only valid Egypt JSON with hits[].
+  const endpoints = [
+    `${BASE}/_vs/nc/mp-customer-catalog-api/api/v3/search?q=${q}&limit=50`,
+    `${BASE}/_vs/nc/mp-customer-catalog-api/api/v3/u/search?q=${q}&limit=50`,
+  ];
+
+  let lastError: unknown = null;
+
+  for (const url of endpoints) {
+    try {
+      const text = await fetchNoonApiUrl(url);
+
+      return {
+        text,
+        latency: Date.now() - started,
+      };
+    } catch (error) {
+      lastError = error;
+    }
+  }
+
+  throw (
+    lastError instanceof Error
+      ? lastError
+      : new Error("noon_api_unavailable")
+  );
 }
