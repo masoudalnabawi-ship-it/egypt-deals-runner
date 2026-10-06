@@ -17,3 +17,5 @@ poll_state.json
 queue_state.json
 config.json
 *.bak_wide_v3
+cloudflare_v14/node_modules/
+cloudflare_v14/.wrangler/

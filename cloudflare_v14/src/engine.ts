@@ -1,0 +1,274 @@
+import type { DealCandidate, DealDecision, DealRow, Settings, Surface, V14Env } from './types';
+import { AMAZON_SURFACES, fetchAmazonSurface, parseAmazon } from './amazon';
+import { NOON_SURFACES, fetchNoonSurface, parseNoon } from './noon';
+import { D1Repository } from './db';
+import { acceptable, buildPriceProfile, evaluateDeal, preliminaryDecision } from './intelligence';
+import { inspectDeal } from './shield';
+import { titleSimilarity, compatibility, signature } from './identity';
+import { discountPercent, safeJsonParse } from './util';
+import { VerificationRejected, verifyRow } from './verifier';
+import { answerCallback, clearButtons, sendPublic, sendReview, tokenForWebhook } from './telegram';
+
+function workerId(prefix: string): string {
+  return `${prefix}-${crypto.randomUUID().slice(0, 8)}`;
+}
+
+function bestCrossStoreMatch(deal: DealCandidate, rows: DealRow[]): { row: DealRow | null; similarity: number } {
+  let best: DealRow | null = null; let bestSim = 0;
+  const sig = signature(deal.title);
+  for (const row of rows) {
+    const [ok] = compatibility(sig, signature(String(row.title || ''))); if (!ok) continue;
+    const sim = titleSimilarity(deal.title, String(row.title || ''));
+    if (sim > bestSim) { best = row; bestSim = sim; }
+  }
+  if (bestSim < 0.72) return { row: null, similarity: bestSim };
+  return { row: best, similarity: bestSim };
+}
+
+async function admitAmazon(repo: D1Repository, settings: Settings, surface: Surface, deals: DealCandidate[]): Promise<number> {
+  let queued = 0;
+  let probeId = '';
+  if (deals.length && !['goldbox','limited_time','clearance'].includes(surface.name)) {
+    const eligible = deals.filter(x => x.current_price > 0);
+    if (eligible.length) {
+      const c = await repo.counterAdd(`coupon_probe:${surface.name}`, 1);
+      probeId = eligible[(c - 1) % eligible.length].external_id;
+    }
+  }
+
+  const ranked = deals.slice().sort((a,b) => discountPercent(b)-discountPercent(a));
+  for (const base of ranked.slice(0, Math.max(settings.amazon_discovery_limit, 1) * 2)) {
+    if (!(base.current_price > 0)) continue;
+    const deal: DealCandidate = { ...base, metadata: { ...(base.metadata || {}) } };
+    const isProbe = Boolean(probeId && deal.external_id === probeId);
+    if (isProbe) Object.assign(deal.metadata!, { coupon_probe: true, coupon_probe_surface: surface.name });
+    const meta = deal.metadata || {};
+    const goldbox = surface.name === 'goldbox' || Boolean(meta.goldbox);
+    const promo = Boolean(meta.promo_hint || meta.coupon_hint || meta.flash_hint);
+    const visible = discountPercent(deal) >= settings.normal_min_discount;
+    if (!(isProbe || goldbox || promo || visible)) continue;
+    const prelim = preliminaryDecision(settings, deal);
+    if (isProbe) {
+      prelim.score = Math.max(prelim.score, 87);
+      if (!prelim.reasons.includes('amazon_coupon_probe')) prelim.reasons.push('amazon_coupon_probe');
+    }
+    const result = await repo.upsertCandidate(deal, prelim);
+    if (result.new_or_reopened) queued++;
+    if (queued >= settings.amazon_discovery_limit) break;
+  }
+  return queued;
+}
+
+async function admitNoon(repo: D1Repository, settings: Settings, deals: DealCandidate[]): Promise<number> {
+  let queued = 0;
+  const ranked = deals.slice().sort((a,b) => discountPercent(b)-discountPercent(a));
+  for (const deal of ranked) {
+    if (!(deal.current_price > 0)) continue;
+    const visible = discountPercent(deal);
+    // Normal Noon path only. We still allow one no-discount candidate per scan so
+    // trusted history can mature, but never route it to Ultra.
+    if (visible < settings.normal_min_discount && queued > 0) continue;
+    const prelim = preliminaryDecision(settings, deal);
+    prelim.lane = 'normal';
+    const result = await repo.upsertCandidate(deal, prelim);
+    if (result.new_or_reopened) queued++;
+    if (queued >= settings.noon_discovery_limit) break;
+  }
+  return queued;
+}
+
+async function scanAmazonSurface(repo: D1Repository, settings: Settings, surface: Surface): Promise<Record<string, unknown>> {
+  let fetched = 0, queued = 0, latency = 0, error = '';
+  try {
+    const result = await fetchAmazonSurface(surface); latency = result.latency;
+    const deals = parseAmazon(result.text, surface); fetched = deals.length;
+    queued = await admitAmazon(repo, settings, surface, deals);
+  } catch (e) { error = `${e instanceof Error ? e.name : 'Error'}:${e instanceof Error ? e.message : String(e)}`; }
+  await repo.sourceResult('amazon', surface.name, surface.category, fetched, queued, latency, error);
+  return { store: 'amazon', source: surface.name, fetched, queued, error: Boolean(error) };
+}
+
+async function scanNoonSurface(repo: D1Repository, settings: Settings, surface: Surface): Promise<Record<string, unknown>> {
+  let fetched = 0, queued = 0, latency = 0, error = '';
+  try {
+    const result = await fetchNoonSurface(surface); latency = result.latency;
+    const deals = parseNoon(result.text, surface); fetched = deals.length;
+    queued = await admitNoon(repo, settings, deals);
+  } catch (e) { error = `${e instanceof Error ? e.name : 'Error'}:${e instanceof Error ? e.message : String(e)}`; }
+  await repo.sourceResult('noon', surface.name, surface.category, fetched, queued, latency, error);
+  return { store: 'noon', source: surface.name, fetched, queued, error: Boolean(error) };
+}
+
+async function discoveryStep(repo: D1Repository, settings: Settings): Promise<Record<string, unknown>[]> {
+  const cycle = await repo.counterAdd('cycle_count', 1);
+  const aCur = await repo.counterAdd('amazon_surface_cursor', 1);
+  const nCur = await repo.counterAdd('noon_surface_cursor', 1);
+  const amazonRegular = AMAZON_SURFACES.filter(x => x.name !== 'goldbox');
+  const aSurface = amazonRegular[(aCur - 1) % amazonRegular.length];
+  const nSurface = NOON_SURFACES[(nCur - 1) % NOON_SURFACES.length];
+  const tasks: Promise<Record<string, unknown>>[] = [scanAmazonSurface(repo, settings, aSurface), scanNoonSurface(repo, settings, nSurface)];
+  if (cycle % 5 === 0) {
+    const goldbox = AMAZON_SURFACES.find(x => x.name === 'goldbox');
+    if (goldbox) tasks.push(scanAmazonSurface(repo, settings, goldbox));
+  }
+  return Promise.all(tasks);
+}
+
+async function verifyOne(env: V14Env, repo: D1Repository, settings: Settings): Promise<Record<string, unknown> | null> {
+  const order: Array<['amazon'|'noon','ultra'|'normal']> = [['amazon','ultra'],['amazon','normal'],['noon','normal']];
+  let row: DealRow | null = null;
+  for (const [store,lane] of order) {
+    row = await repo.claimForVerification(store, lane, workerId(`verify-${store}-${lane}`), settings.lease_seconds);
+    if (row) break;
+  }
+  if (!row) return null;
+
+  try {
+    const incoming = repo.rowToCandidate(row);
+    const { deal: verified, meta } = await verifyRow(env, repo, settings, row);
+    const history = await repo.recentPrices(row.deal_key);
+    const profile = buildPriceProfile(history, verified.current_price);
+    const shield = inspectDeal(incoming, verified, meta, profile);
+    if (shield.hard_block) {
+      const reason = `anti_fake:${shield.reasons.join(',')}`;
+      await repo.markRejected(row.deal_key, reason);
+      return { deal: row.deal_key.slice(0,10), state: 'rejected', reason };
+    }
+
+    const others = await repo.recentOtherStore(verified.store);
+    const cross = bestCrossStoreMatch(verified, others);
+    const incomingMeta = incoming.metadata || {};
+    const decision = evaluateDeal(settings, verified, {
+      verified: true,
+      coupon_percent: Number(meta.coupon_percent || 0),
+      flash: Boolean(meta.flash),
+      anomaly: Boolean(incomingMeta.price_anomaly),
+      history,
+      verification_signals: Number(meta.verification_signals || 0),
+      price_profile: profile,
+      cross_store_price: cross.row ? Number(cross.row.current_price || 0) : null,
+      cross_store_store: cross.row?.store || null,
+      cross_store_similarity: cross.similarity,
+    });
+    const [ok, reason] = acceptable(settings, decision);
+    if (!ok) { await repo.markRejected(row.deal_key, reason); return { deal: row.deal_key.slice(0,10), state:'rejected', reason }; }
+
+    const signals = Number(meta.verification_signals || 0);
+    const requiredSignals = Math.max(2, shield.required_signals);
+    let hot = false;
+    if (verified.store === 'noon') {
+      decision.lane = 'normal';
+      if (!decision.reasons.includes('noon_normal_only')) decision.reasons.push('noon_normal_only');
+    } else if (decision.real_discount >= settings.ultra_hot_discount) {
+      if (!(signals >= requiredSignals && decision.confidence >= settings.min_confidence_ultra)) {
+        await repo.markRejected(row.deal_key, 'amazon_75_needs_stronger_verification');
+        return { deal: row.deal_key.slice(0,10), state:'rejected', reason:'amazon_75_needs_stronger_verification' };
+      }
+      decision.lane = 'ultra'; decision.score = 100; hot = true;
+      if (!decision.reasons.includes('amazon_ultra_max_75')) decision.reasons.push('amazon_ultra_max_75');
+    } else if (decision.real_discount >= settings.ultra_min_discount) {
+      if (!(signals >= requiredSignals && decision.confidence >= settings.min_confidence_ultra)) {
+        await repo.markRejected(row.deal_key, 'amazon_65_needs_stronger_verification');
+        return { deal: row.deal_key.slice(0,10), state:'rejected', reason:'amazon_65_needs_stronger_verification' };
+      }
+      decision.lane = 'ultra'; decision.score = Math.max(decision.score, 94);
+      if (!decision.reasons.includes('amazon_ultra_65')) decision.reasons.push('amazon_ultra_65');
+    } else {
+      decision.lane = 'normal';
+      if (!decision.reasons.includes('amazon_below_ultra_65')) decision.reasons.push('amazon_below_ultra_65');
+    }
+
+    const outMeta: Record<string, unknown> = { ...(verified.metadata || {}), ...meta,
+      decision_reasons: decision.reasons, verified_route: decision.lane, exceptional_priority: hot, hot_priority: hot,
+      price_intelligence: profile, deal_score_breakdown: decision.score_breakdown,
+      anti_fake_shield: { risk_score: shield.risk_score, required_signals: requiredSignals, reasons: shield.reasons },
+    };
+    if (cross.row) outMeta.cross_store = { store: cross.row.store, price: cross.row.current_price, similarity: Math.round(cross.similarity*1000)/1000 };
+    await repo.markVerified(row.deal_key, verified, decision, outMeta);
+    return { deal: row.deal_key.slice(0,10), state:'verified', store: verified.store, lane: decision.lane, discount: decision.real_discount, confidence: decision.confidence, score: decision.score };
+  } catch (e) {
+    if (e instanceof VerificationRejected) {
+      await repo.markRejected(row.deal_key, e.message);
+      return { deal: row.deal_key.slice(0,10), state:'rejected', reason:e.message };
+    }
+    const reason = `${e instanceof Error ? e.name : 'Error'}:${e instanceof Error ? e.message : String(e)}`;
+    await repo.markRetry(row.deal_key, reason, settings.retry_base_seconds, settings.max_attempts);
+    return { deal: row.deal_key.slice(0,10), state:'retry', reason };
+  }
+}
+
+async function deliveryStep(env: V14Env, repo: D1Repository, settings: Settings): Promise<Record<string, unknown>[]> {
+  const out: Record<string, unknown>[] = [];
+  for (const lane of ['ultra','normal'] as const) {
+    const row = await repo.claimForDelivery(lane, workerId(`deliver-${lane}`), settings.lease_seconds);
+    if (!row) continue;
+    try {
+      await sendReview(env, row);
+      await repo.markSent(row.deal_key);
+      out.push({ lane, store: row.store, deal: row.deal_key.slice(0,10), sent: true });
+    } catch (e) {
+      const reason = `${e instanceof Error ? e.name : 'Error'}:${e instanceof Error ? e.message : String(e)}`;
+      await repo.deliveryRetry(row.deal_key, reason, settings.retry_base_seconds, settings.max_attempts);
+      out.push({ lane, store: row.store, deal: row.deal_key.slice(0,10), sent: false, reason });
+    }
+  }
+  return out;
+}
+
+export async function runCycle(env: V14Env, settings: Settings): Promise<Record<string, unknown>> {
+  const repo = new D1Repository(env.egypt_deals_v14_db);
+  const stale = await repo.releaseStaleLeases();
+  const discovery = await discoveryStep(repo, settings);
+  const verified: Record<string, unknown>[] = [];
+  for (let i=0;i<3;i++) { const x = await verifyOne(env, repo, settings); if (!x) break; verified.push(x); }
+  const delivered = await deliveryStep(env, repo, settings);
+  const stats = await repo.stats();
+  const result = { event:'v14_cycle', stale_released: stale, discovery, verified, delivered, stats };
+  console.log(JSON.stringify(result));
+  return result;
+}
+
+function callbackAllowed(env: V14Env, chatId: string): boolean {
+  const allowed = new Set([
+    String(env.V13_NORMAL_REVIEW_CHAT_ID || env.REVIEW_CHAT_ID || env.AMAZON_NORMAL_REVIEW_CHAT_ID || ''),
+    String(env.V13_ULTRA_REVIEW_CHAT_ID || env.AMAZON_REVIEW_GROUP_ID || ''),
+    String(env.NOON_REVIEW_BOT_CHAT_ID || env.NOON_NORMAL_REVIEW_CHAT_ID || ''),
+  ].filter(Boolean));
+  return Boolean(chatId && allowed.has(chatId));
+}
+
+export async function handleTelegramUpdate(env: V14Env, route: 'main'|'noon', update: any): Promise<Response> {
+  const cb = update?.callback_query;
+  if (!cb) return new Response('ok');
+  const message = cb.message || {}; const chatId = String(message?.chat?.id || '');
+  const token = tokenForWebhook(env, route); const cbId = String(cb.id || '');
+  if (!callbackAllowed(env, chatId)) { await answerCallback(token, cbId, 'غير مصرح', true); return new Response('ok'); }
+  const parts = String(cb.data || '').split(':'); if (parts.length !== 3 || parts[0] !== 'v14') return new Response('ok');
+  const [_, action, shortKey] = parts;
+  const repo = new D1Repository(env.egypt_deals_v14_db);
+  const row = await repo.findByPrefix(shortKey);
+  if (!row) { await answerCallback(token, cbId, 'العرض غير موجود في قاعدة V14', true); return new Response('ok'); }
+
+  if (action === 'r') {
+    await repo.event('manual_reject', row.store, row.deal_key, {action:'reject'});
+    await answerCallback(token, cbId, 'تم رفض العرض ❌');
+  } else if (action === 'p' || action === 'u') {
+    if (await repo.hasEvent(row.deal_key, 'manual_publish')) { await answerCallback(token, cbId, 'تم نشر العرض بالفعل'); return new Response('ok'); }
+    try {
+      const settings = (await import('./config')).getSettings(env);
+      const { deal: fresh } = await verifyRow(env, repo, settings, row);
+      const reviewed = Number(row.current_price || 0), freshPrice = Number(fresh.current_price || 0);
+      if (reviewed > 0 && freshPrice > reviewed * 1.02) { await answerCallback(token, cbId, 'السعر ارتفع منذ المراجعة؛ لم يتم النشر', true); return new Response('ok'); }
+      const publicRow: DealRow = { ...row, title: fresh.title || row.title, url: fresh.url || row.url, image_url: fresh.image_url || row.image_url,
+        current_price: freshPrice || reviewed, old_price: fresh.old_price ?? row.old_price };
+      await sendPublic(env, publicRow, action === 'u');
+      await repo.event('manual_publish', row.store, row.deal_key, {urgent: action === 'u'});
+      await answerCallback(token, cbId, action === 'u' ? 'تم النشر العاجل 🚀' : 'تم النشر ✅');
+    } catch (e) {
+      await answerCallback(token, cbId, e instanceof VerificationRejected ? 'العرض لم يعد يحقق شروط التحقق' : 'تعذر إعادة التحقق الآن، جرّب مرة أخرى', true);
+      return new Response('ok');
+    }
+  } else return new Response('ok');
+  try { await clearButtons(token, chatId, Number(message.message_id)); } catch {}
+  return new Response('ok');
+}

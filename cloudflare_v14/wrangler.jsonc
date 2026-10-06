@@ -1,0 +1,53 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "egypt-deals-v14",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-10-06",
+  "observability": {
+    "enabled": true
+  },
+  "triggers": {
+    "crons": [
+      "* * * * *"
+    ]
+  },
+  "d1_databases": [
+    {
+      "binding": "egypt_deals_v14_db",
+      "database_name": "egypt-deals-v14-db",
+      "database_id": "e0e145ed-2d97-4e66-a7e2-7b1370acdf4f",
+      "remote": true
+    }
+  ],
+  "browser": {
+    "binding": "BROWSER",
+    "remote": true
+  },
+  "vars": {
+    "V14_ULTRA_MIN_DISCOUNT": "65",
+    "V14_ULTRA_HOT_DISCOUNT": "75",
+    "V14_NORMAL_MIN_DISCOUNT": "10",
+    "V14_MIN_CONFIDENCE_NORMAL": "0.62",
+    "V14_MIN_CONFIDENCE_ULTRA": "0.76",
+    "V14_BROWSER_DAILY_BUDGET_MS": "540000",
+    "V14_AMAZON_DISCOVERY_LIMIT": "10",
+    "V14_NOON_DISCOVERY_LIMIT": "8"
+  },
+  "queues": {
+    "producers": [
+      {
+        "binding": "JOBS",
+        "queue": "egypt-deals-v14-jobs"
+      }
+    ],
+    "consumers": [
+      {
+        "queue": "egypt-deals-v14-jobs",
+        "max_batch_size": 1,
+        "max_batch_timeout": 2,
+        "max_retries": 3,
+        "max_concurrency": 1
+      }
+    ]
+  }
+}

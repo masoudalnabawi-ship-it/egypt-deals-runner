@@ -1,0 +1,18 @@
+{
+  "name": "egypt-deals-v14-cloudflare",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "check": "npm run typecheck && npm test && wrangler deploy --dry-run",
+    "dev": "wrangler dev --remote",
+    "deploy": "wrangler deploy",
+    "test": "tsx scripts/selftest.ts"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "latest",
+    "typescript": "^5.8.3",
+    "wrangler": "^4.131.1",
+    "tsx": "^4.20.6"
+  }
+}
