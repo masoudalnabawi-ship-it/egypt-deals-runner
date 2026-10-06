@@ -12,11 +12,11 @@ from .telegram import TelegramDelivery
 class RoutedTelegramDelivery:
     """Telegram router for the strict Noon/Amazon split.
 
-    Noon NORMAL (<50%):
+    Noon: always normal review path
         secondary @EgyptDealsFinderBot
 
-    Noon ULTRA (>=50%):
-        primary bot + Amazon Ultra chat
+    Noon:
+        always secondary review bot, regardless of lane
 
     Amazon:
         primary bot, unchanged
@@ -76,11 +76,7 @@ class RoutedTelegramDelivery:
         row: dict,
     ) -> TelegramDelivery:
 
-        if (
-            row.get("store") == "noon"
-            and str(row.get("lane") or "")
-            == Lane.NORMAL.value
-        ):
+        if row.get("store") == "noon":
             return self.secondary
 
         return self.primary

@@ -37,6 +37,7 @@ class Settings:
     noon_normal_chat_id: str
     noon_ultra_chat_id: str
     ultra_min_discount: float
+    ultra_hot_discount: float
     normal_min_discount: float
     min_confidence_normal: float
     min_confidence_ultra: float
@@ -84,10 +85,25 @@ class Settings:
                 or normal
             ),
 
-            # Noon >=50% goes to exactly the same Ultra chat as Amazon.
-            noon_ultra_chat_id=ultra,
+            # Noon is isolated from Amazon Ultra.
+            noon_ultra_chat_id=(
+                os.getenv("NOON_REVIEW_BOT_CHAT_ID", "").strip()
+                or os.getenv("NOON_NORMAL_REVIEW_CHAT_ID", "").strip()
+                or normal
+            ),
 
-            ultra_min_discount=_float("V14_ULTRA_MIN_DISCOUNT", 50.0),
+            # Amazon Ultra starts at 65%.
+            ultra_min_discount=max(
+                65.0,
+                _float("V14_ULTRA_MIN_DISCOUNT", 65.0),
+            ),
+
+            # Amazon Ultra MAX priority starts at 75%.
+            ultra_hot_discount=max(
+                75.0,
+                _float("V14_ULTRA_HOT_DISCOUNT", 75.0),
+            ),
+
             normal_min_discount=_float("V14_NORMAL_MIN_DISCOUNT", 10.0),
             min_confidence_normal=_float("V14_MIN_CONFIDENCE_NORMAL", 0.62),
             min_confidence_ultra=_float("V14_MIN_CONFIDENCE_ULTRA", 0.76),
@@ -124,14 +140,14 @@ class Settings:
                 6,
                 _int(
                     "V14_ULTRA_HUNTER_INTERVAL",
-                    12,
+                    27,
                 ),
             ),
             ultra_hunter_batch_size=max(
                 3,
                 _int(
                     "V14_ULTRA_HUNTER_BATCH_SIZE",
-                    5,
+                    12,
                 ),
             ),
             ultra_hunter_noon_probe_floor=min(

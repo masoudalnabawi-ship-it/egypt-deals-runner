@@ -6,6 +6,12 @@ import json
 import logging
 import time
 import uuid
+from urllib.parse import (
+    parse_qsl,
+    urlencode,
+    urlsplit,
+    urlunsplit,
+)
 
 from ..config import Settings
 from ..delivery.telegram import TelegramDelivery
@@ -37,6 +43,15 @@ class V14Pipeline:
 
         self.ultra_hunter = UltraHunterPlanner()
 
+        # Each Amazon Ultra source rotates through search pages
+        # instead of repeatedly scanning page 1.
+        self._amazon_ultra_page_cursor: dict[str, int] = {}
+
+        # Hidden Coupon Exploration:
+        # rotate through one product per normal Amazon surface
+        # instead of repeatedly probing the first ASIN.
+        self._amazon_coupon_probe_cursor: dict[str, int] = {}
+
         self.discovery = {
             "amazon": AmazonDiscovery(),
             "noon": NoonDiscovery(),
@@ -66,81 +81,141 @@ class V14Pipeline:
             history=[],
         )
 
-        # Search cards frequently omit Amazon's crossed-out/list price.
-        # A product found through a dedicated hot radar is therefore sent
-        # to the Ultra VERIFICATION queue even when the search card itself
-        # cannot calculate the percentage.
+        # ==================================================
+        # EVIDENCE-DRIVEN AMAZON ULTRA POLICY
         #
-        # IMPORTANT:
-        # This does NOT publish it as Ultra.
-        # The product page must still prove a real >=50% discount later.
-        hot_floor = 0.0
+        # A source/query name is never proof of a discount.
+        # Actual visible discount or later live verification is.
+        # ==================================================
 
-        if deal.store == "amazon":
-            hot_floor = {
-                "50off": 50.0,
-                "70off": 70.0,
-                "90off": 90.0,
-                "50filter": 50.0,
-                "70filter": 70.0,
-                "90filter": 90.0,
-                "electronics_50hot": 50.0,
-                "appliances_50hot": 50.0,
-                "beauty_50hot": 50.0,
-                "fashion_50hot": 50.0,
-            }.get(
-                str(deal.source or "").lower(),
-                0.0,
-            )
+        store = str(deal.store or "").strip().lower()
+        discount = float(deal.discount_percent or 0)
+        metadata = dict(deal.metadata or {})
 
-        if hot_floor:
-            decision.lane = Lane.ULTRA
-            decision.score = max(
-                decision.score,
-                100.0 if hot_floor >= 70.0
-                else 94.0,
-            )
-
-            reason = (
-                "amazon_hot_radar_priority_"
-                f"{int(hot_floor)}"
-            )
-
-            if reason not in decision.reasons:
-                decision.reasons.append(reason)
-
-        elif deal.discount_percent >= 70:
-            decision.lane = Lane.ULTRA
-            decision.score = 100.0
-
-            if "pre_hot_ultra_70" not in decision.reasons:
-                decision.reasons.append(
-                    "pre_hot_ultra_70"
-                )
-
-        elif deal.discount_percent >= 50:
-            decision.lane = Lane.ULTRA
-            decision.score = max(
-                decision.score,
-                min(
-                    95.0,
-                    55.0
-                    + deal.discount_percent * 0.35,
-                ),
-            )
+        if store != "amazon":
+            decision.lane = Lane.NORMAL
 
             if (
-                "pre_ultra_surface_discount"
+                store == "noon"
+                and "noon_normal_only"
                 not in decision.reasons
             ):
                 decision.reasons.append(
-                    "pre_ultra_surface_discount"
+                    "noon_normal_only"
+                )
+
+            return decision
+
+        if discount >= 75.0:
+            decision.lane = Lane.ULTRA
+            decision.score = 100.0
+
+            if "amazon_pre_max_75" not in decision.reasons:
+                decision.reasons.append(
+                    "amazon_pre_max_75"
+                )
+
+        elif discount >= 70.0:
+            decision.lane = Lane.ULTRA
+            decision.score = max(
+                float(decision.score or 0),
+                97.0,
+            )
+
+            if "amazon_pre_ultra_70" not in decision.reasons:
+                decision.reasons.append(
+                    "amazon_pre_ultra_70"
+                )
+
+        elif discount >= 65.0:
+            decision.lane = Lane.ULTRA
+            decision.score = max(
+                float(decision.score or 0),
+                96.0,
+            )
+
+            if "amazon_pre_ultra_65" not in decision.reasons:
+                decision.reasons.append(
+                    "amazon_pre_ultra_65"
+                )
+
+        elif (
+            metadata.get("promo_hint")
+            or metadata.get("flash_hint")
+        ):
+            # Interesting promo: verify quickly in NORMAL.
+            # Live verification may later promote it to Ultra.
+            decision.lane = Lane.NORMAL
+            decision.score = max(
+                float(decision.score or 0),
+                88.0,
+            )
+
+            if (
+                "amazon_promo_fast_probe"
+                not in decision.reasons
+            ):
+                decision.reasons.append(
+                    "amazon_promo_fast_probe"
                 )
 
         else:
             decision.lane = Lane.NORMAL
 
         return decision
+
+    def _amazon_ultra_page_url(
+        self,
+        surface,
+    ) -> tuple[str, int]:
+        """
+        Rotate each Amazon radar through pages 1..4.
+
+        Important:
+        - one request per selected surface only
+        - no concurrency increase
+        - source identity stays unchanged for learning
+        """
+        key = str(surface.name or "")
+
+        cursor = self._amazon_ultra_page_cursor.get(
+            key,
+            0,
+        )
+
+        page = (cursor % 4) + 1
+
+        self._amazon_ultra_page_cursor[key] = (
+            cursor + 1
+        )
+
+        if page == 1:
+            return surface.url, page
+
+        parts = urlsplit(surface.url)
+
+        query = [
+            (k, v)
+            for k, v in parse_qsl(
+                parts.query,
+                keep_blank_values=True,
+            )
+            if k != "page"
+        ]
+
+        query.append(
+            ("page", str(page))
+        )
+
+        url = urlunsplit((
+            parts.scheme,
+            parts.netloc,
+            parts.path,
+            urlencode(query),
+            parts.fragment,
+        ))
+
+        return url, page
 
     async def discovery_loop(self, store: str):
         adapter = self.discovery[store]
@@ -158,13 +233,12 @@ class V14Pipeline:
             mandatory_names = set()
 
             if store == "amazon":
+                # Reliable promotional surfaces stay mandatory.
+                # High-discount/category surfaces are handled by
+                # adaptive exploration and Ultra Hunter.
                 mandatory_names = {
-                    "90off",
-                    "70off",
-                    "50off",
-                    "90filter",
-                    "70filter",
-                    "50filter",
+                    "limited_time",
+                    "clearance",
                 }
 
             elif store == "noon":
@@ -216,11 +290,146 @@ class V14Pipeline:
                     )
                     fetched = len(deals)
 
+                    # ==================================================
+                    # HIDDEN COUPON EXPLORATION
+                    #
+                    # Search cards do not always expose Amazon coupons.
+                    # From each ordinary Amazon surface, probe exactly
+                    # ONE product per scan and rotate the ASIN over time.
+                    #
+                    # Goldbox / limited-time / clearance already have
+                    # their own high-priority verification paths.
+                    # ==================================================
+                    coupon_probe_id = ""
+
+                    if (
+                        store == "amazon"
+                        and deals
+                        and surface.name not in {
+                            "goldbox",
+                            "limited_time",
+                            "clearance",
+                        }
+                    ):
+                        eligible = [
+                            item
+                            for item in deals
+                            if item.current_price > 0
+                        ]
+
+                        if eligible:
+                            cursor = (
+                                self._amazon_coupon_probe_cursor
+                                .get(surface.name, 0)
+                            )
+
+                            probe = eligible[
+                                cursor % len(eligible)
+                            ]
+
+                            self._amazon_coupon_probe_cursor[
+                                surface.name
+                            ] = cursor + 1
+
+                            coupon_probe_id = (
+                                probe.external_id
+                            )
+
                     for deal in deals:
                         if deal.current_price <= 0:
                             continue
-                        preliminary = self._preliminary(deal)
-                        await asyncio.to_thread(self.db.upsert_candidate, deal, preliminary)
+
+                        is_coupon_probe = bool(
+                            store == "amazon"
+                            and coupon_probe_id
+                            and deal.external_id
+                            == coupon_probe_id
+                        )
+
+                        if is_coupon_probe:
+                            metadata = dict(
+                                deal.metadata or {}
+                            )
+
+                            metadata.update({
+                                "coupon_probe": True,
+                                "coupon_probe_surface":
+                                    surface.name,
+                            })
+
+                            deal.metadata = metadata
+
+                        preliminary = self._preliminary(
+                            deal
+                        )
+
+                        if is_coupon_probe:
+                            preliminary.score = max(
+                                float(
+                                    preliminary.score
+                                    or 0
+                                ),
+                                87.0,
+                            )
+
+                            if (
+                                "amazon_coupon_probe"
+                                not in preliminary.reasons
+                            ):
+                                preliminary.reasons.append(
+                                    "amazon_coupon_probe"
+                                )
+
+                        # ==========================================
+                        # SMART AMAZON ADMISSION GATE
+                        #
+                        # Do not flood live verification with every
+                        # ordinary search result.
+                        #
+                        # Admit only:
+                        # - Goldbox / Today's Deals
+                        # - explicit promo / coupon / flash evidence
+                        # - visible discount meeting normal threshold
+                        # - one rotating hidden-coupon probe
+                        #
+                        # This keeps full department exploration while
+                        # reserving verifier capacity for useful leads.
+                        # ==========================================
+                        if store == "amazon":
+                            meta = dict(
+                                deal.metadata or {}
+                            )
+
+                            goldbox_evidence = bool(
+                                surface.name == "goldbox"
+                                or meta.get("goldbox")
+                            )
+
+                            promo_evidence = bool(
+                                meta.get("promo_hint")
+                                or meta.get("coupon_hint")
+                                or meta.get("flash_hint")
+                            )
+
+                            visible_evidence = bool(
+                                deal.discount_percent
+                                >= self.settings.normal_min_discount
+                            )
+
+                            if not (
+                                is_coupon_probe
+                                or goldbox_evidence
+                                or promo_evidence
+                                or visible_evidence
+                            ):
+                                continue
+
+                        await asyncio.to_thread(
+                            self.db.upsert_candidate,
+                            deal,
+                            preliminary,
+                        )
+
                         candidates += 1
 
                 except Exception as exc:
@@ -253,15 +462,21 @@ class V14Pipeline:
         Independent fast radar.
 
         It only queues likely Ultra candidates for live verification.
-        The final Strict50 decision still happens in verification_loop().
+        The final verified Amazon 65%+ decision happens in verification_loop().
         """
         adapter = self.discovery[store]
 
         while not self.stop_event.is_set():
+            health = await asyncio.to_thread(
+                self.db.source_health,
+                store,
+            )
+
             plan = self.ultra_hunter.pick_surfaces(
                 store,
                 list(adapter.surfaces),
                 self.settings.ultra_hunter_batch_size,
+                health=health,
             )
 
             fetched_total = 0
@@ -269,10 +484,35 @@ class V14Pipeline:
             errors = 0
 
             for surface in plan.surfaces:
+                surface_fetched = 0
+                surface_queued = 0
+                surface_latency = 0
+                surface_error = ""
+
                 try:
+                    fetch_url = surface.url
+                    hunter_page = 1
+
+                    if store == "amazon":
+                        (
+                            fetch_url,
+                            hunter_page,
+                        ) = self._amazon_ultra_page_url(
+                            surface
+                        )
+
                     result = await self.http.fetch(
-                        surface.url,
+                        fetch_url,
                         store,
+                    )
+
+                    surface_latency = int(
+                        getattr(
+                            result,
+                            "latency_ms",
+                            0,
+                        )
+                        or 0
                     )
 
                     deals = (
@@ -287,6 +527,7 @@ class V14Pipeline:
                         )
                     )
 
+                    surface_fetched = len(deals)
                     fetched_total += len(deals)
 
                     for deal in deals:
@@ -322,20 +563,38 @@ class V14Pipeline:
                                 surface.name,
                             "v14_hunter_observed_discount":
                                 deal.discount_percent,
+                            "v14_hunter_page":
+                                hunter_page,
                         })
 
                         deal.metadata = metadata
 
-                        await asyncio.to_thread(
+                        upsert_result = await asyncio.to_thread(
                             self.db.upsert_candidate,
                             deal,
                             preliminary,
                         )
 
-                        queued_total += 1
+                        # Count only genuinely useful discoveries:
+                        # - brand-new ASIN
+                        # - meaningful price improvement
+                        # - lane upgrade
+                        #
+                        # Repeated unchanged products no longer make a
+                        # stale Amazon source look productive.
+                        if upsert_result.get(
+                            "new_or_reopened"
+                        ):
+                            surface_queued += 1
+                            queued_total += 1
 
                 except Exception as exc:
                     errors += 1
+
+                    surface_error = (
+                        f"{type(exc).__name__}:"
+                        f"{exc}"
+                    )
 
                     log.warning(
                         "ULTRA HUNTER %s/%s failed | %s:%s",
@@ -344,6 +603,18 @@ class V14Pipeline:
                         type(exc).__name__,
                         exc,
                     )
+
+                # Teach Source Brain from BOTH success and failure.
+                await asyncio.to_thread(
+                    self.db.source_result,
+                    store,
+                    surface.name,
+                    surface.category,
+                    surface_fetched,
+                    surface_queued,
+                    surface_latency,
+                    surface_error,
+                )
 
             log.info(
                 "ULTRA HUNTER store=%s "
@@ -462,10 +733,11 @@ class V14Pipeline:
                     log.info("REJECT %s %s | %s", store, deal_key[:10], reason)
                     continue
 
-                # STRICT50 final routing after live verification:
-                # - verified real discount < 50% => review chat
-                # - verified real discount >= 50% => ultra group
-                # - exceptional/anomalous price => ultra group with maximum priority
+                # FINAL AMAZON ULTRA POLICY:
+                # Noon -> normal path only.
+                # Amazon <65% -> normal.
+                # Amazon 65-74.99% -> Ultra.
+                # Amazon >=75% -> Ultra MAX priority.
                 signals = int(
                     vmeta.get(
                         "verification_signals"
@@ -479,117 +751,129 @@ class V14Pipeline:
                         shield.required_signals
                     ),
                 )
-                old_live = float(verified.old_price or 0)
+
+                old_live = float(
+                    verified.old_price or 0
+                )
+
                 current_live = float(
                     verified.current_price or 0
                 )
 
-                http_via = str(
-                    vmeta.get("http_via") or ""
-                )
-                noon_catalog_verified = (
-                    "noon_catalog_api" in http_via
-                )
-
-                # Noon discounts >=50% must come from the product catalog API.
-                # The generic storefront fallback is useful for discovery,
-                # but is not strong enough for automatic Ultra routing.
-                if (
-                    store == "noon"
-                    and decision.real_discount >= 50.0
-                    and not noon_catalog_verified
-                ):
-                    await asyncio.to_thread(
-                        self.db.mark_rejected,
-                        deal_key,
-                        "noon_high_discount_needs_catalog_confirmation",
-                    )
-                    log.warning(
-                        "NOON HIGH DISCOUNT BLOCKED id=%s discount=%.1f via=%s",
-                        verified.external_id,
-                        decision.real_discount,
-                        http_via,
-                    )
-                    continue
-
                 irrational_price = bool(
                     old_live >= 1000
                     and current_live > 0
-                    and current_live <= old_live * 0.30
+                    and current_live
+                    <= old_live * 0.30
                     and signals >= required_signals
                     and decision.confidence
                     >= self.settings.min_confidence_ultra
                 )
 
-                hot_priority = bool(
-                    irrational_price
-                    or (
-                        decision.anomaly
-                        and decision.confidence >= 0.90
-                    )
-                    or (
-                        decision.real_discount >= 70.0
-                        and signals >= required_signals
+                hot_priority = False
+
+                if store == "noon":
+                    # Noon never enters Amazon Ultra.
+                    decision.lane = Lane.NORMAL
+
+                    if (
+                        "noon_normal_only"
+                        not in decision.reasons
+                    ):
+                        decision.reasons.append(
+                            "noon_normal_only"
+                        )
+
+                elif store == "amazon":
+                    strong_ultra_proof = bool(
+                        signals >= required_signals
                         and decision.confidence
                         >= self.settings.min_confidence_ultra
                     )
-                )
 
-                if hot_priority:
-                    decision.lane = Lane.ULTRA
-                    decision.score = 100.0
-                    if "hot_ultra_priority" not in decision.reasons:
-                        decision.reasons.append(
-                            "hot_ultra_priority"
-                        )
-                    if irrational_price:
-                        decision.reasons.append(
-                            "irrational_verified_price"
+                    if decision.real_discount >= 75.0:
+                        if not strong_ultra_proof:
+                            await asyncio.to_thread(
+                                self.db.mark_rejected,
+                                deal_key,
+                                "amazon_75_needs_stronger_verification",
+                            )
+
+                            log.warning(
+                                "AMAZON 75+ BLOCKED "
+                                "id=%s discount=%.1f "
+                                "signals=%s/%s confidence=%.2f",
+                                verified.external_id,
+                                decision.real_discount,
+                                signals,
+                                required_signals,
+                                decision.confidence,
+                            )
+
+                            continue
+
+                        decision.lane = Lane.ULTRA
+                        decision.score = 100.0
+                        hot_priority = True
+
+                        if (
+                            "amazon_ultra_max_75"
+                            not in decision.reasons
+                        ):
+                            decision.reasons.append(
+                                "amazon_ultra_max_75"
+                            )
+
+                    elif decision.real_discount >= 65.0:
+                        if not strong_ultra_proof:
+                            await asyncio.to_thread(
+                                self.db.mark_rejected,
+                                deal_key,
+                                "amazon_65_needs_stronger_verification",
+                            )
+
+                            log.warning(
+                                "AMAZON 65+ BLOCKED "
+                                "id=%s discount=%.1f "
+                                "signals=%s/%s confidence=%.2f",
+                                verified.external_id,
+                                decision.real_discount,
+                                signals,
+                                required_signals,
+                                decision.confidence,
+                            )
+
+                            continue
+
+                        decision.lane = Lane.ULTRA
+                        decision.score = max(
+                            float(decision.score or 0),
+                            94.0,
                         )
 
-                elif (
-                    decision.real_discount >= 50.0
-                    and signals >= required_signals
-                    and decision.confidence
-                    >= self.settings.min_confidence_ultra
-                ):
-                    decision.lane = Lane.ULTRA
-                    decision.score = max(
-                        decision.score,
-                        90.0,
-                    )
-                    if "strict50_ultra" not in decision.reasons:
-                        decision.reasons.append(
-                            "strict50_ultra"
-                        )
+                        if (
+                            "amazon_ultra_65"
+                            not in decision.reasons
+                        ):
+                            decision.reasons.append(
+                                "amazon_ultra_65"
+                            )
 
-                elif decision.real_discount >= 50.0:
-                    await asyncio.to_thread(
-                        self.db.mark_rejected,
-                        deal_key,
-                        "high_discount_needs_stronger_verification",
-                    )
-                    log.warning(
-                        "HIGH DISCOUNT BLOCKED store=%s id=%s discount=%.1f signals=%s confidence=%.2f",
-                        store,
-                        verified.external_id,
-                        decision.real_discount,
-                        signals,
-                        decision.confidence,
-                    )
-                    continue
+                    else:
+                        decision.lane = Lane.NORMAL
 
-                else:
-                    decision.lane = Lane.NORMAL
-                    if "strict50_review" not in decision.reasons:
-                        decision.reasons.append(
-                            "strict50_review"
-                        )
+                        if (
+                            "amazon_below_ultra_65"
+                            not in decision.reasons
+                        ):
+                            decision.reasons.append(
+                                "amazon_below_ultra_65"
+                            )
 
                 meta = dict(verified.metadata or {})
                 meta.update(vmeta)
                 meta["decision_reasons"] = decision.reasons
-                meta["strict50_route"] = decision.lane.value
+                meta["verified_route"] = decision.lane.value
                 meta["exceptional_priority"] = hot_priority
                 meta["irrational_price"] = irrational_price
                 meta["hot_priority"] = hot_priority
@@ -897,10 +1181,6 @@ class V14Pipeline:
                 self.ultra_hunter_loop("amazon"),
                 name="ultra-hunter-amazon",
             ),
-            asyncio.create_task(
-                self.ultra_hunter_loop("noon"),
-                name="ultra-hunter-noon",
-            ),
 
             asyncio.create_task(
                 self.delivery_loop(Lane.ULTRA),
@@ -923,7 +1203,7 @@ class V14Pipeline:
 
         log.warning(
             "V14 START | stores=amazon,noon | "
-            "STRICT50 | callbacks=v14 | discovery=%ss | "
+            "AMAZON65 | callbacks=v14 | discovery=%ss | "
             "ultra_hunter=%ss | workers/store/lane=%s",
             self.settings.discovery_interval,
             self.settings.ultra_hunter_interval,

@@ -263,18 +263,20 @@ class IntelligenceEngine:
         score = score_breakdown.total
 
         ultra = False
-        if real_discount >= self.settings.ultra_min_discount and confidence >= self.settings.min_confidence_ultra:
+
+        # Amazon Ultra only:
+        # verified discount >=65% with strong confidence.
+        if (
+            deal.store == "amazon"
+            and real_discount >= self.settings.ultra_min_discount
+            and confidence >= self.settings.min_confidence_ultra
+        ):
             ultra = True
-            reasons.append("ultra_real_discount")
-        elif flash and real_discount >= 30 and confidence >= 0.82:
-            ultra = True
-            reasons.append("ultra_verified_flash")
-        elif anomaly and confidence >= 0.90:
-            ultra = True
-            reasons.append("ultra_verified_anomaly")
-        elif market_advantage >= 35 and real_discount >= 25 and confidence >= 0.84:
-            ultra = True
-            reasons.append("ultra_market_advantage")
+            reasons.append("amazon_ultra_65")
+
+        # Noon is permanently restricted to its normal path.
+        elif deal.store == "noon":
+            reasons.append("noon_normal_only")
 
         lane = Lane.ULTRA if ultra else Lane.NORMAL
         return DealDecision(

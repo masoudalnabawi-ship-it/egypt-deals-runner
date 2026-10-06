@@ -4,23 +4,16 @@ WORKDIR /app
 
 ENV PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1 \
-    COMPETITOR_INTERVAL=20 \
-    AMAZON_INTERVAL=45 \
-    STORES_INTERVAL=120 \
-    STATE_SYNC_INTERVAL=60
+    V14_DB_PATH=/app/.runtime_state/v14.db
 
-COPY telegram_deals_bot_v7_dev/requirements.txt /tmp/v7-requirements.txt
-COPY amazon_dynamic_runtime_v8/telegram_deals_bot_v1_ready/requirements.txt /tmp/amz-requirements.txt
-COPY amazon_dynamic_runtime_v8/requirements_ready.txt /tmp/runtime-requirements.txt
+COPY requirements-v14.txt /tmp/requirements-v14.txt
 
 RUN pip install --no-cache-dir \
-    -r /tmp/v7-requirements.txt \
-    -r /tmp/amz-requirements.txt \
-    -r /tmp/runtime-requirements.txt \
-    playwright==1.63.0
+    -r /tmp/requirements-v14.txt
 
-COPY . /app
+COPY deals_v14 /app/deals_v14
+COPY scripts/run_v14.py /app/scripts/run_v14.py
 
 RUN mkdir -p /app/.runtime_state
 
-CMD ["python3", "scripts/run_realtime_worker.py"]
+CMD ["python3", "scripts/run_v14.py"]

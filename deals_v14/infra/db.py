@@ -118,6 +118,20 @@ class DealDatabase:
         try:
             conn.executescript(SCHEMA)
 
+            # Noon must never remain in Amazon Ultra.
+            # Migrate any old unsent Noon Ultra rows back to normal.
+            conn.execute(
+                """
+                UPDATE deals
+                SET lane='normal',
+                    updated_at=?
+                WHERE store='noon'
+                  AND state!='sent'
+                  AND lane!='normal'
+                """,
+                (int(time.time()),),
+            )
+
             # One-time cleanup: previous engine versions mixed discovery/search
             # prices with verified history, which could create fake discounts.
             migrated = conn.execute(
@@ -427,7 +441,9 @@ class DealDatabase:
                 )
 
                 incoming_lane = (
-                    preliminary.lane.value
+                    Lane.NORMAL.value
+                    if deal.store == "noon"
+                    else preliminary.lane.value
                 )
 
                 price_improved = (
@@ -440,13 +456,13 @@ class DealDatabase:
                 )
 
                 lane_upgrade = (
-                    old_lane != Lane.ULTRA.value
-                    and incoming_lane
-                    == Lane.ULTRA.value
+                    deal.store == "amazon"
+                    and old_lane != Lane.ULTRA.value
+                    and incoming_lane == Lane.ULTRA.value
                 )
 
                 # Sticky Ultra verification:
-                # If the same ASIN was found by a 50/70/90 radar,
+                # If the same ASIN was found by a verified high-discount radar,
                 # a later ordinary search result must not downgrade it
                 # before live verification is completed.
                 stored_lane = incoming_lane
@@ -455,9 +471,9 @@ class DealDatabase:
                 )
 
                 if (
-                    old_lane == Lane.ULTRA.value
-                    and incoming_lane
-                    != Lane.ULTRA.value
+                    deal.store == "amazon"
+                    and old_lane == Lane.ULTRA.value
+                    and incoming_lane != Lane.ULTRA.value
                 ):
                     stored_lane = Lane.ULTRA.value
                     stored_score = max(
@@ -533,7 +549,64 @@ class DealDatabase:
                   AND state IN ('pending','retry')
                   AND next_attempt_at<=?
                   AND (lease_until=0 OR lease_until<?)
-                ORDER BY score DESC, discovered_at ASC
+                ORDER BY
+                  CASE
+                    -- Evidence first: never trust a radar name.
+                    WHEN store='amazon'
+                     AND lane='ultra'
+                     AND visible_discount>=75
+                    THEN 0
+
+                    WHEN store='amazon'
+                     AND lane='ultra'
+                     AND visible_discount>=70
+                    THEN 1
+
+                    WHEN store='amazon'
+                     AND lane='ultra'
+                     AND visible_discount>=65
+                    THEN 2
+
+                    -- Explicit product promotion evidence first.
+                    WHEN store='amazon'
+                     AND lane='normal'
+                     AND (
+                       metadata_json LIKE '%"coupon_hint":true%'
+                       OR metadata_json LIKE '%"coupon_hint": true%'
+                       OR metadata_json LIKE '%"promo_hint":"coupon"%'
+                       OR metadata_json LIKE '%"promo_hint": "coupon"%'
+                       OR metadata_json LIKE '%"flash_hint":true%'
+                       OR metadata_json LIKE '%"flash_hint": true%'
+                     )
+                    THEN 3
+
+                    -- Hidden Coupon Probe:
+                    -- intentionally small volume, so verify it early
+                    -- and never let Goldbox starve coupon discovery.
+                    WHEN store='amazon'
+                     AND lane='normal'
+                     AND (
+                       metadata_json LIKE '%"coupon_probe":true%'
+                       OR metadata_json LIKE '%"coupon_probe": true%'
+                     )
+                    THEN 4
+
+                    -- Amazon Today's Deals / Goldbox.
+                    WHEN store='amazon'
+                     AND lane='normal'
+                     AND source='goldbox'
+                    THEN 5
+
+                    -- Strong promotional discovery surfaces.
+                    WHEN store='amazon'
+                     AND lane='normal'
+                     AND source IN ('limited_time','clearance')
+                    THEN 6
+
+                    ELSE 7
+                  END ASC,
+                  score DESC,
+                  discovered_at ASC
                 LIMIT 1
                 """,
                 (store, lane.value, now, now),
@@ -618,11 +691,13 @@ class DealDatabase:
                 """
                 SELECT d.* FROM deals d
                 WHERE d.lane=? AND d.state='verified'
+                  AND (? != 'ultra' OR d.store='amazon')
                   AND d.next_attempt_at<=?
                   AND (d.lease_until=0 OR d.lease_until<?)
                 ORDER BY
                   CASE
-                    WHEN d.real_discount>=70 OR d.score>=99
+                    WHEN d.store='amazon'
+                     AND d.real_discount>=75
                     THEN 0 ELSE 1
                   END ASC,
                   (SELECT COUNT(*) FROM deals s
@@ -635,7 +710,14 @@ class DealDatabase:
                   d.verified_at ASC
                 LIMIT 1
                 """,
-                (lane.value, now, now, now - 21600, now - 21600),
+                (
+                    lane.value,
+                    lane.value,
+                    now,
+                    now,
+                    now - 21600,
+                    now - 21600,
+                ),
             ).fetchone()
             if not row:
                 return None

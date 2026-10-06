@@ -26,21 +26,23 @@ class TelegramDelivery:
         self._browser_lock = asyncio.Lock()
 
     def _chat_id(self, store: str, lane: str) -> str:
-        # STRICT50:
-        # normal (<50%) -> private/review chat
-        # ultra (>=50% or exceptional) -> ultra group
+        # Store split policy:
+        # Noon -> always Noon normal path.
+        # Amazon -> normal or Ultra according to verified routing.
         if store == "noon":
-            chat = (
-                self.settings.noon_ultra_chat_id if lane == Lane.ULTRA.value
-                else self.settings.noon_normal_chat_id
-            )
+            chat = self.settings.noon_normal_chat_id
         else:
             chat = (
-                self.settings.ultra_chat_id if lane == Lane.ULTRA.value
+                self.settings.ultra_chat_id
+                if lane == Lane.ULTRA.value
                 else self.settings.normal_chat_id
             )
+
         if not chat:
-            raise RuntimeError(f"telegram_chat_missing:{store}:{lane}")
+            raise RuntimeError(
+                f"telegram_chat_missing:{store}:{lane}"
+            )
+
         return chat
 
     @staticmethod
@@ -1031,7 +1033,7 @@ class TelegramDelivery:
                 os.getenv("NOON_CHANNEL_ID", "").strip()
                 or os.getenv("AMAZON_CHANNEL_ID", "").strip()
                 or os.getenv("TELEGRAM_CHANNEL_ID", "").strip()
-                or self.settings.noon_ultra_chat_id
+                or self.settings.noon_normal_chat_id
             )
         else:
             chat = (
