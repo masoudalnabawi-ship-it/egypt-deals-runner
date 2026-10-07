@@ -332,33 +332,14 @@ async function discoveryStep(
     );
   }
 
-  // Noon HTTP is currently returning 520 from Cloudflare.
-  // Browser fallback is deliberately rate-limited so the
-  // free Browser Run daily budget is preserved.
-  if (cycle % 10 === 0) {
-    const nCur = await repo.counterAdd(
-      "noon_surface_cursor",
-      1,
-    );
-
-    const nSurface =
-      NOON_SURFACES[
-        (nCur - 1)
-        % NOON_SURFACES.length
-      ];
-
-    tasks.push(
-      scanNoonSurface(
-        env,
-        repo,
-        settings,
-        nSurface,
-      ),
-    );
-  }
+  /*
+   * Noon discovery disabled intentionally.
+   * Cloudflare resources are reserved for Amazon,
+   * with Amazon Ultra having absolute priority.
+   */
 
   // Today's Deals remains a frequent Amazon safety net.
-  if (cycle % 5 === 0) {
+  if (cycle % 2 === 0) {
     const goldbox =
       AMAZON_SURFACES.find(
         x => x.name === "goldbox"
@@ -379,7 +360,10 @@ async function discoveryStep(
 }
 
 async function verifyOne(env: V14Env, repo: D1Repository, settings: Settings): Promise<Record<string, unknown> | null> {
-  const order: Array<['amazon'|'noon','ultra'|'normal']> = [['amazon','ultra'],['amazon','normal'],['noon','normal']];
+  const order: Array<['amazon','ultra'|'normal']> = [
+    ['amazon','ultra'],
+    ['amazon','normal'],
+  ];
   let row: DealRow | null = null;
   for (const [store,lane] of order) {
     row = await repo.claimForVerification(store, lane, workerId(`verify-${store}-${lane}`), settings.lease_seconds);

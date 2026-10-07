@@ -614,18 +614,16 @@ export async function verifyRow(
   const discoveryVisible =
     Number(row.visible_discount || 0);
 
-  // Browser is expensive, so only genuinely interesting Amazon
-  // candidates are eligible for a second rendering pass.
-  const strongCandidate = Boolean(
-    discoveryVisible >= 50
-    || discoveryMeta.coupon_probe
-    || discoveryMeta.coupon_hint
-    || discoveryMeta.flash_hint
-  );
-
+  /*
+   * Browser Run is reserved exclusively for Amazon Ultra.
+   * Amazon Normal uses the cheap direct verification path only.
+   */
   const strongUltraCandidate =
     discoveryVisible >=
       settings.ultra_min_discount;
+
+  const strongCandidate =
+    strongUltraCandidate;
 
   try {
     const html =

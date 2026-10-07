@@ -91,6 +91,7 @@ async function amazonScreenshot(
 
   if (
     row.store !== "amazon" ||
+    row.lane !== "ultra" ||
     !env.BROWSER ||
     !settings.browser_daily_budget_ms
   ) {
@@ -109,10 +110,11 @@ async function amazonScreenshot(
    * This gives the most important deals the real
    * Amazon-page screenshot first.
    */
-  const screenshotBudgetRatio =
-    row.lane === "ultra"
-      ? 0.98
-      : 0.90;
+  /*
+   * Stop screenshots at 92% of the daily Browser budget.
+   * The final 8% is reserved for Ultra verification itself.
+   */
+  const screenshotBudgetRatio = 0.92;
 
   if (
     used >=
