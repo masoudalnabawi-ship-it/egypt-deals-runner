@@ -3,7 +3,7 @@ name: V14 Amazon Playwright Screenshots
 on:
   workflow_dispatch:
   schedule:
-    - cron: "13 */4 * * *"
+    - cron: "13 */3 * * *"
 
 permissions:
   contents: read
