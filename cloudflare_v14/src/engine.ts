@@ -856,18 +856,69 @@ async function discoveryStep(
   settings: Settings,
 ): Promise<Record<string, unknown>[]> {
 
-  const cycle = await repo.counterAdd(
+  /*
+   * AMAZON_DISCOVERY_TIME_CURSOR_V1
+   *
+   * Discovery must never depend on hot D1 counters.
+   * Rotation is derived from wall-clock minute instead.
+   */
+  const cycle =
+    Math.floor(
+      Date.now() / 60000
+    );
+
+  /*
+   * This is observability only.
+   * No read-modify-write counter is required anymore.
+   */
+  await repo.counterSet(
     "cycle_count",
-    1,
+    cycle,
   );
 
-  const amazonHealth =
-    await repo.amazonSourceHealth();
+  /*
+   * Adaptive history is useful but not allowed to block
+   * discovery. If the historical query is slow, continue
+   * immediately with neutral weights.
+   */
+  let amazonHealth:
+    AmazonHealthSnapshot[] = [];
 
-  const aCur = await repo.counterAdd(
-    "amazon_surface_cursor",
-    1,
-  );
+  try {
+
+    amazonHealth =
+      await Promise.race([
+        repo.amazonSourceHealth(),
+
+        new Promise<
+          AmazonHealthSnapshot[]
+        >(
+          resolve =>
+            setTimeout(
+              () => resolve([]),
+              1200,
+            )
+        ),
+      ]);
+
+  } catch (e) {
+
+    console.warn(
+      JSON.stringify({
+        event:
+          "amazon_health_fallback",
+        error:
+          e instanceof Error
+            ? `${e.name}:${e.message}`
+            : String(e),
+      })
+    );
+
+    amazonHealth = [];
+  }
+
+  const aCur =
+    cycle * 7 + 1;
 
   const ultraHunterNames =
     new Set<string>([
@@ -900,10 +951,7 @@ async function discoveryStep(
    * Its schedule is weighted toward 90% first.
    */
   const ultraCursor =
-    await repo.counterAdd(
-      "amazon_ultra_surface_cursor",
-      1,
-    );
+    cycle * 11 + 3;
 
   const ultraNames =
     [
@@ -940,10 +988,7 @@ async function discoveryStep(
    * It runs independently from the ordinary 65% Ultra hunt.
    */
   const exceptionalCursor =
-    await repo.counterAdd(
-      "amazon_exceptional_surface_cursor",
-      1,
-    );
+    cycle * 13 + 5;
 
   const exceptionalPool =
     AMAZON_EXCEPTIONAL_HUNTER_ORDER
@@ -1096,10 +1141,7 @@ async function discoveryStep(
    */
   if (cycle % 2 === 0) {
     const departmentCursor =
-      await repo.counterAdd(
-        "amazon_department_sweep_cursor",
-        1,
-      );
+      cycle * 17 + 7;
 
     const departmentName =
       AMAZON_DEPARTMENT_SWEEP_ORDER[
@@ -1136,10 +1178,7 @@ async function discoveryStep(
    */
   if (cycle % 3 === 0) {
     const supermarketCursor =
-      await repo.counterAdd(
-        "amazon_supermarket_sweep_cursor",
-        1,
-      );
+      cycle * 19 + 11;
 
     const supermarketName =
       AMAZON_SUPERMARKET_SWEEP_ORDER[
@@ -1217,21 +1256,21 @@ async function discoveryStep(
    * Internal API/search endpoints are intentionally
    * excluded because Noon currently blocks them.
    */
-  const noonPublicSurfaces =
-    NOON_SURFACES.filter(
-      x =>
-        !x.url.includes("/search/") &&
-        !x.url.includes("/_vs/")
-    );
+  /*
+   * Noon rendered discovery is already handled by the
+   * dedicated GitHub/V13 transport.
+   *
+   * Cloudflare discovery is now reserved for Amazon so
+   * Noon can never delay or block the Amazon radar.
+   */
+  const noonPublicSurfaces:
+    Surface[] = [];
 
   if (
     noonPublicSurfaces.length > 0
   ) {
     const noonCursor =
-      await repo.counterAdd(
-        "noon_public_surface_cursor",
-        1,
-      );
+      cycle * 23 + 13;
 
     const noonSurface =
       noonPublicSurfaces[
