@@ -350,6 +350,141 @@ async function browserScrapeAmazon(env: V14Env, repo: D1Repository, settings: Se
       verification_signals: signals } };
 }
 
+
+async function browserRenderedAmazon(
+  env: V14Env,
+  repo: D1Repository,
+  settings: Settings,
+  incoming: DealCandidate,
+): Promise<{
+  deal: DealCandidate;
+  meta: Record<string, unknown>;
+}> {
+
+  if (
+    !env.BROWSER ||
+    !(await canUseBrowser(repo, settings))
+  ) {
+    throw new VerificationRejected(
+      "browser_budget_unavailable"
+    );
+  }
+
+  const day =
+    new Date().toISOString().slice(0, 10);
+
+  const counterKey =
+    `browser_ms:${day}`;
+
+  let response: Response;
+
+  try {
+    response =
+      await env.BROWSER.quickAction(
+        "content",
+        {
+          url: incoming.url,
+
+          gotoOptions: {
+            waitUntil: "domcontentloaded",
+            timeout: 20000,
+          },
+
+          waitForTimeout: 1200,
+
+          userAgent:
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) " +
+            "AppleWebKit/537.36 (KHTML, like Gecko) " +
+            "Chrome/140.0 Safari/537.36",
+
+          setExtraHTTPHeaders: {
+            "Accept-Language":
+              "ar-EG,ar;q=0.9,en-US;q=0.8,en;q=0.7",
+          },
+
+          /*
+           * We need DOM/text, not images.
+           * This saves Browser Run budget.
+           */
+          rejectResourceTypes: [
+            "image",
+            "font",
+            "media",
+          ],
+        },
+      );
+  } catch (e) {
+    throw new VerificationRejected(
+      `browser_content_error:${
+        e instanceof Error
+          ? e.message
+          : String(e)
+      }`
+    );
+  }
+
+  const ms =
+    Number(
+      response.headers.get(
+        "X-Browser-Ms-Used"
+      ) || 0
+    );
+
+  if (ms > 0) {
+    await repo.counterAdd(
+      counterKey,
+      ms,
+    );
+  }
+
+  if (!response.ok) {
+    throw new VerificationRejected(
+      `browser_content_http_${response.status}`
+    );
+  }
+
+  const html =
+    await response.text();
+
+  if (
+    !html ||
+    html.length < 1000
+  ) {
+    throw new VerificationRejected(
+      "browser_content_empty"
+    );
+  }
+
+  try {
+    const parsed =
+      amazonFromHtml(
+        incoming,
+        html,
+        "browser_content",
+      );
+
+    return {
+      deal: parsed.deal,
+
+      meta: {
+        ...parsed.meta,
+        http_via: "browser_content",
+        browser_ms: ms,
+        rendered_dom: true,
+      },
+    };
+
+  } catch (e) {
+    if (e instanceof VerificationRejected) {
+      throw new VerificationRejected(
+        `browser_content_${e.message}`
+      );
+    }
+
+    throw e;
+  }
+}
+
 async function fetchAmazonDirect(url: string): Promise<string> {
   const r = await fetch(url, { headers: {
     "user-agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0 Safari/537.36",
@@ -488,6 +623,10 @@ export async function verifyRow(
     || discoveryMeta.flash_hint
   );
 
+  const strongUltraCandidate =
+    discoveryVisible >=
+      settings.ultra_min_discount;
+
   try {
     const html =
       await fetchAmazonDirect(incoming.url);
@@ -526,25 +665,50 @@ export async function verifyRow(
     );
 
     if (
-      strongCandidate
-      && weakDirectEvidence
-      && env.BROWSER
-      && await canUseBrowser(
-        repo,
-        settings
-      )
+      strongCandidate &&
+      weakDirectEvidence
     ) {
+
+      if (
+        !env.BROWSER ||
+        !(await canUseBrowser(
+          repo,
+          settings
+        ))
+      ) {
+        if (strongUltraCandidate) {
+          throw new VerificationRejected(
+            "browser_budget_unavailable"
+          );
+        }
+
+        return direct;
+      }
+
       try {
-        return await browserScrapeAmazon(
+        /*
+         * For strong candidates use the fully rendered
+         * Amazon DOM. This sees dynamic list-price /
+         * savings blocks that raw Worker HTML may omit.
+         */
+        return await browserRenderedAmazon(
           env,
           repo,
           settings,
-          incoming
+          incoming,
         );
-      } catch {
-        // Never invent evidence.
-        // If browser verification fails, keep the direct result,
-        // which will be judged by the normal confidence gates.
+
+      } catch (e) {
+
+        /*
+         * Never downgrade a >=65% candidate merely
+         * because Browser/Amazon was temporarily
+         * unavailable.
+         */
+        if (strongUltraCandidate) {
+          throw e;
+        }
+
         return direct;
       }
     }
@@ -557,9 +721,9 @@ export async function verifyRow(
       throw error;
     }
 
-    // Strong candidate whose direct page was protected/incomplete.
-    // Browser must still prove the deal before it can pass.
-    return browserScrapeAmazon(
+    // Strong candidate whose direct page was
+    // protected/incomplete: use rendered DOM.
+    return browserRenderedAmazon(
       env,
       repo,
       settings,

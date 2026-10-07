@@ -80,7 +80,7 @@ export class D1Repository {
         /*
          * AMAZON ULTRA:
          * Absolute priority = highest discovered discount first.
-         * 90 > 89 > 80 > 75 > 70 > 65
+         * 99 > 98 > 97 > ... > 90 > ... > 65
          */
         CASE
           WHEN store='amazon' AND lane='ultra'

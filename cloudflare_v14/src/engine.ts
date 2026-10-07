@@ -67,10 +67,25 @@ async function fetchNoonSurfaceWithFallback(
     const counterKey = `browser_ms:${day}`;
     const alreadyUsed = await repo.counterGet(counterKey);
 
-    // Hard daily safety budget.
-    if (alreadyUsed >= settings.browser_daily_budget_ms) {
+    /*
+     * Cloudflare Free Browser budget is precious.
+     *
+     * Noon may use at most the first 25% of the
+     * shared daily browser budget. The remaining
+     * 75% stays available for high-value Amazon
+     * verification and real screenshots.
+     */
+    const noonBrowserLimit =
+      Math.floor(
+        settings.browser_daily_budget_ms *
+        0.25
+      );
+
+    if (
+      alreadyUsed >= noonBrowserLimit
+    ) {
       throw new Error(
-        `noon_browser_budget_exhausted:${alreadyUsed}`
+        `noon_browser_budget_reserved_for_amazon_ultra:${alreadyUsed}`
       );
     }
 
