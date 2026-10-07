@@ -325,6 +325,31 @@ async function completePlaywrightVerification(
       )
     );
 
+  const discoveredPrice =
+    Number(row.current_price || 0);
+
+  /*
+   * Permanent audit trail for every rendered Amazon
+   * Ultra observation. This lets us distinguish a
+   * genuinely expired deal from a selector/parser issue
+   * without weakening any safety gate.
+   */
+  await repo.event(
+    "github_playwright_observation",
+    "amazon",
+    row.deal_key,
+    {
+      external_id: row.external_id,
+      discovery_current: discoveredPrice,
+      discovery_old: Number(row.old_price || 0),
+      discovery_discount: Number(row.visible_discount || 0),
+      live_current: current,
+      live_old: old,
+      live_savings_percent: savings,
+      live_coupon_percent: coupon,
+    },
+  );
+
   if (!(current > 0)) {
     await repo.markStrongRetry(
       row.deal_key,
@@ -338,9 +363,6 @@ async function completePlaywrightVerification(
       state:"retry",
     });
   }
-
-  const discoveredPrice =
-    Number(row.current_price || 0);
 
   /*
    * Price may improve, but a material increase means
