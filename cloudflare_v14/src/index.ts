@@ -1,7 +1,7 @@
 import type { DealCandidate, JobMessage, V14Env } from './types';
 import { getSettings } from './config';
 import { D1Repository } from './db';
-import { handleTelegramUpdate, runCycle } from './engine';
+import { handleTelegramUpdate, runCycle, runDiscoveryOnly, runProcessingCycle } from './engine';
 import { setWebhook } from './telegram';
 import { acceptable, buildPriceProfile, evaluateDeal, preliminaryDecision } from './intelligence';
 import { inspectDeal } from './shield';
@@ -1550,17 +1550,12 @@ export default {
   },
 
   /*
-   * V14_DISCOVERY_WATCHDOG_V1
+   * V14_CRON_DIRECT_DISCOVERY_V2
    *
-   * Normal path:
-   *   Cron -> Queue -> runCycle
+   * Every Cron tick performs discovery DIRECTLY.
    *
-   * Emergency path:
-   *   If no completed cycle heartbeat has been seen
-   *   for 3 minutes, Cron runs one cycle directly.
-   *
-   * This means a stuck Queue consumer can no longer
-   * stop Amazon discovery for an hour.
+   * Only downstream verification/delivery uses Queue.
+   * Therefore Queue trouble can no longer stop hunting.
    */
   async scheduled(
     controller: ScheduledController,
@@ -1568,80 +1563,8 @@ export default {
     ctx: ExecutionContext,
   ): Promise<void> {
 
-    const repo =
-      new D1Repository(
-        env.egypt_deals_v14_db
-      );
-
-    const now =
-      Math.floor(
-        Date.now() / 1000
-      );
-
-    const heartbeat =
-      await repo.counterGet(
-        "cycle_heartbeat_ts"
-      );
-
-    const watchdogStarted =
-      await repo.counterGet(
-        "cycle_watchdog_started_ts"
-      );
-
-    const staleHeartbeat =
-      !heartbeat ||
-      now - heartbeat > 180;
-
-    if (staleHeartbeat) {
-
-      /*
-       * Prevent every Cron minute from starting
-       * another emergency cycle simultaneously.
-       */
-      if (
-        !watchdogStarted ||
-        now - watchdogStarted > 180
-      ) {
-
-        await repo.counterSet(
-          "cycle_watchdog_started_ts",
-          now,
-        );
-
-        console.warn(
-          JSON.stringify({
-            event:
-              "v14_discovery_watchdog_direct_cycle",
-            heartbeat,
-            now,
-          })
-        );
-
-        ctx.waitUntil(
-          runCycle(
-            env,
-            getSettings(env),
-          )
-          .then(() => undefined)
-          .catch(
-            error => {
-              console.error(
-                JSON.stringify({
-                  event:
-                    "v14_watchdog_cycle_error",
-                  error:
-                    error instanceof Error
-                      ? `${error.name}:${error.message}`
-                      : String(error),
-                })
-              );
-            }
-          )
-        );
-
-        return;
-      }
-    }
+    const settings =
+      getSettings(env);
 
     const job: JobMessage = {
       type:"cycle",
@@ -1649,35 +1572,69 @@ export default {
         controller.scheduledTime,
     };
 
-    /*
-     * If Queue publishing itself fails,
-     * immediately fall back to direct execution.
-     */
     ctx.waitUntil(
-      env.JOBS.send(job)
-      .catch(
-        async error => {
+      (
+        async () => {
 
-          console.error(
-            JSON.stringify({
-              event:
-                "v14_queue_publish_failed",
-              error:
-                error instanceof Error
-                  ? `${error.name}:${error.message}`
-                  : String(error),
-            })
-          );
+          /*
+           * Priority #1:
+           * keep Amazon/Noon discovery alive.
+           */
+          try {
 
-          await runCycle(
-            env,
-            getSettings(env),
-          );
+            await runDiscoveryOnly(
+              env,
+              settings,
+            );
+
+          } catch (e) {
+
+            console.error(
+              JSON.stringify({
+                event:
+                  "v14_direct_discovery_error",
+                error:
+                  e instanceof Error
+                    ? `${e.name}:${e.message}`
+                    : String(e),
+              })
+            );
+          }
+
+          /*
+           * Priority #2:
+           * verification / delivery are queued
+           * only AFTER the discovery attempt.
+           */
+          try {
+
+            await env.JOBS.send(job);
+
+          } catch (e) {
+
+            console.error(
+              JSON.stringify({
+                event:
+                  "v14_processing_queue_publish_failed",
+                error:
+                  e instanceof Error
+                    ? `${e.name}:${e.message}`
+                    : String(e),
+              })
+            );
+          }
         }
-      )
+      )()
     );
   },
 
+
+  /*
+   * Queue is now downstream-only.
+   *
+   * It can never execute discovery and therefore
+   * can never monopolize or freeze Amazon hunting.
+   */
   async queue(
     batch: MessageBatch<JobMessage>,
     env: V14Env,
@@ -1698,11 +1655,6 @@ export default {
         continue;
       }
 
-      /*
-       * Do not replay an hour of old Cron messages
-       * after Queue recovery. That would create an
-       * aggressive Amazon traffic burst.
-       */
       const scheduledAt =
         Number(
           message.body?.scheduled_at
@@ -1714,6 +1666,9 @@ export default {
           ? Date.now() - scheduledAt
           : 0;
 
+      /*
+       * Never replay a large old backlog.
+       */
       if (
         ageMs >
         5 * 60 * 1000
@@ -1722,7 +1677,7 @@ export default {
         console.warn(
           JSON.stringify({
             event:
-              "v14_stale_queue_cycle_dropped",
+              "v14_stale_processing_job_dropped",
             age_ms:
               ageMs,
           })
@@ -1734,7 +1689,7 @@ export default {
 
       try {
 
-        await runCycle(
+        await runProcessingCycle(
           env,
           settings,
         );
@@ -1746,7 +1701,7 @@ export default {
         console.error(
           JSON.stringify({
             event:
-              "cycle_error",
+              "v14_processing_cycle_error",
             error:
               e instanceof Error
                 ? `${e.name}:${e.message}`
@@ -1760,4 +1715,5 @@ export default {
       }
     }
   },
+
 } satisfies ExportedHandler<V14Env, JobMessage>;

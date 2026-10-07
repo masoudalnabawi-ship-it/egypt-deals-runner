@@ -1595,6 +1595,164 @@ async function deliveryStep(
   return out;
 }
 
+
+/*
+ * V14_INDEPENDENT_DISCOVERY_V2
+ *
+ * Discovery is intentionally independent from:
+ * - stale lease cleanup
+ * - verification
+ * - Telegram delivery
+ * - Queue health
+ *
+ * Amazon hunting must continue even if any downstream
+ * component is slow or temporarily broken.
+ */
+export async function runDiscoveryOnly(
+  env: V14Env,
+  settings: Settings,
+): Promise<Record<string, unknown>> {
+
+  const repo =
+    new D1Repository(
+      env.egypt_deals_v14_db
+    );
+
+  const started =
+    Math.floor(
+      Date.now() / 1000
+    );
+
+  await repo.counterSet(
+    "discovery_started_ts",
+    started,
+  );
+
+  const discovery =
+    await discoveryStep(
+      env,
+      repo,
+      settings,
+    );
+
+  const completed =
+    Math.floor(
+      Date.now() / 1000
+    );
+
+  await repo.counterSet(
+    "discovery_heartbeat_ts",
+    completed,
+  );
+
+  const result = {
+    event:
+      "v14_independent_discovery",
+    discovery,
+    started,
+    completed,
+  };
+
+  console.log(
+    JSON.stringify(result)
+  );
+
+  return result;
+}
+
+
+/*
+ * Downstream processing is allowed to fail or retry
+ * without ever stopping Amazon discovery.
+ */
+export async function runProcessingCycle(
+  env: V14Env,
+  settings: Settings,
+): Promise<Record<string, unknown>> {
+
+  const repo =
+    new D1Repository(
+      env.egypt_deals_v14_db
+    );
+
+  let stale = 0;
+
+  try {
+    stale =
+      await repo.releaseStaleLeases();
+
+  } catch (e) {
+
+    /*
+     * Lease cleanup is useful housekeeping,
+     * but must never make processing completely dead.
+     */
+    console.error(
+      JSON.stringify({
+        event:
+          "stale_lease_cleanup_failed",
+        error:
+          e instanceof Error
+            ? `${e.name}:${e.message}`
+            : String(e),
+      })
+    );
+  }
+
+  const verified:
+    Record<string, unknown>[] = [];
+
+  for (
+    let i = 0;
+    i < 3;
+    i++
+  ) {
+
+    const item =
+      await verifyOne(
+        env,
+        repo,
+        settings,
+      );
+
+    if (!item) {
+      break;
+    }
+
+    verified.push(item);
+  }
+
+  const delivered =
+    await deliveryStep(
+      env,
+      repo,
+      settings,
+    );
+
+  await repo.counterSet(
+    "processing_heartbeat_ts",
+    Math.floor(
+      Date.now() / 1000
+    ),
+  );
+
+  const result = {
+    event:
+      "v14_processing_cycle",
+    stale_released:
+      stale,
+    verified,
+    delivered,
+  };
+
+  console.log(
+    JSON.stringify(result)
+  );
+
+  return result;
+}
+
+
 export async function runCycle(env: V14Env, settings: Settings): Promise<Record<string, unknown>> {
   const repo = new D1Repository(env.egypt_deals_v14_db);
 
