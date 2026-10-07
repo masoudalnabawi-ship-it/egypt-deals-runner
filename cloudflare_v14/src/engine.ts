@@ -65,6 +65,72 @@ const AMAZON_ULTRA_HUNTER_ORDER: string[] = [
   "beauty_65hot",
 
   /*
+   * FULL-DEPARTMENT ULTRA EXPLORATION.
+   *
+   * These get one slot each. Proven sources such as
+   * books/tvs/goldbox remain weighted above them.
+   */
+  "electronics_65hot",
+  "appliances_65hot",
+  "mobiles_65hot",
+  "laptops_65hot",
+  "tablets_65hot",
+  "audio_65hot",
+  "cameras_65hot",
+  "smart_home_65hot",
+
+  "kitchen_65hot",
+  "home_65hot",
+  "furniture_65hot",
+  "tools_65hot",
+  "cleaning_65hot",
+
+  "personal_care_65hot",
+  "health_65hot",
+  "perfumes_65hot",
+  "fashion_65hot",
+  "bags_65hot",
+  "watches_65hot",
+  "jewelry_65hot",
+
+  "sports_65hot",
+  "outdoor_65hot",
+  "toys_65hot",
+  "baby_65hot",
+
+  "grocery_65hot",
+  "supermarket_65hot",
+  "food_beverage_65hot",
+  "snacks_65hot",
+  "coffee_tea_65hot",
+  "household_essentials_65hot",
+  "laundry_65hot",
+
+  "skincare_65hot",
+  "haircare_65hot",
+  "oral_care_65hot",
+
+  "storage_65hot",
+  "bedding_65hot",
+  "lighting_65hot",
+  "garden_65hot",
+
+  "pet_65hot",
+  "pet_food_65hot",
+
+  "office_65hot",
+  "stationery_65hot",
+  "printers_65hot",
+  "books_65hot",
+
+  "automotive_65hot",
+  "car_care_65hot",
+  "music_65hot",
+
+  "fitness_65hot",
+  "cycling_65hot",
+
+  /*
    * Keep percentage filters for exploration,
    * but do not waste most cycles on sources that
    * frequently return zero usable results.
@@ -73,6 +139,126 @@ const AMAZON_ULTRA_HUNTER_ORDER: string[] = [
   "75filter",
   "70filter",
   "65filter",
+];
+
+
+/*
+ * Dedicated supermarket rotation.
+ *
+ * One supermarket surface every 3 cycles keeps grocery
+ * coverage fresh without flooding Amazon with requests.
+ */
+const AMAZON_SUPERMARKET_SWEEP_ORDER = [
+  "supermarket",
+  "grocery",
+  "pantry",
+  "snacks",
+  "chocolate",
+  "biscuits",
+  "breakfast",
+  "rice_pasta",
+  "canned_food",
+  "sauces",
+  "spices",
+  "oils_ghee",
+  "baking",
+  "coffee",
+  "tea",
+  "beverages",
+  "water",
+  "juices",
+  "soft_drinks",
+  "energy_drinks",
+  "household_essentials",
+  "laundry",
+  "dishwashing",
+  "paper_tissues",
+  "trash_bags",
+  "air_fresheners",
+  "pet_food",
+];
+
+
+/*
+ * Cross-department sweep.
+ *
+ * This is separate from the normal generic rotation so
+ * large Amazon departments cannot starve smaller ones.
+ */
+const AMAZON_DEPARTMENT_SWEEP_ORDER = [
+  "mobiles",
+  "mobile_accessories",
+  "laptops",
+  "computer_accessories",
+  "tablets",
+  "tvs",
+  "audio",
+  "gaming",
+  "cameras",
+  "networking",
+  "smart_home",
+
+  "appliances",
+  "refrigerators",
+  "washers",
+  "ac",
+
+  "kitchen",
+  "cookware",
+  "home",
+  "furniture",
+  "storage",
+  "bedding",
+  "bath",
+  "lighting",
+  "garden",
+
+  "tools",
+  "hardware",
+  "electrical",
+  "plumbing",
+
+  "beauty",
+  "skincare",
+  "haircare",
+  "personal_care",
+  "oral_care",
+  "deodorants",
+  "shaving",
+  "perfumes",
+  "health",
+
+  "men_fashion",
+  "women_fashion",
+  "kids_fashion",
+  "shoes",
+  "bags",
+  "watches",
+  "jewelry",
+  "luggage",
+
+  "sports",
+  "fitness",
+  "cycling",
+  "outdoor",
+
+  "toys",
+  "baby",
+
+  "office",
+  "stationery",
+  "school_supplies",
+  "arts_crafts",
+  "printers",
+
+  "books",
+  "musical_instruments",
+
+  "automotive",
+  "car_care",
+
+  "pets",
+  "pet_food",
 ];
 
 
@@ -369,6 +555,86 @@ async function discoveryStep(
       ),
     );
   }
+
+  /*
+   * AMAZON FULL-DEPARTMENT SWEEP
+   *
+   * One extra category scan every 2 cycles.
+   * This gives smaller departments guaranteed coverage.
+   */
+  if (cycle % 2 === 0) {
+    const departmentCursor =
+      await repo.counterAdd(
+        "amazon_department_sweep_cursor",
+        1,
+      );
+
+    const departmentName =
+      AMAZON_DEPARTMENT_SWEEP_ORDER[
+        (departmentCursor - 1)
+        % AMAZON_DEPARTMENT_SWEEP_ORDER.length
+      ];
+
+    const departmentSurface =
+      AMAZON_SURFACES.find(
+        x => x.name === departmentName
+      );
+
+    if (
+      departmentSurface &&
+      departmentSurface.name !== aSurface?.name &&
+      departmentSurface.name !== ultraSurface?.name
+    ) {
+      tasks.push(
+        scanAmazonSurface(
+          repo,
+          settings,
+          departmentSurface,
+        ),
+      );
+    }
+  }
+
+
+  /*
+   * AMAZON SUPERMARKET / GROCERY SWEEP
+   *
+   * Food, drinks and household essentials get their
+   * own guaranteed rotation every 3 cycles.
+   */
+  if (cycle % 3 === 0) {
+    const supermarketCursor =
+      await repo.counterAdd(
+        "amazon_supermarket_sweep_cursor",
+        1,
+      );
+
+    const supermarketName =
+      AMAZON_SUPERMARKET_SWEEP_ORDER[
+        (supermarketCursor - 1)
+        % AMAZON_SUPERMARKET_SWEEP_ORDER.length
+      ];
+
+    const supermarketSurface =
+      AMAZON_SURFACES.find(
+        x => x.name === supermarketName
+      );
+
+    if (
+      supermarketSurface &&
+      supermarketSurface.name !== aSurface?.name &&
+      supermarketSurface.name !== ultraSurface?.name
+    ) {
+      tasks.push(
+        scanAmazonSurface(
+          repo,
+          settings,
+          supermarketSurface,
+        ),
+      );
+    }
+  }
+
 
   /*
    * NOON PUBLIC CATALOG DISCOVERY

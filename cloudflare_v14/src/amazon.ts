@@ -50,6 +50,110 @@ export const AMAZON_SURFACES: Surface[] = [
   q("luggage","fashion","luggage travel accessories deals"), q("jewelry","fashion","jewelry deals"), q("health","health","health personal care deals"),
   q("perfumes","beauty","perfumes fragrances deals"), q("musical_instruments","music","musical instruments deals"),
   q("printers","office","printers scanners deals"), q("networking","electronics","routers networking deals"), q("smart_home","electronics","smart home devices deals"),
+
+  /*
+   * ========================================================
+   * V14 FULL AMAZON EGYPT COVERAGE
+   * ========================================================
+   *
+   * Supermarket / grocery / daily essentials are deliberately
+   * split into smaller surfaces so one generic search cannot
+   * hide strong deals deeper in Amazon search results.
+   */
+
+  q("supermarket","grocery","supermarket deals",1.35),
+  q("pantry","grocery","pantry food deals",1.20),
+  q("snacks","grocery","snacks deals",1.20),
+  q("chocolate","grocery","chocolate candy deals",1.15),
+  q("biscuits","grocery","biscuits cookies deals",1.15),
+  q("breakfast","grocery","breakfast cereal deals",1.10),
+  q("rice_pasta","grocery","rice pasta noodles deals",1.15),
+  q("canned_food","grocery","canned food deals",1.05),
+  q("sauces","grocery","sauces condiments deals",1.05),
+  q("spices","grocery","spices seasoning deals",1.05),
+  q("oils_ghee","grocery","cooking oil ghee deals",1.10),
+  q("baking","grocery","baking ingredients deals",1.00),
+
+  q("beverages","grocery","beverages drinks deals",1.25),
+  q("water","grocery","mineral water deals",1.10),
+  q("juices","grocery","juice drinks deals",1.10),
+  q("soft_drinks","grocery","soft drinks deals",1.10),
+  q("energy_drinks","grocery","energy drinks deals",1.00),
+  q("tea","grocery","tea deals",1.10),
+
+  /*
+   * Household daily-use supermarket products.
+   */
+  q("household_essentials","home","household essentials deals",1.30),
+  q("laundry","home","laundry detergent deals",1.25),
+  q("dishwashing","home","dishwashing detergent deals",1.20),
+  q("paper_tissues","home","tissues toilet paper kitchen rolls deals",1.20),
+  q("trash_bags","home","trash garbage bags deals",1.00),
+  q("air_fresheners","home","air freshener deals",1.00),
+
+  /*
+   * Personal care.
+   */
+  q("skincare","beauty","skin care deals",1.20),
+  q("haircare","beauty","hair care shampoo conditioner deals",1.20),
+  q("oral_care","health","toothpaste toothbrush oral care deals",1.15),
+  q("deodorants","beauty","deodorant deals",1.05),
+  q("shaving","beauty","shaving grooming deals",1.10),
+
+  /*
+   * Home departments.
+   */
+  q("storage","home","storage organization deals",1.15),
+  q("bedding","home","bedding sheets pillows deals",1.10),
+  q("bath","home","bathroom accessories deals",1.00),
+  q("lighting","home","lighting lamps deals",1.10),
+  q("garden","home","garden gardening deals",1.00),
+  q("electrical","tools","electrical tools supplies deals",1.05),
+  q("plumbing","tools","plumbing supplies deals",1.00),
+  q("hardware","tools","hardware tools deals",1.10),
+
+  /*
+   * Office / education / creative.
+   */
+  q("stationery","office","stationery deals",1.10),
+  q("school_supplies","office","school supplies deals",1.10),
+  q("arts_crafts","office","arts crafts deals",1.00),
+
+  /*
+   * Sports / transport.
+   */
+  q("fitness","sports","fitness equipment deals",1.15),
+  q("cycling","sports","cycling bicycle accessories deals",1.05),
+  q("car_care","automotive","car care products deals",1.10),
+
+  /*
+   * Pet consumables deserve their own rotation.
+   */
+  q("pet_food","pets","pet food deals",1.15),
+
+  /*
+   * Dedicated ≥65% discovery leads.
+   * These remain LEADS only: Playwright must still prove
+   * the live Amazon product-page discount before Ultra.
+   */
+  q("supermarket_65hot","grocery","supermarket grocery 65% off",1.90),
+  q("food_beverage_65hot","grocery","food beverages 65% off",1.80),
+  q("snacks_65hot","grocery","snacks chocolate 65% off",1.70),
+  q("coffee_tea_65hot","grocery","coffee tea 65% off",1.70),
+  q("household_essentials_65hot","home","household essentials 65% off",1.90),
+  q("laundry_65hot","home","laundry cleaning 65% off",1.70),
+  q("skincare_65hot","beauty","skin care 65% off",1.80),
+  q("haircare_65hot","beauty","hair care 65% off",1.80),
+  q("oral_care_65hot","health","oral care 65% off",1.70),
+  q("storage_65hot","home","storage organization 65% off",1.70),
+  q("bedding_65hot","home","bedding home textile 65% off",1.70),
+  q("lighting_65hot","home","lighting lamps 65% off",1.70),
+  q("garden_65hot","home","garden products 65% off",1.60),
+  q("stationery_65hot","office","stationery office supplies 65% off",1.70),
+  q("fitness_65hot","sports","fitness equipment 65% off",1.80),
+  q("cycling_65hot","sports","cycling accessories 65% off",1.60),
+  q("car_care_65hot","automotive","car care 65% off",1.70),
+  q("pet_food_65hot","pets","pet food 65% off",1.60),
 ];
 
 function attr(tag: string, name: string): string {
