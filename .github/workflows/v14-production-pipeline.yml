@@ -4,12 +4,6 @@ on:
   workflow_dispatch:
   schedule:
     - cron: "*/5 * * * *"
-  push:
-    branches:
-      - v14-cloudflare
-    paths:
-      - "scripts/v14_production_pipeline.py"
-      - ".github/workflows/v14-production-pipeline.yml"
 
 permissions:
   contents: read
@@ -21,7 +15,7 @@ concurrency:
 jobs:
   pipeline:
     runs-on: ubuntu-latest
-    timeout-minutes: 9
+    timeout-minutes: 20
 
     env:
       V14_WORKER_URL: https://egypt-deals-v14.masoudalnabawi.workers.dev
@@ -40,11 +34,25 @@ jobs:
         with:
           python-version: "3.12"
 
-      - name: Install Playwright
+      - name: Install Playwright controller
         run: |
           python -m pip install --upgrade pip
           pip install "playwright==1.56.0" requests
-          python -m playwright install --with-deps chromium
+
+          CHROME="$(
+            command -v google-chrome ||
+            command -v google-chrome-stable ||
+            command -v chromium ||
+            true
+          )"
+
+          if [ -n "$CHROME" ]; then
+            echo "✅ SYSTEM_CHROME=$CHROME"
+            "$CHROME" --version || true
+          else
+            echo "⚠️ System Chrome not found; installing Playwright Chromium only"
+            python -m playwright install chromium
+          fi
 
       - name: Drain V14 verification and review queues
         run: |
