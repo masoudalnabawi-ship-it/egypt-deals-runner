@@ -751,6 +751,26 @@ async function completePlaywrightVerification(
   decision.real_discount =
     verifiedLiveDiscount;
 
+  /*
+   * >=80% is exceptional only when the LIVE rendered
+   * Amazon evidence reaches the configured threshold.
+   */
+  const exceptionalLive =
+    verifiedLiveDiscount >=
+      settings.ultra_hot_discount;
+
+  if (
+    exceptionalLive
+    &&
+    !decision.reasons.includes(
+      "amazon_exceptional_80"
+    )
+  ) {
+    decision.reasons.push(
+      "amazon_exceptional_80"
+    );
+  }
+
   if (
     verifiedLiveDiscount >=
       settings.ultra_hot_discount
@@ -815,6 +835,13 @@ async function completePlaywrightVerification(
       decision.reasons,
     verified_route:
       decision.lane,
+
+    exceptional_priority:
+      exceptionalLive,
+
+    exceptional_threshold:
+      settings.ultra_hot_discount,
+
     price_intelligence:
       profile,
     anti_fake_shield:{
@@ -844,6 +871,24 @@ async function completePlaywrightVerification(
         decision.real_discount,
     },
   );
+
+  if (exceptionalLive) {
+    await repo.event(
+      "amazon_exceptional_verified",
+      "amazon",
+      row.deal_key,
+      {
+        discount:
+          verifiedLiveDiscount,
+
+        source:
+          row.source,
+
+        external_id:
+          row.external_id,
+      },
+    );
+  }
 
   return json({
     ok:true,
@@ -1385,7 +1430,7 @@ export default {
   async fetch(request: Request, env: V14Env): Promise<Response> {
     const url = new URL(request.url);
     if (request.method === 'GET' && url.pathname === '/') {
-      return json({ service:'egypt-deals-v14', status:'ok', mode:'cloudflare', policy:{amazon_ultra_min:65,amazon_hot_min:75,noon_ultra:false} });
+      return json({ service:'egypt-deals-v14', status:'ok', mode:'cloudflare', policy:{amazon_ultra_min:65,amazon_hot_min:80,noon_ultra:false} });
     }
     if (request.method === 'GET' && url.pathname === '/health') {
       const repo = new D1Repository(env.egypt_deals_v14_db);

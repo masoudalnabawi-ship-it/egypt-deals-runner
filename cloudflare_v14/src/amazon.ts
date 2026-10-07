@@ -10,12 +10,79 @@ const d = (name: string, percent: number, priority = 1): Surface => ({
   name, category: "global", priority, url: `${BASE}/s?k=${encodeURIComponent("deals")}&rh=p_8%3A${percent}-`,
 });
 
+/*
+ * Amazon percentage filter + category/query.
+ *
+ * This is stronger than simply searching for text such as
+ * "80% off" because Amazon itself is asked to apply its
+ * discount filter to the result set.
+ */
+const pf = (
+  name: string,
+  category: string,
+  query: string,
+  percent: number,
+  priority = 1,
+): Surface => ({
+  name,
+  category,
+  priority,
+  url:
+    `${BASE}/s?k=${encodeURIComponent(query)}` +
+    `&rh=p_8%3A${percent}-`,
+});
+
 export const AMAZON_SURFACES: Surface[] = [
   { name: "goldbox", category: "global", url: `${BASE}/gp/goldbox/`, priority: 3.5 },
   q("limited_time","global","limited time deals",1.8), q("clearance","global","clearance deals",1.5),
   q("90off","global","90% off deals",2.2), q("75off","global","75% off deals",2.1),
   q("70off","global","70% off deals",2.0), q("65off","global","65% off deals",2.0), q("50off","global","50% off deals",1.0),
   d("65filter",65,2.6), d("70filter",70,2.7), d("75filter",75,2.9), d("90filter",90,3.0), d("50filter",50,1.0),
+
+  /*
+   * AMAZON_ULTRA_V4_EXCEPTIONAL_80
+   *
+   * Dedicated radar for exceptional discounts.
+   * Discovery is only a lead:
+   * rendered product-page proof is still mandatory.
+   */
+  q("95off","global","95% off deals",4.5),
+  q("85off","global","85% off deals",4.2),
+  q("80off","global","80% off deals",4.0),
+
+  d("80filter",80,4.2),
+  d("85filter",85,4.4),
+  d("95filter",95,4.7),
+
+  pf("electronics_80filter","electronics","electronics",80,3.8),
+  pf("tvs_80filter","electronics","televisions",80,4.0),
+  pf("gaming_80filter","electronics","gaming",80,3.6),
+  pf("smart_home_80filter","electronics","smart home",80,3.6),
+  pf("computer_accessories_80filter","computers","computer accessories",80,3.8),
+
+  pf("appliances_80filter","appliances","home appliances",80,3.8),
+  pf("home_80filter","home","home",80,3.5),
+
+  pf("beauty_80filter","beauty","beauty",80,4.0),
+  pf("personal_care_80filter","beauty","personal care",80,4.2),
+
+  pf("automotive_80filter","automotive","automotive accessories",80,4.2),
+
+  pf("shoes_80filter","fashion","shoes",80,3.5),
+
+  pf("sports_80filter","sports","sports fitness",80,3.4),
+
+  pf("baby_80filter","baby","baby products",80,3.5),
+
+  pf("grocery_80filter","grocery","grocery",80,3.7),
+  pf("snacks_80filter","grocery","snacks",80,4.0),
+  pf("chocolate_80filter","grocery","chocolate",80,3.9),
+
+  pf("pet_food_80filter","pets","pet food",80,4.1),
+
+  pf("office_80filter","office","office products",80,3.4),
+
+  pf("books_80filter","books","books",80,3.8),
   q("electronics_65hot","electronics","electronics 65% off",1.8), q("appliances_65hot","appliances","home appliances 65% off",1.8),
   q("beauty_65hot","beauty","beauty 65% off",1.6), q("fashion_65hot","fashion","fashion 65% off",1.5),
   q("mobiles_65hot","mobiles","mobile phones 65% off",2.0), q("laptops_65hot","computers","laptops 65% off",2.0),

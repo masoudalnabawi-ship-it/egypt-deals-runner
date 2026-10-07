@@ -77,7 +77,7 @@ ULTRA_VERIFY_BATCH = max(
         int(
             os.getenv(
                 "V14_ULTRA_VERIFY_BATCH",
-                "4",
+                "5",
             )
         ),
     ),
@@ -201,8 +201,24 @@ def required() -> None:
 def caption(job: dict) -> str:
     lane = str(job.get("lane") or "normal")
 
-    icon = "🚨" if lane == "ultra" else "🔥"
-    lane_ar = "ألترا" if lane == "ultra" else "مراجعة"
+    real_now = float(
+        job.get("real_discount") or 0
+    )
+
+    exceptional = (
+        lane == "ultra"
+        and real_now >= 80
+    )
+
+    if exceptional:
+        icon = "💎"
+        lane_ar = "استثنائي 80%+"
+    elif lane == "ultra":
+        icon = "🚨"
+        lane_ar = "ألترا"
+    else:
+        icon = "🔥"
+        lane_ar = "مراجعة"
 
     title = html.escape(
         str(

@@ -143,6 +143,58 @@ const AMAZON_ULTRA_HUNTER_ORDER: string[] = [
 
 
 /*
+ * AMAZON_ULTRA_V4_EXCEPTIONAL_HUNTER
+ *
+ * Separate radar dedicated to >=80% discovery.
+ * Highest discount Amazon filters are explored first,
+ * then the historically productive categories.
+ *
+ * Final qualification still requires rendered live proof.
+ */
+const AMAZON_EXCEPTIONAL_HUNTER_ORDER = [
+  "95filter",
+  "90filter",
+  "85filter",
+  "80filter",
+
+  "95off",
+  "90off",
+  "85off",
+  "80off",
+
+  "goldbox",
+  "limited_time",
+  "clearance",
+
+  /*
+   * Strong historical V14 categories first.
+   */
+  "automotive_80filter",
+  "personal_care_80filter",
+  "beauty_80filter",
+  "pet_food_80filter",
+  "snacks_80filter",
+  "chocolate_80filter",
+
+  "tvs_80filter",
+  "computer_accessories_80filter",
+  "gaming_80filter",
+  "smart_home_80filter",
+  "electronics_80filter",
+
+  "appliances_80filter",
+  "home_80filter",
+
+  "books_80filter",
+  "baby_80filter",
+  "grocery_80filter",
+  "shoes_80filter",
+  "sports_80filter",
+  "office_80filter",
+];
+
+
+/*
  * Dedicated supermarket rotation.
  *
  * One supermarket surface every 3 cycles keeps grocery
@@ -390,6 +442,34 @@ function bestCrossStoreMatch(deal: DealCandidate, rows: DealRow[]): { row: DealR
 
 async function admitAmazon(repo: D1Repository, settings: Settings, surface: Surface, deals: DealCandidate[]): Promise<number> {
   let queued = 0;
+
+  const exceptionalSource =
+    (
+      surface.name.includes("80filter")
+      || surface.name.includes("85filter")
+      || surface.name.includes("90filter")
+      || surface.name.includes("95filter")
+      || surface.name === "80off"
+      || surface.name === "85off"
+      || surface.name === "90off"
+      || surface.name === "95off"
+    );
+
+  /*
+   * A single exceptional page may contain many valuable
+   * candidates. Allow more of them into verification.
+   */
+  const sourceLimit =
+    exceptionalSource
+      ? Math.min(
+          20,
+          Math.max(
+            settings.amazon_discovery_limit,
+            16,
+          )
+        )
+      : settings.amazon_discovery_limit;
+
   let probeId = '';
   if (deals.length && !['goldbox','limited_time','clearance'].includes(surface.name)) {
     const eligible = deals.filter(x => x.current_price > 0);
@@ -400,7 +480,7 @@ async function admitAmazon(repo: D1Repository, settings: Settings, surface: Surf
   }
 
   const ranked = deals.slice().sort((a,b) => discountPercent(b)-discountPercent(a));
-  for (const base of ranked.slice(0, Math.max(settings.amazon_discovery_limit, 1) * 2)) {
+  for (const base of ranked.slice(0, Math.max(sourceLimit, 1) * 2)) {
     if (!(base.current_price > 0)) continue;
     const deal: DealCandidate = { ...base, metadata: { ...(base.metadata || {}) } };
     const isProbe = Boolean(probeId && deal.external_id === probeId);
@@ -408,7 +488,30 @@ async function admitAmazon(repo: D1Repository, settings: Settings, surface: Surf
     const meta = deal.metadata || {};
     const goldbox = surface.name === 'goldbox' || Boolean(meta.goldbox);
     const promo = Boolean(meta.promo_hint || meta.coupon_hint || meta.flash_hint);
-    const visible = discountPercent(deal) >= settings.normal_min_discount;
+    const visiblePct =
+      discountPercent(deal);
+
+    const visible =
+      visiblePct >=
+      settings.normal_min_discount;
+
+    /*
+     * Exceptional-filter pages occasionally contain sponsored
+     * or unrelated products. Do not waste Ultra verification
+     * unless the card itself still carries strong discount
+     * evidence or an explicit promo signal.
+     */
+    if (
+      exceptionalSource
+      &&
+      visiblePct <
+        settings.ultra_min_discount
+      &&
+      !promo
+    ) {
+      continue;
+    }
+
     if (!(isProbe || goldbox || promo || visible)) continue;
     const prelim = preliminaryDecision(settings, deal);
     if (isProbe) {
@@ -417,7 +520,7 @@ async function admitAmazon(repo: D1Repository, settings: Settings, surface: Surf
     }
     const result = await repo.upsertCandidate(deal, prelim);
     if (result.new_or_reopened) queued++;
-    if (queued >= settings.amazon_discovery_limit) break;
+    if (queued >= sourceLimit) break;
   }
   return queued;
 }
@@ -767,9 +870,10 @@ async function discoveryStep(
   );
 
   const ultraHunterNames =
-    new Set<string>(
-      AMAZON_ULTRA_HUNTER_ORDER
-    );
+    new Set<string>([
+      ...AMAZON_ULTRA_HUNTER_ORDER,
+      ...AMAZON_EXCEPTIONAL_HUNTER_ORDER,
+    ]);
 
   /*
    * General Amazon discovery remains active,
@@ -831,10 +935,69 @@ async function discoveryStep(
       true,
     );
 
+  /*
+   * Exceptional >=80% hunter has its own cursor.
+   * It runs independently from the ordinary 65% Ultra hunt.
+   */
+  const exceptionalCursor =
+    await repo.counterAdd(
+      "amazon_exceptional_surface_cursor",
+      1,
+    );
+
+  const exceptionalPool =
+    AMAZON_EXCEPTIONAL_HUNTER_ORDER
+      .map(
+        name =>
+          AMAZON_SURFACES.find(
+            x => x.name === name
+          )
+      )
+      .filter(
+        (
+          value
+        ): value is Surface =>
+          Boolean(value)
+      );
+
+  const exceptionalSurface =
+    pickAdaptiveAmazonSurface(
+      exceptionalPool,
+      amazonHealth,
+      exceptionalCursor,
+      true,
+    );
+
   const tasks:
     Promise<Record<string, unknown>>[] = [];
 
-  if (ultraSurface) {
+  /*
+   * Priority 1: >=80% exceptional hunt every cycle.
+   */
+  if (exceptionalSurface) {
+    tasks.push(
+      scanAmazonSurface(
+        repo,
+        settings,
+        exceptionalSurface,
+      ),
+    );
+  }
+
+  /*
+   * Priority 2: 65-79% broad Ultra hunt.
+   *
+   * It remains active, but the exceptional radar gets
+   * the larger share of specialist search resources.
+   */
+  if (
+    cycle % 2 === 0
+    &&
+    ultraSurface
+    &&
+    ultraSurface.name !==
+      exceptionalSurface?.name
+  ) {
     tasks.push(
       scanAmazonSurface(
         repo,
@@ -842,6 +1005,74 @@ async function discoveryStep(
         ultraSurface,
       ),
     );
+  }
+
+  /*
+   * EXCEPTIONAL DEEP SEARCH
+   *
+   * Search pages only; Goldbox itself is not paginated here.
+   *
+   * Page 2:
+   *   every 2 cycles when the source is at least viable.
+   *
+   * Page 3:
+   *   every 6 cycles only for a source the learning engine
+   *   considers productive.
+   *
+   * Still sequentially verified later by Playwright.
+   */
+  if (
+    exceptionalSurface
+    &&
+    exceptionalSurface.url.includes("/s?")
+  ) {
+    const exceptionalHealth =
+      amazonHealth.find(
+        row =>
+          row.source ===
+          exceptionalSurface.name
+      );
+
+    const exceptionalWeight =
+      amazonAdaptiveWeight(
+        exceptionalSurface,
+        exceptionalHealth,
+        true,
+      );
+
+    if (
+      cycle % 2 === 0
+      &&
+      exceptionalWeight >= 2
+    ) {
+      tasks.push(
+        scanAmazonSurface(
+          repo,
+          settings,
+          amazonPagedSurface(
+            exceptionalSurface,
+            2,
+          ),
+        ),
+      );
+    }
+
+    if (
+      cycle % 6 === 0
+      &&
+      exceptionalWeight >= 4
+    ) {
+      tasks.push(
+        scanAmazonSurface(
+          repo,
+          settings,
+          amazonPagedSurface(
+            exceptionalSurface,
+            3,
+          ),
+        ),
+      );
+    }
   }
 
   /*

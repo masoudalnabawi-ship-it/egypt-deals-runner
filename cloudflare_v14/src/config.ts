@@ -8,7 +8,7 @@ function num(value: string | undefined, fallback: number): number {
 export function getSettings(env: V14Env): Settings {
   return {
     ultra_min_discount: Math.max(65, num(env.V14_ULTRA_MIN_DISCOUNT, 65)),
-    ultra_hot_discount: Math.max(75, num(env.V14_ULTRA_HOT_DISCOUNT, 75)),
+    ultra_hot_discount: Math.max(80, num(env.V14_ULTRA_HOT_DISCOUNT, 80)),
     normal_min_discount: num(env.V14_NORMAL_MIN_DISCOUNT, 10),
     min_confidence_normal: num(env.V14_MIN_CONFIDENCE_NORMAL, 0.62),
     min_confidence_ultra: num(env.V14_MIN_CONFIDENCE_ULTRA, 0.76),
