@@ -4,6 +4,7 @@ import html
 import json
 import os
 import re
+import shutil
 import sys
 import tempfile
 import time
@@ -504,13 +505,35 @@ def main() -> int:
     worked = 0
 
     with sync_playwright() as p:
-        browser = p.chromium.launch(
-            headless=True,
-            args=[
+        chrome_path = (
+            shutil.which("google-chrome")
+            or shutil.which("google-chrome-stable")
+            or shutil.which("chromium")
+        )
+
+        launch_args = {
+            "headless": True,
+            "args": [
                 "--no-sandbox",
                 "--disable-dev-shm-usage",
                 "--disable-blink-features=AutomationControlled",
             ],
+        }
+
+        if chrome_path:
+            launch_args["executable_path"] = chrome_path
+            print(
+                f"✅ USING_SYSTEM_CHROME={chrome_path}",
+                flush=True,
+            )
+        else:
+            print(
+                "⚠️ USING_PLAYWRIGHT_BUNDLED_CHROMIUM",
+                flush=True,
+            )
+
+        browser = p.chromium.launch(
+            **launch_args
         )
         context = browser.new_context(
             locale="ar-EG",
