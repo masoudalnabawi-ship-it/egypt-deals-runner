@@ -52,7 +52,7 @@ function canonicalProductUrl(hit: Record<string, any>, sku: string): string {
 
 function candidateFromHit(hit: Record<string, any>, surface: Surface): DealCandidate | null {
   const sku = cleanText(first(hit, ["sku","catalog_sku","sku_config","product_sku","id"]) || "");
-  const title = cleanText(first(hit, ["name","title","product_name","productName"]) || "");
+  const title = cleanText(first(hit, ["name","title","product_name","productName","product_title","productTitle"]) || "");
   let old = parseNumber(first(hit, ["price","old_price","oldPrice","regular_price","regularPrice"]));
   let current = parseNumber(first(hit, ["sale_price","salePrice","offer_price","offerPrice"]));
   if (!(current > 0)) current = old;
@@ -88,23 +88,90 @@ function recursiveCandidates(obj: any, surface: Surface, out: DealCandidate[], s
   for (const v of Object.values(obj)) recursiveCandidates(v, surface, out, seen, depth + 1);
 }
 
-function parseDirectJson(text: string, surface: Surface): DealCandidate[] | null {
+function parseDirectJson(
+  text: string,
+  surface: Surface
+): DealCandidate[] | null {
+
   const raw = text.trimStart();
-  if (!(raw.startsWith("{") || raw.startsWith("["))) return null;
+
+  if (!(raw.startsWith("{") || raw.startsWith("["))) {
+    return null;
+  }
+
   try {
     const data = JSON.parse(raw);
-    if (data && typeof data === "object" && !Array.isArray(data) && Array.isArray(data.hits)) {
-      const meta = data.meta && typeof data.meta === "object" ? Object.values(data.meta).join(" ").toLowerCase() : "";
-      if (["dubai","abu dhabi","united arab emirates"," uae "].some(x => meta.includes(x))) return [];
-      const seen = new Set<string>();
-      return data.hits.map((h: any) => candidateFromHit(h, surface)).filter((x: DealCandidate | null): x is DealCandidate => Boolean(x) && !seen.has(x!.external_id) && Boolean(seen.add(x!.external_id)));
-    }
-    const out: DealCandidate[] = []; const seen = new Set<string>();
-    recursiveCandidates(data, surface, out, seen);
-    return out;
-  } catch { return null; }
-}
 
+    const out: DealCandidate[] = [];
+    const seen = new Set<string>();
+
+    const add = (candidate: DealCandidate | null) => {
+      if (!candidate) return;
+
+      const id = String(candidate.external_id || "").trim();
+
+      if (!id || seen.has(id)) return;
+
+      seen.add(id);
+      out.push(candidate);
+    };
+
+    if (
+      data
+      && typeof data === "object"
+      && !Array.isArray(data)
+      && Array.isArray(data.hits)
+    ) {
+      const metaText =
+        JSON.stringify(data.meta || {}).toLowerCase();
+
+      if (
+        metaText.includes("dubai")
+        || metaText.includes("abu dhabi")
+        || metaText.includes("united arab emirates")
+        || metaText.includes('"country":"ae"')
+      ) {
+        return [];
+      }
+
+      /*
+       * Noon usually exposes a flat hit:
+       *   sku/name/price/sale_price/...
+       *
+       * But some responses wrap those fields deeper inside each hit.
+       * Try the direct shape first, then recursively inspect that hit.
+       */
+      for (const hit of data.hits) {
+        if (out.length >= 60) break;
+
+        if (hit && typeof hit === "object") {
+          add(candidateFromHit(hit, surface));
+
+          recursiveCandidates(
+            hit,
+            surface,
+            out,
+            seen
+          );
+        }
+      }
+
+      return out;
+    }
+
+    recursiveCandidates(
+      data,
+      surface,
+      out,
+      seen
+    );
+
+    return out;
+
+  } catch {
+    return null;
+  }
+}
 export function parseNoon(text: string, surface: Surface): DealCandidate[] {
   const direct = parseDirectJson(text, surface);
   if (direct !== null) return direct;
