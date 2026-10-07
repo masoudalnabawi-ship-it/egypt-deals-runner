@@ -231,8 +231,17 @@ async function browserScrapeAmazon(env: V14Env, repo: D1Repository, settings: Se
     elements: [
       { selector: "#corePrice_feature_div .a-price .a-offscreen" },
       { selector: "#corePriceDisplay_desktop_feature_div .a-price .a-offscreen" },
-      { selector: ".apexPriceToPay .a-offscreen" }, { selector: ".priceToPay .a-offscreen" },
-      { selector: ".basisPrice .a-offscreen" }, { selector: ".a-text-price .a-offscreen" },
+      { selector: "#corePriceDisplay_desktop_feature_div .priceToPay .a-offscreen" },
+      { selector: "#buybox .a-price .a-offscreen" },
+      { selector: "#price_inside_buybox" },
+      { selector: "#newBuyBoxPrice" },
+      { selector: ".a-price[data-a-size=\"xl\"] .a-offscreen" },
+      { selector: ".apexPriceToPay .a-offscreen" },
+      { selector: ".priceToPay .a-offscreen" },
+      { selector: "#corePriceDisplay_desktop_feature_div .basisPrice .a-offscreen" },
+      { selector: ".basisPrice .a-offscreen" },
+      { selector: ".a-text-price .a-offscreen" },
+      { selector: "#corePriceDisplay_desktop_feature_div .savingsPercentage" },
       { selector: ".savingsPercentage" }, { selector: "#couponText" }, { selector: "#couponFeature" },
       { selector: "#coupon_feature_div" }, { selector: "#productTitle" }, { selector: "#landingImage" },
     ],
@@ -247,13 +256,24 @@ async function browserScrapeAmazon(env: V14Env, repo: D1Repository, settings: Se
   const bySelector = new Map<string, any[]>();
   for (const group of payload.result) bySelector.set(String(group.selector || ""), Array.isArray(group.results) ? group.results : []);
   const texts = (selectors: string[]) => selectors.flatMap(sel => (bySelector.get(sel) || []).map((x: any) => String(x.text || "")));
-  const prices = texts(["#corePrice_feature_div .a-price .a-offscreen","#corePriceDisplay_desktop_feature_div .a-price .a-offscreen",".apexPriceToPay .a-offscreen",".priceToPay .a-offscreen"]).map(parseNumber).filter((x: number) => x > 0);
+  const prices = texts([
+    "#corePrice_feature_div .a-price .a-offscreen",
+    "#corePriceDisplay_desktop_feature_div .a-price .a-offscreen",
+    "#corePriceDisplay_desktop_feature_div .priceToPay .a-offscreen",
+    "#buybox .a-price .a-offscreen",
+    "#price_inside_buybox",
+    "#newBuyBoxPrice",
+    ".a-price[data-a-size=\"xl\"] .a-offscreen",
+    ".apexPriceToPay .a-offscreen",
+    ".priceToPay .a-offscreen",
+  ]).map(parseNumber).filter((x: number) => x > 0);
   const { price: current, signals: repeated } = mostFrequentPrice(prices);
   if (!(current > 0)) throw new VerificationRejected("amazon_browser_no_price");
   let old = 0;
 
   for (
     const t of texts([
+      "#corePriceDisplay_desktop_feature_div .basisPrice .a-offscreen",
       ".basisPrice .a-offscreen",
       ".a-text-price .a-offscreen"
     ])
@@ -272,6 +292,7 @@ async function browserScrapeAmazon(env: V14Env, repo: D1Repository, settings: Se
 
   for (
     const t of texts([
+      "#corePriceDisplay_desktop_feature_div .savingsPercentage",
       ".savingsPercentage"
     ])
   ) {
@@ -689,7 +710,7 @@ export async function verifyRow(
          * Amazon DOM. This sees dynamic list-price /
          * savings blocks that raw Worker HTML may omit.
          */
-        return await browserRenderedAmazon(
+        return await browserScrapeAmazon(
           env,
           repo,
           settings,
@@ -721,7 +742,7 @@ export async function verifyRow(
 
     // Strong candidate whose direct page was
     // protected/incomplete: use rendered DOM.
-    return browserRenderedAmazon(
+    return browserScrapeAmazon(
       env,
       repo,
       settings,
