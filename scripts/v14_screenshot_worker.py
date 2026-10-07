@@ -1516,6 +1516,370 @@ async def _noon_product_candidate(
     }
 
 
+def _noon_api_refs(
+    data,
+) -> list[dict]:
+    out = []
+    seen = set()
+
+    def walk(value, depth=0):
+        if depth > 14 or len(out) >= 40:
+            return
+
+        if isinstance(value, list):
+            for item in value:
+                walk(item, depth + 1)
+            return
+
+        if not isinstance(value, dict):
+            return
+
+        sku = str(
+            value.get("sku")
+            or value.get("catalog_sku")
+            or value.get("product_sku")
+            or value.get("id")
+            or ""
+        ).strip()
+
+        title = str(
+            value.get("name")
+            or value.get("title")
+            or value.get("product_name")
+            or value.get("productName")
+            or value.get("product_title")
+            or ""
+        ).strip()
+
+        if (
+            sku
+            and len(sku) >= 5
+            and title
+            and sku not in seen
+        ):
+            raw_url = str(
+                value.get("url")
+                or value.get("canonical_url")
+                or value.get("url_slug")
+                or value.get("urlKey")
+                or ""
+            ).strip()
+
+            if raw_url.startswith("http"):
+                url = raw_url
+            else:
+                slug = raw_url.strip("/")
+
+                if "/" in slug:
+                    slug = (
+                        slug.split("/")[-1]
+                        or slug
+                    )
+
+                if slug:
+                    url = (
+                        "https://www.noon.com/"
+                        f"egypt-en/{slug}/{sku}/p/"
+                    )
+                else:
+                    url = (
+                        "https://www.noon.com/"
+                        f"egypt-en/{sku}/p/"
+                    )
+
+            current = 0.0
+            old = 0.0
+
+            for key in (
+                "sale_price",
+                "salePrice",
+                "offer_price",
+                "offerPrice",
+            ):
+                current = _num(
+                    str(value.get(key) or "")
+                )
+
+                if current > 0:
+                    break
+
+            for key in (
+                "price",
+                "old_price",
+                "oldPrice",
+                "regular_price",
+                "regularPrice",
+            ):
+                old = _num(
+                    str(value.get(key) or "")
+                )
+
+                if old > 0:
+                    break
+
+            if current <= 0:
+                current = old
+
+            if old <= current:
+                old = 0.0
+
+            image = (
+                value.get("image_url")
+                or value.get("imageUrl")
+                or value.get("thumbnailUrl")
+                or value.get("image")
+                or ""
+            )
+
+            if isinstance(image, dict):
+                image = (
+                    image.get("url")
+                    or image.get("src")
+                    or ""
+                )
+
+            elif (
+                isinstance(image, list)
+                and image
+            ):
+                first = image[0]
+
+                if isinstance(first, dict):
+                    image = (
+                        first.get("url")
+                        or first.get("src")
+                        or ""
+                    )
+                else:
+                    image = first
+
+            seen.add(sku)
+
+            out.append({
+                "sku": sku,
+                "title": title,
+                "url": url,
+                "image_url": str(image or ""),
+                "api_current": current,
+                "api_old": old,
+            })
+
+        for child in value.values():
+            walk(child, depth + 1)
+
+    walk(data)
+
+    return out
+
+
+async def discover_noon_api(
+    client: httpx.AsyncClient,
+    cursor: int,
+) -> dict:
+    source, category, query = (
+        NOON_SURFACES[
+            cursor
+            % len(NOON_SURFACES)
+        ]
+    )
+
+    encoded = quote(query)
+
+    endpoints = [
+        (
+            "https://www.noon.com/"
+            "_vs/nc/mp-customer-catalog-api/"
+            "api/v3/search?q="
+            + encoded
+            + "&limit=50"
+        ),
+        (
+            "https://www.noon.com/"
+            "_vs/nc/mp-customer-catalog-api/"
+            "api/v3/u/search?q="
+            + encoded
+            + "&limit=50"
+        ),
+    ]
+
+    headers = {
+        "accept":
+            "application/json,text/plain,*/*",
+        "x-locale":
+            "en-eg",
+        "x-platform":
+            "web",
+        "x-mp":
+            "noon",
+        "x-mp-country":
+            "eg",
+        "x-country-code":
+            "eg",
+        "referer":
+            "https://www.noon.com/egypt-en/",
+    }
+
+    started = time.monotonic()
+
+    last_error = "noon_api_no_endpoint"
+
+    refs = []
+
+    for endpoint in endpoints:
+        try:
+            response = await client.get(
+                endpoint,
+                headers=headers,
+                timeout=18,
+            )
+
+            if not response.is_success:
+                last_error = (
+                    "noon_search_api_http_"
+                    + str(response.status_code)
+                )
+                continue
+
+            data = response.json()
+
+            blob = json.dumps(
+                data.get("meta", {})
+                if isinstance(data, dict)
+                else {},
+                ensure_ascii=False,
+            ).lower()
+
+            if any(
+                x in blob
+                for x in (
+                    "dubai",
+                    "abu dhabi",
+                    "united arab emirates",
+                    '"country": "ae"',
+                )
+            ):
+                last_error = (
+                    "noon_search_api_wrong_market"
+                )
+                continue
+
+            refs = _noon_api_refs(data)
+
+            if refs:
+                break
+
+            last_error = (
+                "noon_search_api_zero_refs"
+            )
+
+        except Exception as exc:
+            last_error = (
+                f"{type(exc).__name__}:"
+                f"{str(exc)}"
+            )
+
+    if not refs:
+        raise RuntimeError(last_error)
+
+    deals = []
+
+    for ref in refs[:NOON_MAX_PRODUCTS]:
+        candidate = None
+
+        try:
+            candidate = (
+                await _noon_product_candidate(
+                    client,
+                    ref,
+                    source,
+                    category,
+                )
+            )
+        except Exception:
+            candidate = None
+
+        if candidate is None:
+            current = float(
+                ref.get("api_current") or 0
+            )
+
+            old = float(
+                ref.get("api_old") or 0
+            )
+
+            if (
+                old > current > 0
+                and (
+                    (old - current)
+                    / old
+                    * 100
+                ) >= 10
+            ):
+                candidate = {
+                    "external_id":
+                        str(ref.get("sku") or ""),
+                    "title":
+                        str(ref.get("title") or "")[:300],
+                    "url":
+                        str(ref.get("url") or ""),
+                    "current_price":
+                        round(current, 2),
+                    "old_price":
+                        round(old, 2),
+                    "image_url":
+                        str(ref.get("image_url") or ""),
+                    "source":
+                        source,
+                    "category":
+                        category,
+                }
+
+        if candidate is not None:
+            deals.append(candidate)
+
+        await asyncio.sleep(0.10)
+
+    latency_ms = int(
+        (
+            time.monotonic()
+            - started
+        )
+        * 1000
+    )
+
+    result = await api_post(
+        client,
+        "/admin/noon-ingest",
+        {
+            "source":
+                source,
+            "category":
+                category,
+            "seen":
+                len(refs),
+            "latency_ms":
+                latency_ms,
+            "deals":
+                deals,
+            "error":
+                "",
+        },
+    )
+
+    return {
+        "mode":
+            "api",
+        "source":
+            source,
+        "seen":
+            len(refs),
+        "deals":
+            len(deals),
+        "queued":
+            result.get("queued", 0),
+    }
+
+
 async def discover_noon_rendered(
     context,
     client: httpx.AsyncClient,
@@ -1537,6 +1901,17 @@ async def discover_noon_rendered(
     )
 
     page = await context.new_page()
+
+    await page.set_extra_http_headers({
+        "Accept-Language":
+            "en-EG,en;q=0.9,ar-EG;q=0.8",
+        "x-locale":
+            "en-eg",
+        "x-mp-country":
+            "eg",
+        "x-country-code":
+            "eg",
+    })
 
     started = time.monotonic()
 
@@ -1606,8 +1981,14 @@ async def discover_noon_rendered(
                 }
 
                 if (
-                  !href.includes(
-                    'noon.com/egypt-en/'
+                  !(
+                    href.includes(
+                      'noon.com/egypt-en/'
+                    )
+                    ||
+                    href.includes(
+                      'noon.com/egypt-ar/'
+                    )
                   )
                 ) {
                   continue;
@@ -1886,13 +2267,21 @@ async def main() -> None:
                     >= next_noon_scan
                 ):
                     try:
-                        noon_result = (
-                            await discover_noon_rendered(
-                                context,
-                                client,
-                                noon_cursor,
+                        try:
+                            noon_result = (
+                                await discover_noon_api(
+                                    client,
+                                    noon_cursor,
+                                )
                             )
-                        )
+                        except Exception:
+                            noon_result = (
+                                await discover_noon_rendered(
+                                    context,
+                                    client,
+                                    noon_cursor,
+                                )
+                            )
 
                         print(
                             "NOON_SCAN",
@@ -1904,12 +2293,51 @@ async def main() -> None:
                         )
 
                     except Exception as exc:
+                        reason = (
+                            f"{type(exc).__name__}:"
+                            f"{str(exc)}"
+                        )
+
                         print(
                             "NOON_SCAN_ERROR",
-                            type(exc).__name__,
-                            str(exc),
+                            reason,
                             flush=True,
                         )
+
+                        try:
+                            source, category, _ = (
+                                NOON_SURFACES[
+                                    noon_cursor
+                                    % len(NOON_SURFACES)
+                                ]
+                            )
+
+                            await api_post(
+                                client,
+                                "/admin/noon-ingest",
+                                {
+                                    "source":
+                                        source,
+                                    "category":
+                                        category,
+                                    "seen":
+                                        0,
+                                    "latency_ms":
+                                        0,
+                                    "deals":
+                                        [],
+                                    "error":
+                                        reason[:350],
+                                },
+                            )
+
+                        except Exception as report_exc:
+                            print(
+                                "NOON_REPORT_ERROR",
+                                type(report_exc).__name__,
+                                str(report_exc),
+                                flush=True,
+                            )
 
                     noon_cursor += 1
 

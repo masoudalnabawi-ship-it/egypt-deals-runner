@@ -48,8 +48,14 @@ const AMAZON_ULTRA_HUNTER_ORDER: string[] = [
   "tvs",
   "tvs",
 
-  "shoes_65hot",
-  "shoes_65hot",
+  /*
+   * shoes_65hot repeatedly produced misleading
+   * discovery old-prices with no live Amazon proof.
+   * Replace its premium slots with higher-quality
+   * deal surfaces. It remains available in broad scan.
+   */
+  "limited_time",
+  "clearance",
 
   "goldbox",
   "goldbox",

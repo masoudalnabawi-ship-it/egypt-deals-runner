@@ -961,6 +961,11 @@ async function ingestNoonPlaywright(
       )
     );
 
+  const scanError =
+    String(
+      body?.error || ""
+    ).slice(0, 400);
+
   const repo =
     new D1Repository(
       env.egypt_deals_v14_db
@@ -1024,7 +1029,10 @@ async function ingestNoonPlaywright(
         parsed.hostname === "www.noon.com" ||
         parsed.hostname === "noon.com"
       ) ||
-      !parsed.pathname.includes("/egypt-en/")
+      !(
+        parsed.pathname.includes("/egypt-en/") ||
+        parsed.pathname.includes("/egypt-ar/")
+      )
     ) {
       continue;
     }
@@ -1107,7 +1115,7 @@ async function ingestNoonPlaywright(
     fetched,
     queued,
     latency,
-    "",
+    scanError,
   );
 
   await repo.event(
@@ -1119,6 +1127,7 @@ async function ingestNoonPlaywright(
       fetched,
       accepted,
       queued,
+      error:scanError,
     },
   );
 
