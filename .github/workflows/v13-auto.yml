@@ -1,13 +1,7 @@
 name: V13 Amazon Noon Production
 
 on:
-  schedule:
-    - cron: "17 */4 * * *"
   workflow_dispatch:
-  push:
-    branches: [main]
-    paths:
-      - ".github/workflows/v13-auto.yml"
 
 permissions:
   contents: read
