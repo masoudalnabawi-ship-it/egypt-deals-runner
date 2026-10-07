@@ -1,0 +1,54 @@
+name: V14 Production Pipeline
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "*/5 * * * *"
+  push:
+    branches:
+      - v14-cloudflare
+    paths:
+      - "scripts/v14_production_pipeline.py"
+      - ".github/workflows/v14-production-pipeline.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: v14-production-pipeline
+  cancel-in-progress: false
+
+jobs:
+  pipeline:
+    runs-on: ubuntu-latest
+    timeout-minutes: 9
+
+    env:
+      V14_WORKER_URL: https://egypt-deals-v14.masoudalnabawi.workers.dev
+      V14_GITHUB_PIPELINE_KEY: ${{ secrets.V14_GITHUB_PIPELINE_KEY }}
+      TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+      AMAZON_REVIEW_GROUP_ID: ${{ secrets.AMAZON_REVIEW_GROUP_ID }}
+
+    steps:
+      - name: Checkout live V14
+        uses: actions/checkout@v4
+        with:
+          ref: v14-cloudflare
+
+      - name: Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install Playwright
+        run: |
+          python -m pip install --upgrade pip
+          pip install "playwright==1.56.0" requests
+          python -m playwright install --with-deps chromium
+
+      - name: Drain V14 verification and review queues
+        run: |
+          python scripts/v14_production_pipeline.py \
+            --max-verify 5 \
+            --max-deliver 10
