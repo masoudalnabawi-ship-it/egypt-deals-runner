@@ -432,7 +432,12 @@ async def verify_rendered(
                   '#price_inside_buybox',
                   '#newBuyBoxPrice',
                   '#corePriceDisplay_desktop_feature_div .a-price .a-offscreen',
-                  '#corePrice_feature_div .a-price .a-offscreen'
+                  '#corePrice_feature_div .a-price .a-offscreen',
+                  '#ppd .priceToPay .a-offscreen',
+                  '#ppd [data-a-color="price"] .a-offscreen',
+                  '#ppd .a-price .a-offscreen',
+                  '#tmmSwatches .a-color-price',
+                  '.swatchElement .a-color-price'
                 ]),
 
                 old: texts([
@@ -463,19 +468,53 @@ async def verify_rendered(
             """
         )
 
-        current = 0.0
+        price_candidates = []
 
         for value in raw.get("current", []):
             n = _num(value)
 
             if n > 0:
-                current = n
-                break
+                price_candidates.append(n)
 
-        if not current:
+        # Remove duplicates while preserving DOM priority.
+        unique_candidates = []
+
+        for n in price_candidates:
+            if not any(
+                abs(n - x) <= 0.01
+                for x in unique_candidates
+            ):
+                unique_candidates.append(n)
+
+        if not unique_candidates:
             raise RuntimeError(
                 "amazon_live_current_price_missing"
             )
+
+        discovered_current = float(
+            job.get("current_price") or 0
+        )
+
+        current = unique_candidates[0]
+        discovery_current_match = False
+
+        if discovered_current > 0:
+            closest = min(
+                unique_candidates,
+                key=lambda x:
+                    abs(x - discovered_current)
+            )
+
+            gap = (
+                abs(
+                    closest - discovered_current
+                )
+                / discovered_current
+            )
+
+            if gap <= 0.015:
+                current = closest
+                discovery_current_match = True
 
         old = 0.0
 
@@ -534,6 +573,15 @@ async def verify_rendered(
 
             "current_price":
                 round(current, 2),
+
+            "discovery_current_match":
+                discovery_current_match,
+
+            "price_candidates":
+                [
+                    round(x, 2)
+                    for x in unique_candidates[:12]
+                ],
 
             "old_price":
                 round(old, 2)

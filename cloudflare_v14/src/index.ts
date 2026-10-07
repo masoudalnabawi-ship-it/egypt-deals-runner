@@ -345,6 +345,10 @@ async function completePlaywrightVerification(
       discovery_discount: Number(row.visible_discount || 0),
       live_current: current,
       live_old: old,
+      discovery_current_match:
+        discoveredPrice > 0 &&
+        Math.abs(current - discoveredPrice)
+          / discoveredPrice <= 0.015,
       live_savings_percent: savings,
       live_coupon_percent: coupon,
     },
@@ -383,6 +387,34 @@ async function completePlaywrightVerification(
       ok:true,
       state:"retry",
     });
+  }
+
+  /*
+   * AMAZON CROSS-PAGE CORROBORATION
+   *
+   * Amazon search/deals already supplied old+current.
+   * If the rendered product page independently confirms
+   * that exact current price within 1.5%, we may preserve
+   * Amazon's discovery old price even when the product DOM
+   * dynamically hides the struck-through price.
+   */
+  const discoveryOld =
+    Number(row.old_price || 0);
+
+  const liveCurrentMatchesDiscovery =
+    discoveredPrice > 0 &&
+    Math.abs(current - discoveredPrice)
+      / discoveredPrice <= 0.015;
+
+  let crossPageProof = false;
+
+  if (
+    !(old > current) &&
+    liveCurrentMatchesDiscovery &&
+    discoveryOld > current
+  ) {
+    old = discoveryOld;
+    crossPageProof = true;
   }
 
   /*
@@ -463,6 +495,10 @@ async function completePlaywrightVerification(
     http_via:"github_playwright",
     rendered_dom:true,
     github_playwright_verified:true,
+    amazon_cross_page_proof:
+      crossPageProof,
+    amazon_live_current_match:
+      liveCurrentMatchesDiscovery,
     verification_signals:signals,
     amazon_savings_percent:savings,
     coupon_percent:coupon,
