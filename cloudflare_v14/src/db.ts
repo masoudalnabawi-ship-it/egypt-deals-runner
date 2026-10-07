@@ -22,17 +22,73 @@ export class D1Repository {
       const oldLane = String(old.lane || "normal");
       const incomingLane: Lane = deal.store === "noon" ? "normal" : preliminary.lane;
       const priceImproved = deal.current_price > 0 && (oldPriceNow <= 0 || deal.current_price <= oldPriceNow * 0.985);
-      const laneUpgrade = deal.store === "amazon" && oldLane !== "ultra" && incomingLane === "ultra";
+
+      /*
+       * Confirmed false discounts must not automatically return
+       * to Ultra from the same misleading Amazon search evidence.
+       *
+       * A quarantined product may be reconsidered only after a
+       * materially new current price (20%+ lower), and even then
+       * it must pass Playwright live verification again.
+       */
+      const confirmedFalseDiscount =
+        String(old.last_error || "").startsWith(
+          "confirmed_false_discount:"
+        );
+
+      const quarantineBreak =
+        confirmedFalseDiscount &&
+        oldPriceNow > 0 &&
+        deal.current_price > 0 &&
+        deal.current_price <= oldPriceNow * 0.80;
+
+      const laneUpgrade =
+        deal.store === "amazon" &&
+        oldLane !== "ultra" &&
+        incomingLane === "ultra" &&
+        (!confirmedFalseDiscount || quarantineBreak);
+
       let storedLane: Lane = incomingLane;
       let storedScore = Number(preliminary.score || 0);
-      if (deal.store === "amazon" && oldLane === "ultra" && incomingLane !== "ultra") {
+
+      if (
+        confirmedFalseDiscount &&
+        !quarantineBreak
+      ) {
+        storedLane = "normal";
+        storedScore = 0;
+      } else if (
+        deal.store === "amazon" &&
+        oldLane === "ultra" &&
+        incomingLane !== "ultra"
+      ) {
         storedLane = "ultra";
-        storedScore = Math.max(Number(old.score || 0), storedScore);
+        storedScore = Math.max(
+          Number(old.score || 0),
+          storedScore
+        );
       }
-      const staleSent = old.state === "sent" && priceImproved;
-      let shouldReopen = laneUpgrade || staleSent;
-      let state = shouldReopen ? "pending" : old.state;
-      if ((state === "rejected" || state === "retry") && priceImproved) {
+
+      const staleSent =
+        old.state === "sent" &&
+        priceImproved &&
+        !confirmedFalseDiscount;
+
+      let shouldReopen =
+        quarantineBreak ||
+        laneUpgrade ||
+        staleSent;
+
+      let state =
+        shouldReopen
+          ? "pending"
+          : old.state;
+
+      if (
+        (state === "rejected" || state === "retry") &&
+        priceImproved &&
+        (!confirmedFalseDiscount || quarantineBreak)
+      ) {
         state = "pending";
         shouldReopen = true;
       }

@@ -790,6 +790,68 @@ async function completeScreenshotJob(
       env.egypt_deals_v14_db
     );
 
+  const row =
+    await repo.findByKey(dealKey);
+
+  if (!row) {
+    return json(
+      {ok:false,error:"deal_not_found"},
+      404,
+    );
+  }
+
+  const proof =
+    body?.proof &&
+    typeof body.proof === "object"
+      ? body.proof
+      : {};
+
+  const liveDiscount =
+    Number(body?.live_discount || 0);
+
+  /*
+   * Final safety gate at the exact delivery moment.
+   *
+   * Even a previously verified Ultra is rejected if
+   * Amazon no longer visibly proves >=65% immediately
+   * before Telegram delivery.
+   */
+  if (
+    status === "invalid_ultra" ||
+    (
+      status === "sent" &&
+      row.lane === "ultra" &&
+      !(liveDiscount >= 65)
+    )
+  ) {
+    const blockReason =
+      status === "invalid_ultra"
+        ? reason
+        : "missing_or_below_65_live_delivery_proof";
+
+    await repo.markRejected(
+      dealKey,
+      `delivery_live_gate:${blockReason}`,
+    );
+
+    await repo.event(
+      "playwright_ultra_blocked_live",
+      "amazon",
+      dealKey,
+      {
+        reason:blockReason,
+        live_discount:liveDiscount,
+        proof,
+      },
+    );
+
+    return json({
+      ok:true,
+      state:"rejected",
+      reason:blockReason,
+    });
+  }
+
   if (status === "sent") {
     await repo.markSent(dealKey);
 
@@ -797,7 +859,10 @@ async function completeScreenshotJob(
       "playwright_screenshot_sent",
       "amazon",
       dealKey,
-      {},
+      {
+        live_discount:liveDiscount,
+        proof,
+      },
     );
 
     return json({

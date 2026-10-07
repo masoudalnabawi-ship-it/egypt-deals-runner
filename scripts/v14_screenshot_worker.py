@@ -257,18 +257,30 @@ async def complete(
     job: dict,
     status: str,
     reason: str = "",
+    proof: dict | None = None,
+    live_discount: float = 0.0,
 ) -> None:
+    payload = {
+        "deal_key":
+            job["deal_key"],
+        "status":
+            status,
+        "reason":
+            reason[:350],
+        "live_discount":
+            round(
+                float(live_discount or 0),
+                2,
+            ),
+    }
+
+    if proof:
+        payload["proof"] = proof
+
     await api_post(
         client,
         "/admin/screenshot/complete",
-        {
-            "deal_key":
-                job["deal_key"],
-            "status":
-                status,
-            "reason":
-                reason[:350],
-        },
+        payload,
     )
 
 
@@ -651,6 +663,59 @@ async def verify_rendered(
 
     finally:
         await page.close()
+
+
+def live_effective_discount(
+    proof: dict,
+) -> float:
+    current = float(
+        proof.get("current_price") or 0
+    )
+
+    old = float(
+        proof.get("old_price") or 0
+    )
+
+    savings = float(
+        proof.get("savings_percent") or 0
+    )
+
+    coupon = float(
+        proof.get("coupon_percent") or 0
+    )
+
+    base = 0.0
+
+    if old > current > 0:
+        base = (
+            (old - current)
+            / old
+            * 100
+        )
+
+    if 0 < savings <= 99:
+        base = max(
+            base,
+            savings,
+        )
+
+    if 0 < coupon <= 99:
+        base = (
+            100
+            * (
+                1
+                - (1 - base / 100)
+                * (1 - coupon / 100)
+            )
+        )
+
+    return round(
+        max(
+            0.0,
+            min(99.0, base),
+        ),
+        2,
+    )
 
 
 async def capture(
@@ -1036,6 +1101,96 @@ async def main() -> None:
                     continue
 
                 try:
+                    delivery_proof = None
+                    delivery_discount = 0.0
+
+                    if str(
+                        job.get("lane") or ""
+                    ) == "ultra":
+                        # SECOND LIVE VERIFICATION:
+                        # immediately before Telegram send.
+                        delivery_proof = await verify_rendered(
+                            context,
+                            job,
+                        )
+
+                        delivery_discount = (
+                            live_effective_discount(
+                                delivery_proof
+                            )
+                        )
+
+                        if delivery_discount < 65:
+                            await complete(
+                                client,
+                                job,
+                                "invalid_ultra",
+                                reason=(
+                                    "live_delivery_discount_"
+                                    f"{delivery_discount:.2f}"
+                                ),
+                                proof=delivery_proof,
+                                live_discount=delivery_discount,
+                            )
+
+                            print(
+                                "ULTRA_BLOCKED_LIVE",
+                                job.get("external_id"),
+                                delivery_discount,
+                                flush=True,
+                            )
+
+                            await asyncio.sleep(
+                                MIN_GAP
+                            )
+                            continue
+
+                        job = {
+                            **job,
+                            "current_price":
+                                delivery_proof.get(
+                                    "current_price"
+                                )
+                                or job.get(
+                                    "current_price"
+                                ),
+                            "old_price":
+                                delivery_proof.get(
+                                    "old_price"
+                                )
+                                or 0,
+                            "real_discount":
+                                delivery_discount,
+                        }
+
+                        coupon = float(
+                            delivery_proof.get(
+                                "coupon_percent"
+                            )
+                            or 0
+                        )
+
+                        if coupon > 0:
+                            job["effective_price"] = round(
+                                float(
+                                    job.get(
+                                        "current_price"
+                                    )
+                                    or 0
+                                )
+                                * (
+                                    1
+                                    - coupon / 100
+                                ),
+                                2,
+                            )
+                        else:
+                            job["effective_price"] = (
+                                job.get(
+                                    "current_price"
+                                )
+                            )
+
                     shot = await capture(
                         context,
                         job,
@@ -1051,6 +1206,8 @@ async def main() -> None:
                         client,
                         job,
                         "sent",
+                        proof=delivery_proof,
+                        live_discount=delivery_discount,
                     )
 
                     print(
