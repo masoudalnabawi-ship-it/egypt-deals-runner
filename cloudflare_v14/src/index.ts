@@ -568,19 +568,57 @@ async function completePlaywrightVerification(
 
   if (!ok) {
     /*
-     * If the live rendered page proves the deal has
-     * fallen below 10%, it is genuinely no longer
-     * worth sending.
+     * A search result may advertise a huge crossed price
+     * that does not belong to the currently selected
+     * Amazon offer/variant.
+     *
+     * Record that semantic failure separately so the
+     * queue can LEARN which discovery sources repeatedly
+     * waste Ultra verification time.
      */
+    const noLiveUltraEvidence =
+      row.lane === "ultra" &&
+      current > 0 &&
+      !(old > current) &&
+      savings < 5 &&
+      coupon <= 0;
+
+    const rejectReason =
+      noLiveUltraEvidence
+        ? "ultra_no_live_discount_evidence"
+        : reason;
+
+    if (noLiveUltraEvidence) {
+      await repo.event(
+        "ultra_false_discovery",
+        "amazon",
+        row.deal_key,
+        {
+          external_id:row.external_id,
+          source:row.source,
+          discovery_discount:
+            Number(row.visible_discount || 0),
+          discovery_current:
+            Number(row.current_price || 0),
+          discovery_old:
+            Number(row.old_price || 0),
+          live_current:current,
+          live_old:old,
+          live_savings_percent:savings,
+          live_coupon_percent:coupon,
+        },
+      );
+    }
+
     await repo.markRejected(
       row.deal_key,
-      reason,
+      rejectReason,
     );
 
     return json({
       ok:true,
       state:"rejected",
-      reason,
+      reason:rejectReason,
       discount:decision.real_discount,
     });
   }

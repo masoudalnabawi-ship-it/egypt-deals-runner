@@ -134,9 +134,238 @@ export class D1Repository {
         AND (lease_until=0 OR lease_until<?)
       ORDER BY
         /*
-         * AMAZON ULTRA:
-         * Absolute priority = highest discovered discount first.
-         * 99 > 98 > 97 > ... > 90 > ... > 65
+         * ULTRA SOURCE RELIABILITY
+         *
+         * Search discount is only a lead, not truth.
+         *
+         * Sources that recently produced real LIVE Amazon
+         * price evidence receive a modest priority bonus.
+         *
+         * Sources repeatedly producing:
+         * current price + NO old price + NO savings +
+         * NO coupon are automatically deprioritized.
+         *
+         * A genuinely huge new lead can still win because
+         * visible_discount remains the largest component.
+         */
+        CASE
+          WHEN store='amazon' AND lane='ultra'
+          THEN
+            visible_discount
+            +
+            CASE
+              /*
+               * Proven live-discount source.
+               */
+              WHEN EXISTS (
+                SELECT 1
+                FROM events e
+                JOIN deals d2
+                  ON d2.deal_key=e.deal_key
+                WHERE d2.store='amazon'
+                  AND d2.source=deals.source
+                  AND e.event='github_playwright_observation'
+                  AND e.ts >=
+                    CAST(strftime('%s','now') AS INTEGER)
+                    - 604800
+                  AND
+                    COALESCE(
+                      CAST(
+                        json_extract(
+                          e.payload_json,
+                          '$.live_current'
+                        ) AS REAL
+                      ),
+                      0
+                    ) > 0
+                  AND (
+                    COALESCE(
+                      CAST(
+                        json_extract(
+                          e.payload_json,
+                          '$.live_old'
+                        ) AS REAL
+                      ),
+                      0
+                    )
+                    >
+                    COALESCE(
+                      CAST(
+                        json_extract(
+                          e.payload_json,
+                          '$.live_current'
+                        ) AS REAL
+                      ),
+                      0
+                    )
+                    OR
+                    COALESCE(
+                      CAST(
+                        json_extract(
+                          e.payload_json,
+                          '$.live_savings_percent'
+                        ) AS REAL
+                      ),
+                      0
+                    ) >= 5
+                    OR
+                    COALESCE(
+                      CAST(
+                        json_extract(
+                          e.payload_json,
+                          '$.live_coupon_percent'
+                        ) AS REAL
+                      ),
+                      0
+                    ) > 0
+                  )
+                LIMIT 1
+              )
+              THEN 12
+
+              /*
+               * Two or more recent false-discount leads:
+               * strong automatic penalty.
+               */
+              WHEN (
+                SELECT COUNT(*)
+                FROM events e
+                JOIN deals d2
+                  ON d2.deal_key=e.deal_key
+                WHERE d2.store='amazon'
+                  AND d2.source=deals.source
+                  AND e.event='github_playwright_observation'
+                  AND e.ts >=
+                    CAST(strftime('%s','now') AS INTEGER)
+                    - 86400
+                  AND
+                    COALESCE(
+                      CAST(
+                        json_extract(
+                          e.payload_json,
+                          '$.live_current'
+                        ) AS REAL
+                      ),
+                      0
+                    ) > 0
+                  AND
+                    COALESCE(
+                      CAST(
+                        json_extract(
+                          e.payload_json,
+                          '$.live_old'
+                        ) AS REAL
+                      ),
+                      0
+                    ) <=
+                    COALESCE(
+                      CAST(
+                        json_extract(
+                          e.payload_json,
+                          '$.live_current'
+                        ) AS REAL
+                      ),
+                      0
+                    )
+                  AND
+                    COALESCE(
+                      CAST(
+                        json_extract(
+                          e.payload_json,
+                          '$.live_savings_percent'
+                        ) AS REAL
+                      ),
+                      0
+                    ) = 0
+                  AND
+                    COALESCE(
+                      CAST(
+                        json_extract(
+                          e.payload_json,
+                          '$.live_coupon_percent'
+                        ) AS REAL
+                      ),
+                      0
+                    ) = 0
+              ) >= 2
+              THEN -25
+
+              /*
+               * One recent false lead:
+               * small penalty, not a blacklist.
+               */
+              WHEN (
+                SELECT COUNT(*)
+                FROM events e
+                JOIN deals d2
+                  ON d2.deal_key=e.deal_key
+                WHERE d2.store='amazon'
+                  AND d2.source=deals.source
+                  AND e.event='github_playwright_observation'
+                  AND e.ts >=
+                    CAST(strftime('%s','now') AS INTEGER)
+                    - 86400
+                  AND
+                    COALESCE(
+                      CAST(
+                        json_extract(
+                          e.payload_json,
+                          '$.live_current'
+                        ) AS REAL
+                      ),
+                      0
+                    ) > 0
+                  AND
+                    COALESCE(
+                      CAST(
+                        json_extract(
+                          e.payload_json,
+                          '$.live_old'
+                        ) AS REAL
+                      ),
+                      0
+                    ) <=
+                    COALESCE(
+                      CAST(
+                        json_extract(
+                          e.payload_json,
+                          '$.live_current'
+                        ) AS REAL
+                      ),
+                      0
+                    )
+                  AND
+                    COALESCE(
+                      CAST(
+                        json_extract(
+                          e.payload_json,
+                          '$.live_savings_percent'
+                        ) AS REAL
+                      ),
+                      0
+                    ) = 0
+                  AND
+                    COALESCE(
+                      CAST(
+                        json_extract(
+                          e.payload_json,
+                          '$.live_coupon_percent'
+                        ) AS REAL
+                      ),
+                      0
+                    ) = 0
+              ) >= 1
+              THEN -8
+
+              ELSE 0
+            END
+
+          ELSE -1
+        END DESC,
+
+        /*
+         * Inside equal reliability, larger discovered
+         * discount remains first.
          */
         CASE
           WHEN store='amazon' AND lane='ultra'

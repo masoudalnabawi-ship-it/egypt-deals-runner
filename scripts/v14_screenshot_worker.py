@@ -59,6 +59,20 @@ MIN_GAP = float(
     )
 )
 
+
+ULTRA_VERIFY_BATCH = max(
+    1,
+    min(
+        6,
+        int(
+            os.getenv(
+                "V14_ULTRA_VERIFY_BATCH",
+                "4",
+            )
+        ),
+    ),
+)
+
 NOON_SCAN_SECONDS = max(
     180,
     int(
@@ -2186,6 +2200,113 @@ async def discover_noon_rendered(
     }
 
 
+async def process_ultra_verification_batch(
+    context,
+    client: httpx.AsyncClient,
+    worker_id: str,
+) -> int:
+    """
+    Drain several Ultra discovery leads sequentially.
+
+    This is intentionally NOT concurrent:
+    - avoids aggressive Amazon bursts
+    - reduces CAPTCHA risk
+    - prevents one fake search result from delaying
+      a genuine TV/electronics/book deal for a full loop
+    """
+
+    processed = 0
+
+    for _ in range(
+        ULTRA_VERIFY_BATCH
+    ):
+        verify_job = None
+
+        try:
+            verify_job = await claim_verify(
+                client,
+                worker_id,
+            )
+
+        except Exception as exc:
+            print(
+                "VERIFY_CLAIM_ERROR",
+                type(exc).__name__,
+                str(exc),
+                flush=True,
+            )
+            break
+
+        if verify_job is None:
+            break
+
+        processed += 1
+
+        try:
+            proof = await verify_rendered(
+                context,
+                verify_job,
+            )
+
+            result = await complete_verify(
+                client,
+                verify_job,
+                "verified",
+                proof=proof,
+            )
+
+            print(
+                "VERIFIED",
+                verify_job.get(
+                    "external_id"
+                ),
+                result.get("lane"),
+                result.get("discount"),
+                result.get("reason"),
+                flush=True,
+            )
+
+        except Exception as exc:
+            reason = (
+                f"{type(exc).__name__}:"
+                f"{str(exc)}"
+            )
+
+            print(
+                "VERIFY_RETRY",
+                verify_job.get(
+                    "external_id"
+                ),
+                reason,
+                flush=True,
+            )
+
+            try:
+                await complete_verify(
+                    client,
+                    verify_job,
+                    "retry",
+                    reason=reason,
+                )
+
+            except Exception as ack_exc:
+                print(
+                    "VERIFY_ACK_ERROR",
+                    type(
+                        ack_exc
+                    ).__name__,
+                    str(ack_exc),
+                    flush=True,
+                )
+
+        # Keep Amazon traffic deliberately gentle.
+        await asyncio.sleep(
+            MIN_GAP
+        )
+
+    return processed
+
+
 async def main() -> None:
     required()
 
@@ -2347,68 +2468,28 @@ async def main() -> None:
                     )
 
                 # Stage 1:
-                # Render and verify the strongest Ultra lead.
-                verify_job = None
-
+                # SMART ULTRA TRIAGE.
+                # Drain several strong leads before delivery,
+                # sequentially and safely.
                 try:
-                    verify_job = await claim_verify(
-                        client,
-                        worker_id,
+                    checked = (
+                        await process_ultra_verification_batch(
+                            context,
+                            client,
+                            worker_id,
+                        )
                     )
 
-                    if verify_job is not None:
-                        try:
-                            proof = await verify_rendered(
-                                context,
-                                verify_job,
-                            )
-
-                            result = await complete_verify(
-                                client,
-                                verify_job,
-                                "verified",
-                                proof=proof,
-                            )
-
-                            print(
-                                "VERIFIED",
-                                verify_job.get("external_id"),
-                                result.get("lane"),
-                                result.get("discount"),
-                                flush=True,
-                            )
-
-                        except Exception as exc:
-                            reason = (
-                                f"{type(exc).__name__}:"
-                                f"{str(exc)}"
-                            )
-
-                            print(
-                                "VERIFY_RETRY",
-                                verify_job.get("external_id"),
-                                reason,
-                                flush=True,
-                            )
-
-                            try:
-                                await complete_verify(
-                                    client,
-                                    verify_job,
-                                    "retry",
-                                    reason=reason,
-                                )
-                            except Exception as ack_exc:
-                                print(
-                                    "VERIFY_ACK_ERROR",
-                                    type(ack_exc).__name__,
-                                    str(ack_exc),
-                                    flush=True,
-                                )
+                    if checked:
+                        print(
+                            "ULTRA_TRIAGE_BATCH",
+                            checked,
+                            flush=True,
+                        )
 
                 except Exception as exc:
                     print(
-                        "VERIFY_CLAIM_ERROR",
+                        "ULTRA_TRIAGE_ERROR",
                         type(exc).__name__,
                         str(exc),
                         flush=True,
