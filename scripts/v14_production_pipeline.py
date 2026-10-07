@@ -1,0 +1,559 @@
+#!/usr/bin/env python3
+import argparse
+import html
+import json
+import os
+import re
+import sys
+import tempfile
+import time
+from pathlib import Path
+from typing import Any
+
+import requests
+from playwright.sync_api import sync_playwright
+
+WORKER = os.environ.get(
+    "V14_WORKER_URL",
+    "https://egypt-deals-v14.masoudalnabawi.workers.dev",
+).rstrip("/")
+ADMIN_KEY = os.environ.get("V14_GITHUB_PIPELINE_KEY", "").strip()
+BOT_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN", "").strip()
+REVIEW_CHAT = os.environ.get("AMAZON_REVIEW_GROUP_ID", "").strip()
+
+UA = (
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+    "AppleWebKit/537.36 (KHTML, like Gecko) "
+    "Chrome/140.0.0.0 Safari/537.36"
+)
+
+HEADERS = {
+    "Authorization": f"Bearer {ADMIN_KEY}",
+    "Content-Type": "application/json",
+    "User-Agent": "V14-GitHub-Playwright/1.0",
+}
+
+ARABIC_DIGITS = str.maketrans(
+    "٠١٢٣٤٥٦٧٨٩٫٬",
+    "0123456789.,",
+)
+
+PRICE_SELECTORS = [
+    "#corePrice_feature_div .priceToPay .a-offscreen",
+    "#corePriceDisplay_desktop_feature_div .priceToPay .a-offscreen",
+    "#corePrice_feature_div .a-price .a-offscreen",
+    "#corePriceDisplay_desktop_feature_div .a-price .a-offscreen",
+    ".reinventPricePriceToPayMargin .a-offscreen",
+    "span.a-price[data-a-color='price'] .a-offscreen",
+    ".apexPriceToPay .a-offscreen",
+]
+
+OLD_PRICE_SELECTORS = [
+    "#corePrice_feature_div .a-price.a-text-price .a-offscreen",
+    "#corePriceDisplay_desktop_feature_div .a-price.a-text-price .a-offscreen",
+    ".basisPrice .a-offscreen",
+    "span.a-price.a-text-price .a-offscreen",
+]
+
+SAVING_SELECTORS = [
+    "#corePrice_feature_div .savingsPercentage",
+    "#corePriceDisplay_desktop_feature_div .savingsPercentage",
+    ".savingsPercentage",
+]
+
+def die(message: str) -> None:
+    print(f"❌ {message}", flush=True)
+    raise SystemExit(2)
+
+def api_post(path: str, payload: dict[str, Any], retries: int = 5) -> dict[str, Any]:
+    last = None
+    for attempt in range(1, retries + 1):
+        try:
+            r = requests.post(
+                WORKER + path,
+                headers=HEADERS,
+                json=payload,
+                timeout=35,
+            )
+            last = (r.status_code, r.text[:1000])
+            if r.ok:
+                data = r.json()
+                if isinstance(data, dict):
+                    return data
+            if r.status_code in (401, 403):
+                raise RuntimeError(f"auth_failed:{r.status_code}:{r.text[:300]}")
+        except Exception as exc:
+            last = repr(exc)
+        if attempt < retries:
+            time.sleep(min(8, attempt * 2))
+    raise RuntimeError(f"api_post_failed:{path}:{last}")
+
+def worker_policy() -> dict[str, Any]:
+    try:
+        r = requests.get(WORKER + "/", timeout=20)
+        if r.ok:
+            data = r.json()
+            if isinstance(data, dict):
+                return data.get("policy") or {}
+    except Exception:
+        pass
+    return {}
+
+def parse_number(text: str) -> float:
+    if not text:
+        return 0.0
+    t = str(text).translate(ARABIC_DIGITS)
+    t = t.replace("\u00a0", " ").replace("EGP", " ").replace("ج.م", " ")
+    matches = re.findall(r"\d[\d,]*(?:\.\d+)?", t)
+    if not matches:
+        return 0.0
+    raw = matches[0].replace(",", "")
+    try:
+        value = float(raw)
+    except ValueError:
+        return 0.0
+    return value if value > 0 else 0.0
+
+def parse_percent(text: str) -> float:
+    if not text:
+        return 0.0
+    t = str(text).translate(ARABIC_DIGITS)
+    m = re.search(r"(-?\d+(?:\.\d+)?)\s*%", t)
+    if not m:
+        return 0.0
+    try:
+        return max(0.0, min(99.0, abs(float(m.group(1)))))
+    except ValueError:
+        return 0.0
+
+def first_text(page, selectors: list[str]) -> str:
+    for selector in selectors:
+        try:
+            loc = page.locator(selector).first
+            if loc.count() > 0:
+                value = (loc.text_content(timeout=1200) or "").strip()
+                if value:
+                    return value
+        except Exception:
+            continue
+    return ""
+
+def first_attr(page, selector: str, attr: str) -> str:
+    try:
+        loc = page.locator(selector).first
+        if loc.count() > 0:
+            return (loc.get_attribute(attr, timeout=1200) or "").strip()
+    except Exception:
+        pass
+    return ""
+
+def page_blocked(page) -> bool:
+    try:
+        text = (page.locator("body").inner_text(timeout=2500) or "")[:6000].lower()
+    except Exception:
+        return True
+    markers = [
+        "robot check",
+        "enter the characters you see below",
+        "sorry! something went wrong",
+        "أدخل الأحرف",
+    ]
+    return any(x in text for x in markers)
+
+def asin_from_page(page, expected: str = "") -> str:
+    expected = (expected or "").strip().upper()
+    candidates = [
+        first_attr(page, "input#ASIN", "value"),
+        first_attr(page, "input[name='ASIN']", "value"),
+        page.url,
+        first_attr(page, "link[rel='canonical']", "href"),
+    ]
+    for value in candidates:
+        if not value:
+            continue
+        m = re.search(r"(?:/dp/|/gp/product/)?([A-Z0-9]{10})(?:[/?&#]|$)", value.upper())
+        if m:
+            return m.group(1)
+        if re.fullmatch(r"[A-Z0-9]{10}", value.upper()):
+            return value.upper()
+    return expected if re.fullmatch(r"[A-Z0-9]{10}", expected) else ""
+
+def coupon_percent(page) -> float:
+    selectors = [
+        "#couponTextpctch",
+        "#couponText",
+        ".promoPriceBlockMessage",
+        "#promoPriceBlockMessage_feature_div",
+    ]
+    texts = []
+    for selector in selectors:
+        try:
+            loc = page.locator(selector)
+            for i in range(min(loc.count(), 4)):
+                texts.append((loc.nth(i).text_content(timeout=800) or "").strip())
+        except Exception:
+            pass
+    try:
+        body = (page.locator("body").inner_text(timeout=2000) or "")[:14000]
+        texts.append(body)
+    except Exception:
+        pass
+    best = 0.0
+    for text in texts:
+        low = text.lower()
+        if any(word in low for word in ("coupon", "كوبون", "قسيمة", "خصم إضافي")):
+            for m in re.finditer(r"(\d{1,2}(?:\.\d+)?)\s*%", text.translate(ARABIC_DIGITS)):
+                try:
+                    best = max(best, min(60.0, float(m.group(1))))
+                except ValueError:
+                    pass
+    return best
+
+def inspect_amazon(page, url: str, expected_asin: str = "") -> dict[str, Any]:
+    response = page.goto(
+        url,
+        wait_until="domcontentloaded",
+        timeout=30000,
+    )
+    page.wait_for_timeout(1600)
+
+    status = response.status if response else 0
+    if status >= 400:
+        raise RuntimeError(f"http_{status}")
+    if page_blocked(page):
+        raise RuntimeError("amazon_blocked")
+
+    current_text = first_text(page, PRICE_SELECTORS)
+    old_text = first_text(page, OLD_PRICE_SELECTORS)
+    saving_text = first_text(page, SAVING_SELECTORS)
+
+    current = parse_number(current_text)
+    old = parse_number(old_text)
+    savings = parse_percent(saving_text)
+    coupon = coupon_percent(page)
+
+    canonical = first_attr(page, "link[rel='canonical']", "href") or page.url
+    page_asin = asin_from_page(page, expected_asin)
+    title = first_text(page, ["#productTitle", "h1#title", "h1"])
+    image_url = (
+        first_attr(page, "#landingImage", "src")
+        or first_attr(page, "#imgBlkFront", "src")
+        or first_attr(page, "img[data-old-hires]", "data-old-hires")
+    )
+
+    if not current:
+        raise RuntimeError("no_live_price")
+
+    return {
+        "current_price": round(current, 2),
+        "old_price": round(old, 2) if old > current else 0,
+        "savings_percent": round(savings, 2),
+        "coupon_percent": round(coupon, 2),
+        "page_asin": page_asin,
+        "canonical_url": canonical[:1000],
+        "title": title[:300],
+        "image_url": image_url[:1400],
+    }
+
+def effective_discount(obs: dict[str, Any]) -> float:
+    current = float(obs.get("current_price") or 0)
+    old = float(obs.get("old_price") or 0)
+    savings = float(obs.get("savings_percent") or 0)
+    coupon = float(obs.get("coupon_percent") or 0)
+
+    old_discount = 0.0
+    if old > current > 0:
+        old_discount = ((old - current) / old) * 100.0
+
+    base = max(old_discount, savings)
+    combined = 100.0 - ((100.0 - base) * (100.0 - coupon) / 100.0)
+    return round(max(0.0, min(99.0, combined)), 2)
+
+def verify_one(page) -> bool:
+    claim = api_post(
+        "/admin/playwright-verify/claim",
+        {"worker_id": f"gha-v14-{int(time.time())}"},
+    )
+    job = claim.get("job")
+    if not job:
+        return False
+
+    key = str(job.get("deal_key") or "")
+    try:
+        obs = inspect_amazon(
+            page,
+            str(job.get("url") or ""),
+            str(job.get("external_id") or ""),
+        )
+        payload = {
+            "deal_key": key,
+            "status": "verified",
+            **obs,
+        }
+        result = api_post(
+            "/admin/playwright-verify/complete",
+            payload,
+            retries=10,
+        )
+        print(
+            "✅ VERIFIED",
+            key[:12],
+            "lane=",
+            result.get("lane"),
+            "discount=",
+            result.get("discount"),
+            "strike=",
+            result.get("strike_score"),
+            flush=True,
+        )
+        return True
+    except Exception as exc:
+        reason = str(exc)[:300]
+        print("⚠️ VERIFY FAIL", key[:12], reason, flush=True)
+        try:
+            api_post(
+                "/admin/playwright-verify/complete",
+                {
+                    "deal_key": key,
+                    "status": "failed",
+                    "reason": reason,
+                },
+                retries=10,
+            )
+        except Exception as complete_exc:
+            print("❌ VERIFY COMPLETE FAIL", repr(complete_exc), flush=True)
+        return True
+
+def build_caption(job: dict[str, Any], live_discount: float) -> str:
+    title = html.escape(str(job.get("title") or "Amazon Deal")[:180])
+    current = float(job.get("current_price") or 0)
+    old = float(job.get("old_price") or 0)
+    confidence = float(job.get("confidence") or 0) * 100
+    score = float(job.get("score") or 0)
+    lane = str(job.get("lane") or "normal")
+    category = html.escape(str(job.get("category") or "")[:70])
+
+    lines = [
+        "🚨 <b>V14 Amazon Review</b>" if lane == "ultra" else "🔥 <b>V14 Amazon Review</b>",
+        "",
+        f"🛒 <b>{title}</b>",
+        "",
+        f"💰 <b>السعر الآن:</b> {current:,.2f} ج.م",
+    ]
+    if old > current > 0:
+        lines.append(f"🏷 <b>السعر السابق:</b> <s>{old:,.2f}</s> ج.م")
+    lines.extend([
+        f"📉 <b>الخصم الحي:</b> {live_discount:.1f}%",
+        f"🧠 <b>التقييم:</b> {score:.1f}/100",
+        f"🛡 <b>الثقة:</b> {confidence:.0f}%",
+    ])
+    if lane == "ultra" and live_discount >= 75:
+        lines.append("🚀 <b>الأولوية:</b> Tier-1")
+    if category:
+        lines.append(f"📂 <b>القسم:</b> {category}")
+    return "\n".join(lines)[:1000]
+
+def send_review_photo(job: dict[str, Any], photo: Path, live_discount: float) -> int:
+    short = str(job.get("deal_key") or "")[:16]
+    url = str(job.get("url") or "")
+    keyboard = {
+        "inline_keyboard": [
+            [
+                {"text": "🚀 نشر عاجل", "callback_data": f"v14:u:{short}"},
+                {"text": "✅ نشر عادي", "callback_data": f"v14:p:{short}"},
+            ],
+            [
+                {"text": "🔗 فتح المنتج", "url": url},
+                {"text": "❌ رفض", "callback_data": f"v14:r:{short}"},
+            ],
+        ]
+    }
+
+    with photo.open("rb") as fh:
+        r = requests.post(
+            f"https://api.telegram.org/bot{BOT_TOKEN}/sendPhoto",
+            data={
+                "chat_id": REVIEW_CHAT,
+                "caption": build_caption(job, live_discount),
+                "parse_mode": "HTML",
+                "reply_markup": json.dumps(keyboard, ensure_ascii=False),
+            },
+            files={"photo": ("amazon-v14.jpg", fh, "image/jpeg")},
+            timeout=45,
+        )
+    if not r.ok:
+        raise RuntimeError(f"telegram_http_{r.status_code}:{r.text[:400]}")
+    data = r.json()
+    if not data.get("ok"):
+        raise RuntimeError(f"telegram_not_ok:{str(data)[:400]}")
+    return int((data.get("result") or {}).get("message_id") or 0)
+
+def deliver_one(page, lane: str, ultra_min: float) -> bool:
+    claim = api_post(
+        "/admin/screenshot/claim",
+        {
+            "worker_id": f"gha-shot-{int(time.time())}",
+            "lane": lane,
+        },
+    )
+    job = claim.get("job")
+    if not job:
+        return False
+
+    key = str(job.get("deal_key") or "")
+    try:
+        obs = inspect_amazon(
+            page,
+            str(job.get("url") or ""),
+            str(job.get("external_id") or ""),
+        )
+        live_discount = effective_discount(obs)
+
+        if lane == "ultra" and live_discount < ultra_min:
+            api_post(
+                "/admin/screenshot/complete",
+                {
+                    "deal_key": key,
+                    "status": "invalid_ultra",
+                    "reason": f"live_discount_{live_discount}_below_{ultra_min}",
+                    "live_discount": live_discount,
+                    "proof": obs,
+                },
+                retries=10,
+            )
+            print("🛑 ULTRA EXPIRED", key[:12], live_discount, flush=True)
+            return True
+
+        with tempfile.TemporaryDirectory(prefix="v14-shot-") as td:
+            shot = Path(td) / "deal.jpg"
+            page.screenshot(
+                path=str(shot),
+                type="jpeg",
+                quality=80,
+                full_page=False,
+            )
+            message_id = send_review_photo(job, shot, live_discount)
+
+        proof = {
+            **obs,
+            "telegram_message_id": message_id,
+            "review_chat": REVIEW_CHAT,
+            "via": "github_playwright_v14",
+        }
+        api_post(
+            "/admin/screenshot/complete",
+            {
+                "deal_key": key,
+                "status": "sent",
+                "live_discount": live_discount,
+                "proof": proof,
+            },
+            retries=10,
+        )
+        print(
+            "📤 REVIEW SENT",
+            key[:12],
+            "lane=",
+            lane,
+            "live_discount=",
+            live_discount,
+            flush=True,
+        )
+        return True
+    except Exception as exc:
+        reason = str(exc)[:300]
+        print("⚠️ DELIVERY FAIL", key[:12], reason, flush=True)
+        try:
+            api_post(
+                "/admin/screenshot/complete",
+                {
+                    "deal_key": key,
+                    "status": "retry",
+                    "reason": reason,
+                    "live_discount": 0,
+                    "proof": {"via": "github_playwright_v14"},
+                },
+                retries=10,
+            )
+        except Exception as complete_exc:
+            print("❌ DELIVERY COMPLETE FAIL", repr(complete_exc), flush=True)
+        return True
+
+def main() -> int:
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--max-verify", type=int, default=4)
+    parser.add_argument("--max-deliver", type=int, default=8)
+    args = parser.parse_args()
+
+    if not ADMIN_KEY:
+        die("V14_GITHUB_PIPELINE_KEY missing")
+    if not BOT_TOKEN:
+        die("TELEGRAM_BOT_TOKEN missing")
+    if not REVIEW_CHAT:
+        die("AMAZON_REVIEW_GROUP_ID missing")
+
+    policy = worker_policy()
+    ultra_min = float(policy.get("amazon_ultra_min") or policy.get("ultra_min_discount") or 65)
+
+    print(
+        f"V14_PIPELINE_START ultra_min={ultra_min} "
+        f"verify_limit={args.max_verify} delivery_limit={args.max_deliver}",
+        flush=True,
+    )
+
+    worked = 0
+
+    with sync_playwright() as p:
+        browser = p.chromium.launch(
+            headless=True,
+            args=[
+                "--no-sandbox",
+                "--disable-dev-shm-usage",
+                "--disable-blink-features=AutomationControlled",
+            ],
+        )
+        context = browser.new_context(
+            locale="ar-EG",
+            timezone_id="Africa/Cairo",
+            user_agent=UA,
+            viewport={"width": 1440, "height": 1800},
+            device_scale_factor=1,
+            extra_http_headers={
+                "Accept-Language": "ar-EG,ar;q=0.9,en-US;q=0.8,en;q=0.7",
+            },
+        )
+
+        for _ in range(max(0, args.max_verify)):
+            page = context.new_page()
+            try:
+                if not verify_one(page):
+                    break
+                worked += 1
+            finally:
+                page.close()
+
+        remaining = max(0, args.max_deliver)
+        while remaining > 0:
+            progressed = False
+            for lane in ("ultra", "normal"):
+                if remaining <= 0:
+                    break
+                page = context.new_page()
+                try:
+                    if deliver_one(page, lane, ultra_min):
+                        worked += 1
+                        remaining -= 1
+                        progressed = True
+                finally:
+                    page.close()
+            if not progressed:
+                break
+
+        context.close()
+        browser.close()
+
+    print(f"V14_PIPELINE_DONE worked={worked}", flush=True)
+    return 0
+
+if __name__ == "__main__":
+    sys.exit(main())

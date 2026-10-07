@@ -105,6 +105,7 @@ export interface V14Env {
   TELEGRAM_WEBHOOK_SECRET?: string;
   NOON_TELEGRAM_WEBHOOK_SECRET?: string;
   V14_ADMIN_KEY?: string;
+  V14_GITHUB_PIPELINE_KEY?: string;
 
   V14_ULTRA_MIN_DISCOUNT?: string;
   V14_ULTRA_HOT_DISCOUNT?: string;

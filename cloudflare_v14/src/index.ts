@@ -19,10 +19,43 @@ function bearer(request: Request): string {
 }
 
 function adminAllowed(request: Request, env: V14Env): boolean {
-  const expected = String(env.V14_ADMIN_KEY || '').trim();
-  if (!expected) return false;
-  const url = new URL(request.url);
-  return bearer(request) === expected || url.searchParams.get('key') === expected;
+  const adminKey =
+    String(
+      env.V14_ADMIN_KEY || ""
+    ).trim();
+
+  const pipelineKey =
+    String(
+      env.V14_GITHUB_PIPELINE_KEY || ""
+    ).trim();
+
+  const supplied =
+    bearer(request);
+
+  const url =
+    new URL(request.url);
+
+  const queryKey =
+    String(
+      url.searchParams.get("key") || ""
+    ).trim();
+
+  return (
+    (
+      Boolean(adminKey) &&
+      (
+        supplied === adminKey ||
+        queryKey === adminKey
+      )
+    ) ||
+    (
+      Boolean(pipelineKey) &&
+      (
+        supplied === pipelineKey ||
+        queryKey === pipelineKey
+      )
+    )
+  );
 }
 
 async function hmacHex(
