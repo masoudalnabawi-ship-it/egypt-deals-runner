@@ -1,8 +1,11 @@
-import type { JobMessage, V14Env } from './types';
+import type { DealCandidate, JobMessage, V14Env } from './types';
 import { getSettings } from './config';
 import { D1Repository } from './db';
 import { handleTelegramUpdate, runCycle } from './engine';
 import { setWebhook } from './telegram';
+import { acceptable, buildPriceProfile, evaluateDeal } from './intelligence';
+import { inspectDeal } from './shield';
+
 
 function json(data: unknown, status = 200): Response {
   return Response.json(data, { status, headers: { 'cache-control': 'no-store' } });
@@ -177,6 +180,413 @@ async function importNoonRoute(
     ok:true,
     route:"noon_normal_only",
     main_bot_access:true,
+  });
+}
+
+
+
+async function claimPlaywrightVerification(
+  request: Request,
+  env: V14Env,
+): Promise<Response> {
+  let body: any = {};
+
+  try {
+    body = await request.json();
+  } catch {}
+
+  const workerId =
+    String(
+      body?.worker_id ||
+      `gha-verify-${crypto.randomUUID().slice(0,8)}`
+    ).slice(0,80);
+
+  const repo =
+    new D1Repository(
+      env.egypt_deals_v14_db
+    );
+
+  /*
+   * GitHub Playwright now acts as the expensive
+   * rendered verifier for strong Amazon Ultra leads.
+   */
+  const row =
+    await repo.claimForVerification(
+      "amazon",
+      "ultra",
+      workerId,
+      300,
+    );
+
+  if (!row) {
+    return json({
+      ok:true,
+      job:null,
+    });
+  }
+
+  return json({
+    ok:true,
+    job:{
+      deal_key:row.deal_key,
+      external_id:row.external_id,
+      title:row.title,
+      url:row.url,
+      current_price:row.current_price,
+      old_price:row.old_price,
+      visible_discount:row.visible_discount,
+      category:row.category,
+      source:row.source,
+    },
+  });
+}
+
+
+async function completePlaywrightVerification(
+  request: Request,
+  env: V14Env,
+): Promise<Response> {
+  let body: any = {};
+
+  try {
+    body = await request.json();
+  } catch {
+    return json(
+      {ok:false,error:"invalid_json"},
+      400,
+    );
+  }
+
+  const dealKey =
+    String(body?.deal_key || "").trim();
+
+  const status =
+    String(body?.status || "").trim();
+
+  const repo =
+    new D1Repository(
+      env.egypt_deals_v14_db
+    );
+
+  const row =
+    await repo.findByPrefix(dealKey);
+
+  if (
+    !row ||
+    row.store !== "amazon"
+  ) {
+    return json(
+      {ok:false,error:"deal_not_found"},
+      404,
+    );
+  }
+
+  if (status !== "verified") {
+    const reason =
+      String(
+        body?.reason ||
+        "playwright_verification_failed"
+      ).slice(0,350);
+
+    await repo.markStrongRetry(
+      row.deal_key,
+      `playwright_verify:${reason}`,
+      900,
+      8,
+    );
+
+    return json({
+      ok:true,
+      state:"retry",
+    });
+  }
+
+  const current =
+    Number(body?.current_price || 0);
+
+  let old =
+    Number(body?.old_price || 0);
+
+  const savings =
+    Math.max(
+      0,
+      Math.min(
+        99,
+        Number(body?.savings_percent || 0)
+      )
+    );
+
+  const coupon =
+    Math.max(
+      0,
+      Math.min(
+        99,
+        Number(body?.coupon_percent || 0)
+      )
+    );
+
+  if (!(current > 0)) {
+    await repo.markStrongRetry(
+      row.deal_key,
+      "playwright_verify:no_live_current_price",
+      900,
+      8,
+    );
+
+    return json({
+      ok:true,
+      state:"retry",
+    });
+  }
+
+  const discoveredPrice =
+    Number(row.current_price || 0);
+
+  /*
+   * Price may improve, but a material increase means
+   * the old discovery snapshot is stale.
+   */
+  if (
+    discoveredPrice > 0 &&
+    current > discoveredPrice * 1.03
+  ) {
+    await repo.markStrongRetry(
+      row.deal_key,
+      "playwright_verify:live_price_increased",
+      900,
+      8,
+    );
+
+    return json({
+      ok:true,
+      state:"retry",
+    });
+  }
+
+  /*
+   * Amazon sometimes exposes savings % but hides the
+   * struck-through price. Derive the old price only
+   * from Amazon's LIVE rendered savings evidence.
+   */
+  if (
+    !(old > current) &&
+    savings >= 5 &&
+    savings <= 99
+  ) {
+    const derived =
+      current /
+      (1 - savings / 100);
+
+    if (
+      derived >= current * 1.05 &&
+      derived <= current * 105
+    ) {
+      old =
+        Math.round(
+          derived * 100
+        ) / 100;
+    }
+  }
+
+  if (
+    old > 0 &&
+    (
+      old <= current ||
+      old > current * 105
+    )
+  ) {
+    old = 0;
+  }
+
+  const incoming =
+    repo.rowToCandidate(row);
+
+  const verified: DealCandidate = {
+    ...incoming,
+    title:
+      String(body?.title || "").trim()
+      || incoming.title,
+    current_price:current,
+    old_price:
+      old > current
+        ? old
+        : null,
+    image_url:
+      String(body?.image_url || "").trim()
+      || incoming.image_url,
+  };
+
+  const history =
+    await repo.recentPrices(
+      row.deal_key
+    );
+
+  const profile =
+    buildPriceProfile(
+      history,
+      current
+    );
+
+  /*
+   * Three independent live signals:
+   * rendered product page + live price + live
+   * old/savings structure.
+   */
+  const signals =
+    old > current || savings >= 5
+      ? 3
+      : 2;
+
+  const meta: Record<string,unknown> = {
+    http_via:"github_playwright",
+    rendered_dom:true,
+    github_playwright_verified:true,
+    verification_signals:signals,
+    amazon_savings_percent:savings,
+    coupon_percent:coupon,
+    coupon_source:
+      coupon > 0
+        ? "explicit_product_coupon"
+        : "",
+  };
+
+  const shield =
+    inspectDeal(
+      incoming,
+      verified,
+      meta,
+      profile,
+    );
+
+  if (shield.hard_block) {
+    const reason =
+      `anti_fake:${shield.reasons.join(",")}`;
+
+    await repo.markRejected(
+      row.deal_key,
+      reason,
+    );
+
+    return json({
+      ok:true,
+      state:"rejected",
+      reason,
+    });
+  }
+
+  const settings =
+    getSettings(env);
+
+  const decision =
+    evaluateDeal(
+      settings,
+      verified,
+      {
+        verified:true,
+        coupon_percent:coupon,
+        history,
+        verification_signals:signals,
+        price_profile:profile,
+      },
+    );
+
+  const [ok, reason] =
+    acceptable(
+      settings,
+      decision,
+    );
+
+  if (!ok) {
+    /*
+     * If the live rendered page proves the deal has
+     * fallen below 10%, it is genuinely no longer
+     * worth sending.
+     */
+    await repo.markRejected(
+      row.deal_key,
+      reason,
+    );
+
+    return json({
+      ok:true,
+      state:"rejected",
+      reason,
+      discount:decision.real_discount,
+    });
+  }
+
+  /*
+   * Absolute Ultra rule remains unchanged.
+   */
+  if (
+    decision.real_discount >=
+      settings.ultra_hot_discount
+  ) {
+    decision.lane = "ultra";
+    decision.score = 100;
+  } else if (
+    decision.real_discount >=
+      settings.ultra_min_discount
+  ) {
+    decision.lane = "ultra";
+    decision.score =
+      Math.max(
+        decision.score,
+        94,
+      );
+  } else {
+    /*
+     * A lead discovered as Ultra but proven live below
+     * 65% is safely downgraded to Amazon Normal.
+     */
+    decision.lane = "normal";
+  }
+
+  const outMeta = {
+    ...(verified.metadata || {}),
+    ...meta,
+    decision_reasons:
+      decision.reasons,
+    verified_route:
+      decision.lane,
+    price_intelligence:
+      profile,
+    anti_fake_shield:{
+      risk_score:
+        shield.risk_score,
+      required_signals:
+        shield.required_signals,
+      reasons:
+        shield.reasons,
+    },
+  };
+
+  await repo.markVerified(
+    row.deal_key,
+    verified,
+    decision,
+    outMeta,
+  );
+
+  await repo.event(
+    "github_playwright_verified",
+    "amazon",
+    row.deal_key,
+    {
+      lane:decision.lane,
+      discount:
+        decision.real_discount,
+    },
+  );
+
+  return json({
+    ok:true,
+    state:"verified",
+    lane:decision.lane,
+    discount:
+      decision.real_discount,
+    confidence:
+      decision.confidence,
   });
 }
 
@@ -425,6 +835,40 @@ export default {
       url.pathname === "/internal/import-noon-route"
     ) {
       return importNoonRoute(request, env);
+    }
+
+    if (
+      request.method === "POST" &&
+      url.pathname === "/admin/playwright-verify/claim"
+    ) {
+      if (!adminAllowed(request, env)) {
+        return json(
+          {ok:false,error:"unauthorized"},
+          401,
+        );
+      }
+
+      return claimPlaywrightVerification(
+        request,
+        env,
+      );
+    }
+
+    if (
+      request.method === "POST" &&
+      url.pathname === "/admin/playwright-verify/complete"
+    ) {
+      if (!adminAllowed(request, env)) {
+        return json(
+          {ok:false,error:"unauthorized"},
+          401,
+        );
+      }
+
+      return completePlaywrightVerification(
+        request,
+        env,
+      );
     }
 
     if (
