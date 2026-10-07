@@ -8,10 +8,20 @@ import re
 import signal
 import time
 import uuid
-from urllib.parse import quote
+from urllib.parse import quote, urljoin
 
 import httpx
 from playwright.async_api import async_playwright
+
+try:
+    from curl_cffi import requests as cffi_requests
+except Exception:
+    cffi_requests = None
+
+try:
+    from bs4 import BeautifulSoup
+except Exception:
+    BeautifulSoup = None
 
 
 API_BASE = os.getenv(
@@ -99,21 +109,44 @@ NOON_MAX_PRODUCTS = max(
 # One rendered Noon search every few minutes.
 # Full category rotation completes without burst traffic.
 NOON_SURFACES = [
-    (
-        "mobiles",
-        "mobiles",
-        "mobile phones",
-    ),
-    (
-        "laptops",
-        "computers",
-        "laptops",
-    ),
-    (
-        "appliances",
-        "appliances",
-        "home appliances",
-    ),
+    ("mobiles", "mobiles", "mobile phones"),
+    ("laptops", "computers", "laptops"),
+    ("appliances", "appliances", "home appliances"),
+
+    ("tablets", "computers", "tablets"),
+    ("tvs", "electronics", "televisions"),
+    ("audio", "electronics", "headphones earbuds speakers"),
+    ("gaming", "electronics", "gaming"),
+    ("smartwatches", "electronics", "smart watches"),
+
+    ("mobile_accessories", "mobiles", "mobile accessories"),
+    ("computer_accessories", "computers", "computer accessories"),
+
+    ("kitchen", "kitchen", "kitchen appliances"),
+    ("small_appliances", "appliances", "small appliances"),
+    ("home", "home", "home decor"),
+    ("tools", "tools", "tools home improvement"),
+
+    ("beauty", "beauty", "beauty"),
+    ("personal_care", "beauty", "personal care"),
+
+    ("men_fashion", "fashion", "men fashion"),
+    ("women_fashion", "fashion", "women fashion"),
+    ("kids_fashion", "fashion", "kids fashion"),
+    ("shoes", "fashion", "shoes"),
+    ("bags", "fashion", "bags"),
+    ("watches", "fashion", "watches"),
+
+    ("sports", "sports", "sports fitness"),
+    ("toys", "toys", "toys"),
+    ("baby", "baby", "baby"),
+
+    ("grocery", "grocery", "grocery"),
+    ("coffee", "grocery", "coffee"),
+    ("detergents", "grocery", "detergent cleaning"),
+
+    ("automotive", "automotive", "car accessories"),
+    ("office", "office", "office supplies"),
 ]
 
 NOON_PUBLIC_URLS = {
@@ -1355,6 +1388,446 @@ def _noon_currency_values(
     return unique
 
 
+
+_NOON_V13_CFFI_SESSION = None
+
+
+def _noon_surface_url(
+    source: str,
+    query: str,
+) -> str:
+    """
+    V13 behavior:
+    use concrete Egypt category pages where known,
+    otherwise use the public Egypt search storefront.
+    """
+
+    direct = NOON_PUBLIC_URLS.get(source)
+
+    if direct:
+        return direct
+
+    return (
+        "https://www.noon.com/egypt-en/search/"
+        "?q="
+        + quote(str(query or ""))
+        + "&isCarouselView=false&limit=50"
+    )
+
+
+def _noon_v13_cffi_get(
+    url: str,
+) -> tuple[str, str]:
+    """
+    Restored V13 Noon transport.
+
+    Independent Chrome-like TLS transport first.
+    This is deliberately separate from Amazon.
+    """
+
+    global _NOON_V13_CFFI_SESSION
+
+    if cffi_requests is None:
+        raise RuntimeError(
+            "noon_curl_cffi_not_installed"
+        )
+
+    if _NOON_V13_CFFI_SESSION is None:
+        _NOON_V13_CFFI_SESSION = (
+            cffi_requests.Session(
+                impersonate="chrome"
+            )
+        )
+
+    response = (
+        _NOON_V13_CFFI_SESSION.get(
+            url,
+            headers={
+                "accept":
+                    "text/html,"
+                    "application/xhtml+xml,"
+                    "application/xml;q=0.9,"
+                    "*/*;q=0.8",
+
+                "accept-language":
+                    "en-EG,en;q=0.9,"
+                    "ar-EG;q=0.8,ar;q=0.7",
+
+                "referer":
+                    "https://www.noon.com/egypt-en/",
+
+                "x-locale":
+                    "en-eg",
+
+                "x-platform":
+                    "web",
+
+                "x-mp":
+                    "noon",
+
+                "x-mp-country":
+                    "eg",
+
+                "x-country-code":
+                    "eg",
+            },
+            timeout=25,
+            allow_redirects=True,
+        )
+    )
+
+    text = response.text or ""
+
+    if response.status_code != 200:
+        raise RuntimeError(
+            "noon_v13_cffi_http_"
+            + str(response.status_code)
+        )
+
+    low = text.lower()
+
+    if any(
+        marker in low
+        for marker in (
+            "access denied",
+            "captcha",
+            "robot check",
+            "unusual traffic",
+        )
+    ):
+        raise RuntimeError(
+            "noon_v13_cffi_protected"
+        )
+
+    if len(text) < 800:
+        raise RuntimeError(
+            "noon_v13_cffi_empty"
+        )
+
+    if not (
+        re.search(
+            r"/[a-z0-9-]{5,30}/p/?",
+            low,
+            re.IGNORECASE,
+        )
+        or '"sku"' in low
+        or '"catalog_sku"' in low
+        or "productcard" in low
+        or "product-box" in low
+    ):
+        raise RuntimeError(
+            "noon_v13_cffi_no_product_evidence"
+        )
+
+    return (
+        text,
+        str(response.url or url),
+    )
+
+
+def _noon_refs_from_html(
+    text: str,
+) -> list[dict]:
+
+    if BeautifulSoup is None:
+        raise RuntimeError(
+            "beautifulsoup_not_installed"
+        )
+
+    soup = BeautifulSoup(
+        text or "",
+        "html.parser",
+    )
+
+    out = []
+    seen = set()
+
+    for link in soup.select(
+        "a[href*='/p/']"
+    ):
+        href = str(
+            link.get("href")
+            or ""
+        ).strip()
+
+        if not href:
+            continue
+
+        absolute = urljoin(
+            "https://www.noon.com",
+            href,
+        )
+
+        if not (
+            "/egypt-en/" in absolute
+            or "/egypt-ar/" in absolute
+        ):
+            continue
+
+        match = re.search(
+            r"/([A-Z0-9-]{5,30})/p/"
+            r"?(?:[?#]|$)",
+            absolute,
+            re.IGNORECASE,
+        )
+
+        if not match:
+            continue
+
+        sku = match.group(1).upper()
+
+        if sku in seen:
+            continue
+
+        card = link
+
+        for _ in range(8):
+            parent = getattr(
+                card,
+                "parent",
+                None,
+            )
+
+            if parent is None:
+                break
+
+            candidate_text = (
+                parent.get_text(
+                    "\n",
+                    strip=True,
+                )
+            )
+
+            if (
+                20 <= len(candidate_text) <= 2200
+                and re.search(
+                    r"EGP|جنيه|ج\.?\s*م|%|off|خصم",
+                    candidate_text,
+                    re.IGNORECASE,
+                )
+            ):
+                card = parent
+
+            else:
+                card = parent
+
+        card_text = card.get_text(
+            "\n",
+            strip=True,
+        )
+
+        if not re.search(
+            r"EGP|جنيه|ج\.?\s*م",
+            card_text,
+            re.IGNORECASE,
+        ):
+            continue
+
+        img = link.find("img")
+
+        if img is None:
+            try:
+                img = card.find("img")
+            except Exception:
+                img = None
+
+        title = str(
+            link.get("aria-label")
+            or link.get("title")
+            or (
+                img.get("alt")
+                if img is not None
+                else ""
+            )
+            or ""
+        ).strip()
+
+        if not title:
+            for line in card_text.splitlines():
+                line = line.strip()
+
+                if (
+                    len(line) >= 5
+                    and not re.match(
+                        r"^(?:EGP|جنيه)",
+                        line,
+                        re.IGNORECASE,
+                    )
+                ):
+                    title = line
+                    break
+
+        if len(title) < 5:
+            continue
+
+        image_url = ""
+
+        if img is not None:
+            image_url = str(
+                img.get("src")
+                or img.get("data-src")
+                or img.get("data-lazy-src")
+                or ""
+            )
+
+        seen.add(sku)
+
+        out.append({
+            "sku":
+                sku,
+
+            "url":
+                absolute,
+
+            "title":
+                title[:300],
+
+            "text":
+                card_text[:2500],
+
+            "image_url":
+                image_url,
+        })
+
+        if len(out) >= 50:
+            break
+
+    return out
+
+
+async def discover_noon_v13_transport(
+    context,
+    client: httpx.AsyncClient,
+    cursor: int,
+) -> dict:
+    """
+    V13 Noon ladder:
+      1. curl_cffi Chrome impersonation
+      2. existing Playwright fallback
+
+    Results still enter V14 through /admin/noon-ingest,
+    so routing/DB/dedup remain V14.
+    """
+
+    source, category, query = (
+        NOON_SURFACES[
+            cursor
+            % len(NOON_SURFACES)
+        ]
+    )
+
+    url = _noon_surface_url(
+        source,
+        query,
+    )
+
+    started = time.monotonic()
+
+    try:
+        html_text, final_url = (
+            await asyncio.to_thread(
+                _noon_v13_cffi_get,
+                url,
+            )
+        )
+
+        refs = _noon_refs_from_html(
+            html_text
+        )
+
+        if not refs:
+            raise RuntimeError(
+                "noon_v13_cffi_zero_products"
+            )
+
+        deals = []
+
+        for ref in refs[
+            :NOON_MAX_PRODUCTS
+        ]:
+            candidate = (
+                _noon_card_candidate(
+                    ref,
+                    source,
+                    category,
+                )
+            )
+
+            if candidate is not None:
+                deals.append(candidate)
+
+        latency_ms = int(
+            (
+                time.monotonic()
+                - started
+            )
+            * 1000
+        )
+
+        result = await api_post(
+            client,
+            "/admin/noon-ingest",
+            {
+                "source":
+                    source,
+
+                "category":
+                    category,
+
+                "seen":
+                    len(refs),
+
+                "latency_ms":
+                    latency_ms,
+
+                "deals":
+                    deals,
+
+                "error":
+                    "",
+            },
+        )
+
+        return {
+            "mode":
+                "v13_curl_cffi",
+
+            "source":
+                source,
+
+            "url":
+                final_url,
+
+            "seen":
+                len(refs),
+
+            "deals":
+                len(deals),
+
+            "queued":
+                result.get(
+                    "queued",
+                    0,
+                ),
+        }
+
+    except Exception as exc:
+        print(
+            "NOON_V13_CFFI_FALLBACK",
+            source,
+            type(exc).__name__,
+            str(exc),
+            flush=True,
+        )
+
+        # Existing V14 browser path remains the fallback.
+        return await discover_noon_rendered(
+            context,
+            client,
+            cursor,
+        )
+
+
 def _noon_card_candidate(
     ref: dict,
     source: str,
@@ -2526,7 +2999,7 @@ async def main() -> None:
                 ):
                     try:
                         noon_result = (
-                            await discover_noon_rendered(
+                            await discover_noon_v13_transport(
                                 context,
                                 client,
                                 noon_cursor,
