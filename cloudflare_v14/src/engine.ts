@@ -394,24 +394,75 @@ export async function runCycle(env: V14Env, settings: Settings): Promise<Record<
   return result;
 }
 
-function callbackAllowed(env: V14Env, chatId: string): boolean {
+async function callbackAllowed(
+  env: V14Env,
+  repo: D1Repository,
+  chatId: string,
+): Promise<boolean> {
   const allowed = new Set([
-    String(env.V13_NORMAL_REVIEW_CHAT_ID || env.REVIEW_CHAT_ID || env.AMAZON_NORMAL_REVIEW_CHAT_ID || ''),
-    String(env.V13_ULTRA_REVIEW_CHAT_ID || env.AMAZON_REVIEW_GROUP_ID || ''),
-    String(env.NOON_REVIEW_BOT_CHAT_ID || env.NOON_NORMAL_REVIEW_CHAT_ID || ''),
+    String(
+      env.V13_NORMAL_REVIEW_CHAT_ID ||
+      env.REVIEW_CHAT_ID ||
+      env.AMAZON_NORMAL_REVIEW_CHAT_ID ||
+      ""
+    ),
+    String(
+      env.V13_ULTRA_REVIEW_CHAT_ID ||
+      env.AMAZON_REVIEW_GROUP_ID ||
+      ""
+    ),
+    String(
+      env.NOON_REVIEW_BOT_CHAT_ID ||
+      env.NOON_NORMAL_REVIEW_CHAT_ID ||
+      ""
+    ),
   ].filter(Boolean));
-  return Boolean(chatId && allowed.has(chatId));
+
+  const runtimeNoonChat =
+    await repo.counterGet("noon_review_chat_id");
+
+  if (runtimeNoonChat) {
+    allowed.add(String(runtimeNoonChat));
+  }
+
+  return Boolean(
+    chatId &&
+    allowed.has(chatId)
+  );
 }
 
 export async function handleTelegramUpdate(env: V14Env, route: 'main'|'noon', update: any): Promise<Response> {
   const cb = update?.callback_query;
   if (!cb) return new Response('ok');
-  const message = cb.message || {}; const chatId = String(message?.chat?.id || '');
-  const token = tokenForWebhook(env, route); const cbId = String(cb.id || '');
-  if (!callbackAllowed(env, chatId)) { await answerCallback(token, cbId, 'غير مصرح', true); return new Response('ok'); }
-  const parts = String(cb.data || '').split(':'); if (parts.length !== 3 || parts[0] !== 'v14') return new Response('ok');
+  const message = cb.message || {};
+  const chatId = String(message?.chat?.id || "");
+  const token = tokenForWebhook(env, route);
+  const cbId = String(cb.id || "");
+
+  const repo =
+    new D1Repository(env.egypt_deals_v14_db);
+
+  if (!(await callbackAllowed(env, repo, chatId))) {
+    await answerCallback(
+      token,
+      cbId,
+      "غير مصرح",
+      true,
+    );
+    return new Response("ok");
+  }
+
+  const parts =
+    String(cb.data || "").split(":");
+
+  if (
+    parts.length !== 3 ||
+    parts[0] !== "v14"
+  ) {
+    return new Response("ok");
+  }
+
   const [_, action, shortKey] = parts;
-  const repo = new D1Repository(env.egypt_deals_v14_db);
   const row = await repo.findByPrefix(shortKey);
   if (!row) { await answerCallback(token, cbId, 'العرض غير موجود في قاعدة V14', true); return new Response('ok'); }
 
@@ -427,7 +478,7 @@ export async function handleTelegramUpdate(env: V14Env, route: 'main'|'noon', up
       if (reviewed > 0 && freshPrice > reviewed * 1.02) { await answerCallback(token, cbId, 'السعر ارتفع منذ المراجعة؛ لم يتم النشر', true); return new Response('ok'); }
       const publicRow: DealRow = { ...row, title: fresh.title || row.title, url: fresh.url || row.url, image_url: fresh.image_url || row.image_url,
         current_price: freshPrice || reviewed, old_price: fresh.old_price ?? row.old_price };
-      await sendPublic(env, publicRow, action === 'u');
+      await sendPublic(env, publicRow, action === 'u', repo);
       await repo.event('manual_publish', row.store, row.deal_key, {urgent: action === 'u'});
       await answerCallback(token, cbId, action === 'u' ? 'تم النشر العاجل 🚀' : 'تم النشر ✅');
     } catch (e) {

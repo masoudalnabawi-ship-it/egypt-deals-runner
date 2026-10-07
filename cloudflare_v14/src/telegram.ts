@@ -284,7 +284,16 @@ export async function sendReview(
   }
 
   const token = reviewToken(env, row);
-  const chatId = reviewChat(env, row);
+  let chatId = reviewChat(env, row);
+
+  if (row.store === "noon" && !chatId) {
+    const runtimeNoonChat =
+      await repo.counterGet("noon_review_chat_id");
+
+    if (runtimeNoonChat) {
+      chatId = String(runtimeNoonChat);
+    }
+  }
 
   if (!token) {
     throw new Error(
@@ -366,9 +375,23 @@ export async function sendReview(
   );
 }
 
-export async function sendPublic(env: V14Env, row: DealRow, urgent = false): Promise<any> {
+export async function sendPublic(
+  env: V14Env,
+  row: DealRow,
+  urgent = false,
+  repo?: D1Repository,
+): Promise<any> {
   const token = String(env.TELEGRAM_BOT_TOKEN || "").trim();
-  const chatId = publicChat(env, row);
+  let chatId = publicChat(env, row);
+
+  if (row.store === "noon" && !chatId && repo) {
+    const runtimeNoonChat =
+      await repo.counterGet("noon_review_chat_id");
+
+    if (runtimeNoonChat) {
+      chatId = String(runtimeNoonChat);
+    }
+  }
   if (!token) throw new Error("TELEGRAM_BOT_TOKEN_missing");
   if (!chatId) throw new Error(`telegram_public_chat_missing:${row.store}`);
   const prefix = urgent ? "🚀 <b>نشر عاجل</b>\n\n" : "✅ <b>عرض معتمد</b>\n\n";
