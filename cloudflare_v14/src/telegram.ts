@@ -304,6 +304,33 @@ export async function sendReview(
   const token = reviewToken(env, row);
   let chatId = reviewChat(env, row);
 
+  /*
+   * HARD AMAZON ROUTE ISOLATION
+   *
+   * A Normal Amazon offer must NEVER enter the
+   * SUPER ULTRA ALERTS destination.
+   */
+  if (
+    row.store === "amazon" &&
+    row.lane === "normal"
+  ) {
+    const normalRoute =
+      normalChatId(env);
+
+    const ultraRoute =
+      ultraChatId(env);
+
+    if (
+      normalRoute &&
+      ultraRoute &&
+      normalRoute === ultraRoute
+    ) {
+      throw new Error(
+        "HARD_ROUTE_BLOCK:amazon_normal_points_to_ultra"
+      );
+    }
+  }
+
   if (row.store === "noon" && !chatId) {
     const runtimeNoonChat =
       await repo.counterGet("noon_review_chat_id");
@@ -331,10 +358,17 @@ export async function sendReview(
   const keys = keyboard(row);
 
   /*
-   * AMAZON REVIEW:
-   * Prefer a REAL rendered product-page screenshot.
+   * AMAZON ULTRA:
+   * A REAL Amazon product-page screenshot is mandatory.
+   *
+   * If Browser Run is temporarily unavailable, delivery
+   * retries later. We never disguise a product image as
+   * an Ultra screenshot.
    */
-  if (row.store === "amazon") {
+  if (
+    row.store === "amazon" &&
+    row.lane === "ultra"
+  ) {
     const shot =
       await amazonScreenshot(
         env,
@@ -343,22 +377,23 @@ export async function sendReview(
         row,
       );
 
-    if (shot) {
-      try {
-        return await sendPhotoBytes(
-          token,
-          chatId,
-          shot,
-          cap,
-          keys,
-        );
-      } catch {}
+    if (!shot) {
+      throw new Error(
+        "ULTRA_REAL_SCREENSHOT_REQUIRED"
+      );
     }
+
+    return await sendPhotoBytes(
+      token,
+      chatId,
+      shot,
+      cap,
+      keys,
+    );
   }
 
   /*
-   * Safe fallback:
-   * product image if screenshot is temporarily unavailable.
+   * Amazon Normal may use its normal product image.
    */
   const image =
     String(row.image_url || "").trim();
