@@ -406,16 +406,28 @@ async function completePlaywrightVerification(
     Math.abs(current - discoveredPrice)
       / discoveredPrice <= 0.015;
 
-  let crossPageProof = false;
-
-  if (
-    !(old > current) &&
-    liveCurrentMatchesDiscovery &&
-    discoveryOld > current
-  ) {
-    old = discoveryOld;
-    crossPageProof = true;
-  }
+  /*
+   * IMPORTANT ULTRA SAFETY RULE
+   *
+   * A matching current price on Amazon is useful
+   * corroboration, but it is NOT proof that the
+   * discovery old price belongs to the currently
+   * selected offer/variant.
+   *
+   * Therefore discoveryOld is audit-only here.
+   * It must never become the verified old_price.
+   *
+   * Ultra must be proven by the rendered product page:
+   * - live struck/list price, or
+   * - live Amazon savings percentage, or
+   * - explicit product coupon.
+   */
+  const crossPageProof =
+    Boolean(
+      !(old > current) &&
+      liveCurrentMatchesDiscovery &&
+      discoveryOld > current
+    );
 
   /*
    * Amazon sometimes exposes savings % but hides the
