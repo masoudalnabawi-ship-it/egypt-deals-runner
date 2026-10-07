@@ -6,6 +6,7 @@ import { setWebhook } from './telegram';
 import { acceptable, buildPriceProfile, evaluateDeal, preliminaryDecision } from './intelligence';
 import { inspectDeal } from './shield';
 import { nearDuplicateGuard } from './quality';
+import { rankVerifiedDeal } from './ranking';
 
 
 function json(data: unknown, status = 200): Response {
@@ -836,6 +837,30 @@ async function completePlaywrightVerification(
     decision.lane = "normal";
   }
 
+  /*
+   * Ranking V3 runs only AFTER all live-price,
+   * anti-fake and lane gates have passed.
+   * It changes queue priority, never eligibility.
+   */
+  const rankingV3 =
+    rankVerifiedDeal({
+      store:"amazon",
+      lane:decision.lane,
+      liveDiscount:
+        verifiedLiveDiscount,
+      confidence:
+        decision.confidence,
+      decisionScore:
+        decision.score,
+      profile,
+      discoveredAt:
+        Number(row.discovered_at || 0),
+      flash:
+        Boolean(decision.flash),
+      couponPercent:
+        coupon,
+    });
+
   const outMeta = {
     ...(verified.metadata || {}),
     ...meta,
@@ -858,6 +883,10 @@ async function completePlaywrightVerification(
 
     price_intelligence:
       profile,
+
+    ranking_v3:
+      rankingV3,
+
     anti_fake_shield:{
       risk_score:
         shield.risk_score,
@@ -886,6 +915,40 @@ async function completePlaywrightVerification(
     },
   );
 
+  await repo.event(
+    "ranking_v3_verified",
+    "amazon",
+    row.deal_key,
+    {
+      tier:
+        rankingV3.tier,
+      strike_score:
+        rankingV3.strike_score,
+      historical_label:
+        rankingV3.historical_label,
+      historical_rarity_score:
+        rankingV3.historical_rarity_score,
+      fast_strike:
+        rankingV3.fast_strike,
+    },
+  );
+
+  if (rankingV3.fast_strike) {
+    await repo.event(
+      "fast_strike_ready",
+      "amazon",
+      row.deal_key,
+      {
+        strike_score:
+          rankingV3.strike_score,
+        discount:
+          verifiedLiveDiscount,
+        source:
+          row.source,
+      },
+    );
+  }
+
   if (exceptional80Live) {
     await repo.event(
       "amazon_exceptional_verified",
@@ -912,6 +975,12 @@ async function completePlaywrightVerification(
       decision.real_discount,
     confidence:
       decision.confidence,
+    strike_score:
+      rankingV3.strike_score,
+    fast_strike:
+      rankingV3.fast_strike,
+    historical_label:
+      rankingV3.historical_label,
   });
 }
 
@@ -1482,6 +1551,7 @@ export default {
         status:'ok',
         mode:'cloudflare',
         intelligence:'deal-intelligence-v2',
+        ranking:'ranking-v3',
         policy:{
           amazon_ultra_min:65,
           amazon_hot_min:75,
@@ -1499,6 +1569,9 @@ export default {
           amazon_tier1_min:75,
           near_duplicate_guard:true,
           source_outcome_learning:true,
+          ranking:"ranking-v3",
+          historical_rarity:true,
+          fast_strike:true,
         },
         stats:await repo.stats(),
         browser_ms_today:

@@ -1,7 +1,8 @@
 import { strict as assert } from 'node:assert';
-import { evaluateDeal, acceptable, preliminaryDecision } from '../src/intelligence';
+import { evaluateDeal, acceptable, preliminaryDecision, buildPriceProfile } from '../src/intelligence';
 import { getSettings } from '../src/config';
 import { dealQualityBand, nearDuplicateGuard } from '../src/quality';
+import { rankVerifiedDeal } from '../src/ranking';
 import type { DealCandidate, DealRow, Settings } from '../src/types';
 
 const settings: Settings = {
@@ -102,5 +103,52 @@ assert.equal(clearlyBetter.duplicate,false);
 const band =
   dealQualityBand(currentRow);
 assert.equal(band.code,'elite');
+
+const rarityProfile =
+  buildPriceProfile(
+    [600,580,620,610,590],
+    250,
+  );
+
+const ranking =
+  rankVerifiedDeal({
+    store:'amazon',
+    lane:'ultra',
+    liveDiscount:75,
+    confidence:0.90,
+    decisionScore:100,
+    profile:rarityProfile,
+    discoveredAt:800,
+    nowTs:1000,
+  });
+
+assert.equal(ranking.tier,1);
+assert.equal(
+  ranking.historical_label,
+  'new_verified_low',
+);
+assert.ok(
+  ranking.historical_rarity_score >= 10
+);
+assert.ok(ranking.strike_score >= 82);
+assert.equal(ranking.fast_strike,true);
+
+const slowerTier2 =
+  rankVerifiedDeal({
+    store:'amazon',
+    lane:'ultra',
+    liveDiscount:68,
+    confidence:0.82,
+    decisionScore:94,
+    profile:buildPriceProfile([],450),
+    discoveredAt:800,
+    nowTs:1000,
+  });
+
+assert.equal(slowerTier2.tier,2);
+assert.equal(
+  slowerTier2.fast_strike,
+  false,
+);
 
 console.log('V14_CLOUDFLARE_CORE_SELFTEST_PASS');

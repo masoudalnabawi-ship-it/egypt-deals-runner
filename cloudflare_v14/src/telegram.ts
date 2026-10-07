@@ -8,6 +8,43 @@ function readMeta(row: DealRow): Record<string, unknown> {
   try { const x = JSON.parse(row.metadata_json || "{}"); return x && typeof x === "object" ? x : {}; } catch { return {}; }
 }
 
+function rankingMeta(
+  row: DealRow,
+): Record<string, unknown> {
+  const meta =
+    readMeta(row);
+
+  const ranking =
+    meta.ranking_v3;
+
+  return ranking &&
+    typeof ranking === "object"
+      ? ranking as Record<string, unknown>
+      : {};
+}
+
+function historicalLabelAr(
+  value: string,
+): string {
+  if (value === "new_verified_low") {
+    return "أدنى سعر موثق جديد";
+  }
+
+  if (value === "strong_historical") {
+    return "هبوط تاريخي قوي";
+  }
+
+  if (value === "near_historical_low") {
+    return "قريب من أدنى سعر تاريخي";
+  }
+
+  if (value === "mature_history") {
+    return "تاريخ سعري موثوق";
+  }
+
+  return "";
+}
+
 function reviewToken(env: V14Env, row: DealRow): string {
   if (row.store === "noon") return String(env.NOON_REVIEW_BOT_TOKEN || env.TELEGRAM_BOT_TOKEN || "").trim();
   return String(env.TELEGRAM_BOT_TOKEN || "").trim();
@@ -51,6 +88,17 @@ function caption(row: DealRow): string {
   const external = htmlEscape(String(row.external_id || ""));
   const category = htmlEscape(String(row.category || "")).slice(0, 70);
   const quality = dealQualityBand(row);
+  const ranking = rankingMeta(row);
+  const strikeScore =
+    Number(ranking.strike_score || 0);
+  const fastStrike =
+    Boolean(ranking.fast_strike);
+  const historicalAr =
+    historicalLabelAr(
+      String(
+        ranking.historical_label || ""
+      )
+    );
   const lines = [
     `${icon} <b>V14 ${laneAr} • ${store}</b>`, "", `🛒 <b>${title}</b>`, "",
     `💰 <b>السعر الآن:</b> ${current.toLocaleString("en-US", {minimumFractionDigits: 2, maximumFractionDigits: 2})} ج.م`,
@@ -75,6 +123,25 @@ function caption(row: DealRow): string {
       `🚀 <b>الأولوية:</b> Tier-1 (75%+)`
     );
   }
+
+  if (strikeScore > 0) {
+    lines.push(
+      `⚡ <b>Strike Rank:</b> ${strikeScore.toFixed(1)}/100`
+    );
+  }
+
+  if (fastStrike) {
+    lines.push(
+      `🏎 <b>Fast-Strike:</b> جاهز للأولوية السريعة`
+    );
+  }
+
+  if (historicalAr) {
+    lines.push(
+      `📊 <b>السعر التاريخي:</b> ${historicalAr}`
+    );
+  }
+
   if (external) lines.push(`🆔 <b>${isAmazon ? "ASIN" : "SKU"}:</b> <code>${external}</code>`);
   if (category) lines.push(`📂 <b>القسم:</b> ${category}`);
   return lines.join("\n");

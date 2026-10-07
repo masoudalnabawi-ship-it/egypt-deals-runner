@@ -493,11 +493,51 @@ export class D1Repository {
         AND next_attempt_at<=?
         AND (lease_until=0 OR lease_until<?)
       ORDER BY
+        /*
+         * RANKING_V3
+         *
+         * Tier-1 (verified live >=75%) always stays
+         * ahead of Tier-2 (65-74%).
+         */
         CASE
           WHEN lane='ultra'
-          THEN real_discount
-          ELSE score
+            AND real_discount>=75
+          THEN 3
+
+          WHEN lane='ultra'
+          THEN 2
+
+          ELSE 1
         END DESC,
+
+        COALESCE(
+          CAST(
+            json_extract(
+              metadata_json,
+              '$.ranking_v3.strike_score'
+            ) AS REAL
+          ),
+          score,
+          0
+        ) DESC,
+
+        CASE
+          WHEN verified_at >=
+            CAST(strftime('%s','now') AS INTEGER)-900
+          THEN 3
+
+          WHEN verified_at >=
+            CAST(strftime('%s','now') AS INTEGER)-3600
+          THEN 2
+
+          WHEN verified_at >=
+            CAST(strftime('%s','now') AS INTEGER)-21600
+          THEN 1
+
+          ELSE 0
+        END DESC,
+
+        real_discount DESC,
         confidence DESC,
         verified_at ASC
       LIMIT 1
