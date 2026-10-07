@@ -101,8 +101,24 @@ async function amazonScreenshot(
   const counterKey = `browser_ms:${day}`;
   const used = await repo.counterGet(counterKey);
 
-  // Keep a safety reserve instead of exhausting the daily Browser budget.
-  if (used >= settings.browser_daily_budget_ms * 0.90) {
+  /*
+   * Browser budget policy:
+   * - normal Amazon screenshots stop at 90%
+   * - Ultra may use the reserve until 98%
+   *
+   * This gives the most important deals the real
+   * Amazon-page screenshot first.
+   */
+  const screenshotBudgetRatio =
+    row.lane === "ultra"
+      ? 0.98
+      : 0.90;
+
+  if (
+    used >=
+    settings.browser_daily_budget_ms *
+      screenshotBudgetRatio
+  ) {
     return null;
   }
 

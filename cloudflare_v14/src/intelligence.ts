@@ -103,7 +103,7 @@ export function evaluateDeal(
 ): DealDecision {
   const current = Math.max(0, Number(deal.current_price || 0));
   const old = Number(deal.old_price || 0);
-  const coupon = clamp(Number(opts.coupon_percent || 0), 0, 90);
+  const coupon = clamp(Number(opts.coupon_percent || 0), 0, 99);
   const effective = current ? round2(current * (1 - coupon / 100)) : 0;
   const visible = discountPercent(deal);
   const effectiveDiscount = old > effective && effective > 0 ? round2(((old - effective) / old) * 100) : visible;

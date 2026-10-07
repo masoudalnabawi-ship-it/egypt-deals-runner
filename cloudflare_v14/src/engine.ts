@@ -372,6 +372,11 @@ async function verifyOne(env: V14Env, repo: D1Repository, settings: Settings): P
   }
   if (!row) return null;
 
+  const discoveryStrongUltra =
+    row.store === 'amazon' &&
+    Number(row.visible_discount || 0)
+      >= settings.ultra_min_discount;
+
   try {
     const incoming = repo.rowToCandidate(row);
     const { deal: verified, meta } = await verifyRow(env, repo, settings, row);
@@ -399,8 +404,52 @@ async function verifyOne(env: V14Env, repo: D1Repository, settings: Settings): P
       cross_store_store: cross.row?.store || null,
       cross_store_similarity: cross.similarity,
     });
-    const [ok, reason] = acceptable(settings, decision);
-    if (!ok) { await repo.markRejected(row.deal_key, reason); return { deal: row.deal_key.slice(0,10), state:'rejected', reason }; }
+    const [ok, reason] =
+      acceptable(settings, decision);
+
+    if (!ok) {
+      /*
+       * A discovery >=65% with incomplete live evidence
+       * is not automatically fake.
+       *
+       * Retry it with increasing delay.
+       */
+      if (
+        discoveryStrongUltra &&
+        [
+          'discount_below_normal_threshold',
+          'normal_confidence_low',
+          'ultra_confidence_low',
+        ].includes(reason)
+      ) {
+        const retryReason =
+          `strong_ultra_inconclusive:${reason}`;
+
+        await repo.markStrongRetry(
+          row.deal_key,
+          retryReason,
+          1800,
+          8,
+        );
+
+        return {
+          deal: row.deal_key.slice(0,10),
+          state: 'retry',
+          reason: retryReason,
+        };
+      }
+
+      await repo.markRejected(
+        row.deal_key,
+        reason,
+      );
+
+      return {
+        deal: row.deal_key.slice(0,10),
+        state:'rejected',
+        reason
+      };
+    }
 
     const signals = Number(meta.verification_signals || 0);
     const requiredSignals = Math.max(2, shield.required_signals);
@@ -410,15 +459,35 @@ async function verifyOne(env: V14Env, repo: D1Repository, settings: Settings): P
       if (!decision.reasons.includes('noon_normal_only')) decision.reasons.push('noon_normal_only');
     } else if (decision.real_discount >= settings.ultra_hot_discount) {
       if (!(signals >= requiredSignals && decision.confidence >= settings.min_confidence_ultra)) {
-        await repo.markRejected(row.deal_key, 'amazon_75_needs_stronger_verification');
-        return { deal: row.deal_key.slice(0,10), state:'rejected', reason:'amazon_75_needs_stronger_verification' };
+        await repo.markStrongRetry(
+          row.deal_key,
+          'amazon_75_needs_stronger_verification',
+          1800,
+          8,
+        );
+
+        return {
+          deal: row.deal_key.slice(0,10),
+          state:'retry',
+          reason:'amazon_75_needs_stronger_verification'
+        };
       }
       decision.lane = 'ultra'; decision.score = 100; hot = true;
       if (!decision.reasons.includes('amazon_ultra_max_75')) decision.reasons.push('amazon_ultra_max_75');
     } else if (decision.real_discount >= settings.ultra_min_discount) {
       if (!(signals >= requiredSignals && decision.confidence >= settings.min_confidence_ultra)) {
-        await repo.markRejected(row.deal_key, 'amazon_65_needs_stronger_verification');
-        return { deal: row.deal_key.slice(0,10), state:'rejected', reason:'amazon_65_needs_stronger_verification' };
+        await repo.markStrongRetry(
+          row.deal_key,
+          'amazon_65_needs_stronger_verification',
+          1800,
+          8,
+        );
+
+        return {
+          deal: row.deal_key.slice(0,10),
+          state:'retry',
+          reason:'amazon_65_needs_stronger_verification'
+        };
       }
       decision.lane = 'ultra'; decision.score = Math.max(decision.score, 94);
       if (!decision.reasons.includes('amazon_ultra_65')) decision.reasons.push('amazon_ultra_65');
@@ -437,12 +506,80 @@ async function verifyOne(env: V14Env, repo: D1Repository, settings: Settings): P
     return { deal: row.deal_key.slice(0,10), state:'verified', store: verified.store, lane: decision.lane, discount: decision.real_discount, confidence: decision.confidence, score: decision.score };
   } catch (e) {
     if (e instanceof VerificationRejected) {
-      await repo.markRejected(row.deal_key, e.message);
-      return { deal: row.deal_key.slice(0,10), state:'rejected', reason:e.message };
+      const reason = e.message;
+
+      const technicalStrongFailure =
+        discoveryStrongUltra &&
+        (
+          reason.startsWith('browser_') ||
+          reason === 'amazon_protected' ||
+          reason === 'amazon_no_live_price' ||
+          reason === 'amazon_browser_no_price'
+        );
+
+      if (technicalStrongFailure) {
+        const baseDelay =
+          (
+            reason.includes('429') ||
+            reason.includes('budget')
+          )
+            ? 3600
+            : 1800;
+
+        await repo.markStrongRetry(
+          row.deal_key,
+          reason,
+          baseDelay,
+          8,
+        );
+
+        return {
+          deal: row.deal_key.slice(0,10),
+          state:'retry',
+          reason
+        };
+      }
+
+      await repo.markRejected(
+        row.deal_key,
+        reason
+      );
+
+      return {
+        deal: row.deal_key.slice(0,10),
+        state:'rejected',
+        reason
+      };
     }
-    const reason = `${e instanceof Error ? e.name : 'Error'}:${e instanceof Error ? e.message : String(e)}`;
-    await repo.markRetry(row.deal_key, reason, settings.retry_base_seconds, settings.max_attempts);
-    return { deal: row.deal_key.slice(0,10), state:'retry', reason };
+
+    const reason =
+      `${e instanceof Error ? e.name : 'Error'}:${
+        e instanceof Error
+          ? e.message
+          : String(e)
+      }`;
+
+    if (discoveryStrongUltra) {
+      await repo.markStrongRetry(
+        row.deal_key,
+        reason,
+        1800,
+        8,
+      );
+    } else {
+      await repo.markRetry(
+        row.deal_key,
+        reason,
+        settings.retry_base_seconds,
+        settings.max_attempts,
+      );
+    }
+
+    return {
+      deal: row.deal_key.slice(0,10),
+      state:'retry',
+      reason
+    };
   }
 }
 

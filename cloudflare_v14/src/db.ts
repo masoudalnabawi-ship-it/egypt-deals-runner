@@ -179,6 +179,67 @@ export class D1Repository {
     `).bind(attempts, now + delay, reason.slice(0, 500), now, key).run();
   }
 
+  async markStrongRetry(
+    key: string,
+    reason: string,
+    baseSeconds = 1800,
+    maxAttempts = 8,
+  ): Promise<void> {
+
+    const row =
+      await this.db.prepare(
+        "SELECT attempts FROM deals WHERE deal_key=?"
+      )
+      .bind(key)
+      .first<{attempts: number}>();
+
+    const attempts =
+      Number(row?.attempts || 0) + 1;
+
+    if (attempts >= maxAttempts) {
+      await this.markRejected(
+        key,
+        `strong_candidate_max_attempts:${reason}`
+      );
+      return;
+    }
+
+    /*
+     * Strong Ultra candidates survive temporary Amazon /
+     * Browser failures for hours instead of being killed
+     * after a few minutes.
+     */
+    const delay =
+      Math.min(
+        21600,
+        Math.max(
+          300,
+          baseSeconds *
+            (2 ** Math.max(0, attempts - 1))
+        )
+      );
+
+    const now = nowTs();
+
+    await this.db.prepare(`
+      UPDATE deals SET
+        state='retry',
+        attempts=?,
+        next_attempt_at=?,
+        last_error=?,
+        updated_at=?,
+        lease_owner=NULL,
+        lease_until=0
+      WHERE deal_key=?
+    `).bind(
+      attempts,
+      now + delay,
+      reason.slice(0,500),
+      now,
+      key,
+    ).run();
+  }
+
   async claimForDelivery(lane: Lane, workerId: string, leaseSeconds: number): Promise<DealRow | null> {
     const now = nowTs();
     const row = await this.db.prepare(`

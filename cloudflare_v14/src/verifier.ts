@@ -20,7 +20,7 @@ function couponPercent(text: string): number {
     const context = normalized.slice(start, end).toLowerCase();
     if (BANK_OFFER_MARKERS.some(x => context.includes(x))) continue;
     const v = Number(m[1]);
-    if (v > 0 && v <= 90) return v;
+    if (v > 0 && v <= 99) return v;
   }
   return 0;
 }
@@ -119,7 +119,7 @@ function extractSavingsPercent(html: string): number {
       if (!BANK_OFFER_MARKERS.some(x => region.includes(x))) {
         const m = region.match(/-?\s*(\d+(?:\.\d+)?)\s*%/);
         const pct = m ? Number(m[1]) : 0;
-        if (pct >= 5 && pct <= 90) best = Math.max(best, pct);
+        if (pct >= 5 && pct <= 99) best = Math.max(best, pct);
       }
       pos = idx + marker.length;
     }
@@ -143,16 +143,62 @@ function amazonFromHtml(incoming: DealCandidate, html: string, via: string): {de
   const { price: current, signals: repeatedSignals } = mostFrequentPrice(collectPriceValues(html));
   if (!(current > 0)) throw new VerificationRejected("amazon_no_live_price");
   let old = extractOldAmazonPrice(html, current);
+  const oldPriceWasLive = old > current;
+
   const savings = extractSavingsPercent(html);
-  let signalCount = Math.max(1, repeatedSignals);
-  if (!(old > current) && savings >= 5 && savings <= 90) {
-    const derived = current / (1 - savings / 100);
-    if (derived >= current * 1.05 && derived <= current * 10) {
-      old = Math.round(derived * 100) / 100;
-      signalCount = Math.max(signalCount, 2);
+
+  let signalCount =
+    Math.max(1, repeatedSignals);
+
+  if (
+    !(old > current) &&
+    savings >= 5 &&
+    savings <= 99
+  ) {
+    const derived =
+      current / (1 - savings / 100);
+
+    if (
+      derived >= current * 1.05 &&
+      derived <= current * 105
+    ) {
+      old =
+        Math.round(derived * 100) / 100;
+
+      signalCount =
+        Math.max(signalCount, 2);
     }
   }
-  if (old > current) signalCount = Math.max(signalCount, 2);
+
+  if (old > current) {
+    signalCount =
+      Math.max(signalCount, 2);
+  }
+
+  const liveDiscount =
+    old > current
+      ? ((old - current) / old) * 100
+      : 0;
+
+  /*
+   * Strong Amazon-native proof:
+   *
+   * 1. current price exists on the product page
+   * 2. struck/list price exists independently
+   * 3. Amazon savings percentage agrees with both
+   *
+   * This is stronger than relying on a search result.
+   */
+  const savingsConsistent =
+    oldPriceWasLive &&
+    savings >= 5 &&
+    Math.abs(savings - liveDiscount) <= 2.5;
+
+  if (savingsConsistent) {
+    signalCount =
+      Math.max(signalCount, 3);
+  }
+
   const coupon = extractExplicitAmazonCoupon(html);
   if (coupon > 0) signalCount = Math.max(signalCount, 2);
   const low = html.toLowerCase();
@@ -165,7 +211,10 @@ function amazonFromHtml(incoming: DealCandidate, html: string, via: string): {de
     image_url: extractAmazonImage(html, incoming.image_url || ""),
   };
   return { deal, meta: { http_via: via, coupon_percent: coupon, coupon_source: coupon > 0 ? "explicit_product_coupon" : "", flash,
-    amazon_savings_percent: savings, verification_signals: Math.max(1, signalCount) } };
+    amazon_savings_percent: savings,
+    amazon_old_price_live: oldPriceWasLive,
+    amazon_savings_consistent: savingsConsistent,
+    verification_signals: Math.max(1, signalCount) } };
 }
 
 async function canUseBrowser(repo: D1Repository, settings: Settings): Promise<boolean> {
@@ -202,12 +251,87 @@ async function browserScrapeAmazon(env: V14Env, repo: D1Repository, settings: Se
   const { price: current, signals: repeated } = mostFrequentPrice(prices);
   if (!(current > 0)) throw new VerificationRejected("amazon_browser_no_price");
   let old = 0;
-  for (const t of texts([".basisPrice .a-offscreen",".a-text-price .a-offscreen"])) { const n = parseNumber(t); if (n > current) old = Math.max(old, n); }
+
+  for (
+    const t of texts([
+      ".basisPrice .a-offscreen",
+      ".a-text-price .a-offscreen"
+    ])
+  ) {
+    const n = parseNumber(t);
+
+    if (n > current) {
+      old = Math.max(old, n);
+    }
+  }
+
+  const oldPriceWasLive =
+    old > current;
+
   let savings = 0;
-  for (const t of texts([".savingsPercentage"])) { const m = t.match(/-?\s*(\d+(?:\.\d+)?)\s*%/); if (m) savings = Math.max(savings, Number(m[1])); }
-  let signals = Math.max(1, repeated);
-  if (!(old > current) && savings >= 5 && savings <= 90) { const d = current / (1 - savings/100); if (d >= current*1.05 && d <= current*10) { old = Math.round(d*100)/100; signals = Math.max(signals, 2); } }
-  if (old > current) signals = Math.max(signals, 2);
+
+  for (
+    const t of texts([
+      ".savingsPercentage"
+    ])
+  ) {
+    const m =
+      t.match(
+        /-?\s*(\d+(?:\.\d+)?)\s*%/
+      );
+
+    if (m) {
+      const pct = Number(m[1]);
+
+      if (pct >= 5 && pct <= 99) {
+        savings =
+          Math.max(savings, pct);
+      }
+    }
+  }
+
+  let signals =
+    Math.max(1, repeated);
+
+  if (
+    !(old > current) &&
+    savings >= 5 &&
+    savings <= 99
+  ) {
+    const d =
+      current / (1 - savings / 100);
+
+    if (
+      d >= current * 1.05 &&
+      d <= current * 105
+    ) {
+      old =
+        Math.round(d * 100) / 100;
+
+      signals =
+        Math.max(signals, 2);
+    }
+  }
+
+  if (old > current) {
+    signals =
+      Math.max(signals, 2);
+  }
+
+  const liveDiscount =
+    old > current
+      ? ((old - current) / old) * 100
+      : 0;
+
+  const savingsConsistent =
+    oldPriceWasLive &&
+    savings >= 5 &&
+    Math.abs(savings - liveDiscount) <= 2.5;
+
+  if (savingsConsistent) {
+    signals =
+      Math.max(signals, 3);
+  }
   let coupon = 0;
   for (const t of texts(["#couponText","#couponFeature","#coupon_feature_div"])) {
     const low = t.toLowerCase();
@@ -220,7 +344,10 @@ async function browserScrapeAmazon(env: V14Env, repo: D1Repository, settings: Se
   if (imageRows[0]) image = pickAttr(imageRows[0].attributes, "data-old-hires") || pickAttr(imageRows[0].attributes, "src") || image;
   return { deal: { ...incoming, title, current_price: current, old_price: old > current ? old : null, image_url: image },
     meta: { http_via: "browser_run", browser_ms: ms, coupon_percent: coupon, coupon_source: coupon ? "explicit_product_coupon" : "", flash: false,
-      amazon_savings_percent: savings, verification_signals: signals } };
+      amazon_savings_percent: savings,
+      amazon_old_price_live: oldPriceWasLive,
+      amazon_savings_consistent: savingsConsistent,
+      verification_signals: signals } };
 }
 
 async function fetchAmazonDirect(url: string): Promise<string> {
