@@ -77,23 +77,49 @@ export class D1Repository {
         AND next_attempt_at<=?
         AND (lease_until=0 OR lease_until<?)
       ORDER BY
+        /*
+         * AMAZON ULTRA:
+         * Absolute priority = highest discovered discount first.
+         * 90 > 89 > 80 > 75 > 70 > 65
+         */
         CASE
-          WHEN store='amazon' AND lane='ultra' AND visible_discount>=75 THEN 0
-          WHEN store='amazon' AND lane='ultra' AND visible_discount>=70 THEN 1
-          WHEN store='amazon' AND lane='ultra' AND visible_discount>=65 THEN 2
+          WHEN store='amazon' AND lane='ultra'
+          THEN visible_discount
+          ELSE -1
+        END DESC,
+
+        /*
+         * Amazon normal lane keeps its intelligent
+         * coupon / flash / Goldbox priority.
+         */
+        CASE
           WHEN store='amazon' AND lane='normal' AND (
-            metadata_json LIKE '%"coupon_hint":true%' OR metadata_json LIKE '%"coupon_hint": true%'
-            OR metadata_json LIKE '%"promo_hint":"coupon"%' OR metadata_json LIKE '%"promo_hint": "coupon"%'
-            OR metadata_json LIKE '%"flash_hint":true%' OR metadata_json LIKE '%"flash_hint": true%'
-          ) THEN 3
+            metadata_json LIKE '%"coupon_hint":true%'
+            OR metadata_json LIKE '%"coupon_hint": true%'
+            OR metadata_json LIKE '%"promo_hint":"coupon"%'
+            OR metadata_json LIKE '%"promo_hint": "coupon"%'
+            OR metadata_json LIKE '%"flash_hint":true%'
+            OR metadata_json LIKE '%"flash_hint": true%'
+          ) THEN 0
+
           WHEN store='amazon' AND lane='normal' AND (
-            metadata_json LIKE '%"coupon_probe":true%' OR metadata_json LIKE '%"coupon_probe": true%'
-          ) THEN 4
-          WHEN store='amazon' AND lane='normal' AND source='goldbox' THEN 5
-          WHEN store='amazon' AND lane='normal' AND source IN ('limited_time','clearance') THEN 6
-          ELSE 7
+            metadata_json LIKE '%"coupon_probe":true%'
+            OR metadata_json LIKE '%"coupon_probe": true%'
+          ) THEN 1
+
+          WHEN store='amazon' AND lane='normal'
+            AND source='goldbox'
+          THEN 2
+
+          WHEN store='amazon' AND lane='normal'
+            AND source IN ('limited_time','clearance')
+          THEN 3
+
+          ELSE 4
         END ASC,
-        score DESC, discovered_at ASC
+
+        score DESC,
+        discovered_at ASC
       LIMIT 1
     `).bind(store, lane, now, now).first<DealRow>();
     if (!row) return null;
@@ -162,10 +188,57 @@ export class D1Repository {
         AND d.next_attempt_at<=?
         AND (d.lease_until=0 OR d.lease_until<?)
       ORDER BY
-        CASE WHEN d.store='amazon' AND d.real_discount>=75 THEN 0 ELSE 1 END ASC,
-        (SELECT COUNT(*) FROM deals s WHERE s.state='sent' AND s.lane=d.lane AND s.store=d.store AND s.sent_at>?) ASC,
-        (SELECT COUNT(*) FROM deals s WHERE s.state='sent' AND s.lane=d.lane AND s.category=d.category AND s.sent_at>?) ASC,
-        d.score DESC, d.verified_at ASC
+        /*
+         * Once verified, Ultra uses REAL discount,
+         * not the discovery estimate.
+         *
+         * Example:
+         * verified 91% always beats verified 82%,
+         * which always beats 70%, then 65%.
+         */
+        CASE
+          WHEN d.store='amazon' AND d.lane='ultra'
+          THEN d.real_discount
+          ELSE -1
+        END DESC,
+
+        /*
+         * If two Ultra deals have the same discount,
+         * stronger verification wins.
+         */
+        CASE
+          WHEN d.store='amazon' AND d.lane='ultra'
+          THEN d.confidence
+          ELSE 0
+        END DESC,
+
+        CASE
+          WHEN d.store='amazon' AND d.lane='ultra'
+          THEN d.score
+          ELSE 0
+        END DESC,
+
+        /*
+         * Diversity logic remains useful for the
+         * normal lane, but can never push a lower
+         * Ultra discount above a higher one.
+         */
+        (SELECT COUNT(*)
+           FROM deals s
+          WHERE s.state='sent'
+            AND s.lane=d.lane
+            AND s.store=d.store
+            AND s.sent_at>?) ASC,
+
+        (SELECT COUNT(*)
+           FROM deals s
+          WHERE s.state='sent'
+            AND s.lane=d.lane
+            AND s.category=d.category
+            AND s.sent_at>?) ASC,
+
+        d.score DESC,
+        d.verified_at ASC
       LIMIT 1
     `).bind(lane, lane, now, now, now - 21600, now - 21600).first<DealRow>();
     if (!row) return null;

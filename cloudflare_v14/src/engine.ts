@@ -13,6 +13,39 @@ function workerId(prefix: string): string {
   return `${prefix}-${crypto.randomUUID().slice(0, 8)}`;
 }
 
+/*
+ * Dedicated Amazon Ultra discovery schedule.
+ *
+ * It deliberately gives more scanning weight to
+ * the largest discount targets:
+ *
+ * 90% sources -> highest frequency
+ * 75% sources -> next
+ * 70% sources -> next
+ * 65% sources -> safety floor
+ *
+ * This is discovery priority only.
+ * A deal still cannot become Ultra until the
+ * product-page verifier confirms >=65% REAL discount.
+ */
+const AMAZON_ULTRA_HUNTER_ORDER: string[] = [
+  "90filter",
+  "90off",
+  "90filter",
+  "90off",
+
+  "75filter",
+  "75off",
+  "75filter",
+
+  "70filter",
+  "70off",
+
+  "65filter",
+  "65off",
+];
+
+
 async function fetchNoonSurfaceWithFallback(
   env: V14Env,
   repo: D1Repository,
@@ -214,9 +247,21 @@ async function discoveryStep(
     1,
   );
 
+  const ultraHunterNames =
+    new Set<string>(
+      AMAZON_ULTRA_HUNTER_ORDER
+    );
+
+  /*
+   * General Amazon discovery remains active,
+   * but dedicated Ultra-global sources are removed
+   * here to avoid pointless duplicate scans.
+   */
   const amazonRegular =
     AMAZON_SURFACES.filter(
-      x => x.name !== "goldbox"
+      x =>
+        x.name !== "goldbox" &&
+        !ultraHunterNames.has(x.name)
     );
 
   const aSurface =
@@ -225,14 +270,52 @@ async function discoveryStep(
       % amazonRegular.length
     ];
 
+  /*
+   * Separate Ultra hunter runs every cycle.
+   * Its schedule is weighted toward 90% first.
+   */
+  const ultraCursor =
+    await repo.counterAdd(
+      "amazon_ultra_surface_cursor",
+      1,
+    );
+
+  const ultraSourceName =
+    AMAZON_ULTRA_HUNTER_ORDER[
+      (ultraCursor - 1)
+      % AMAZON_ULTRA_HUNTER_ORDER.length
+    ];
+
+  const ultraSurface =
+    AMAZON_SURFACES.find(
+      x => x.name === ultraSourceName
+    );
+
   const tasks:
-    Promise<Record<string, unknown>>[] = [
+    Promise<Record<string, unknown>>[] = [];
+
+  if (ultraSurface) {
+    tasks.push(
+      scanAmazonSurface(
+        repo,
+        settings,
+        ultraSurface,
+      ),
+    );
+  }
+
+  /*
+   * Keep broad category coverage in parallel.
+   */
+  if (aSurface) {
+    tasks.push(
       scanAmazonSurface(
         repo,
         settings,
         aSurface,
       ),
-    ];
+    );
+  }
 
   // Noon HTTP is currently returning 520 from Cloudflare.
   // Browser fallback is deliberately rate-limited so the
