@@ -357,10 +357,40 @@ async function discoveryStep(
   }
 
   /*
-   * Noon discovery disabled intentionally.
-   * Cloudflare resources are reserved for Amazon,
-   * with Amazon Ultra having absolute priority.
+   * NOON NORMAL DISCOVERY RESTORED.
+   *
+   * Amazon Ultra remains the priority path.
+   * Noon gets one rotating surface every 3 cycles.
+   * Direct API is attempted first; Browser fallback
+   * remains protected by its existing daily budget.
    */
+  if (
+    NOON_SURFACES.length > 0 &&
+    cycle % 3 === 0
+  ) {
+    const noonCursor =
+      await repo.counterAdd(
+        "noon_surface_cursor",
+        1,
+      );
+
+    const noonSurface =
+      NOON_SURFACES[
+        (noonCursor - 1)
+        % NOON_SURFACES.length
+      ];
+
+    if (noonSurface) {
+      tasks.push(
+        scanNoonSurface(
+          env,
+          repo,
+          settings,
+          noonSurface,
+        ),
+      );
+    }
+  }
 
   // Today's Deals remains a frequent Amazon safety net.
   if (cycle % 2 === 0) {
@@ -393,9 +423,28 @@ async function verifyOne(env: V14Env, repo: D1Repository, settings: Settings): P
    * GitHub Playwright verifies Amazon Ultra using
    * the fully rendered Amazon product page.
    */
-  const order: Array<['amazon','normal']> = [
-    ['amazon','normal'],
-  ];
+  /*
+   * Fair verification:
+   * Amazon Normal and Noon Normal alternate priority.
+   * Neither queue can permanently starve the other.
+   */
+  const verifyCursor =
+    await repo.counterAdd(
+      "verify_store_cursor",
+      1,
+    );
+
+  const order:
+    Array<['amazon' | 'noon','normal']> =
+      verifyCursor % 2 === 0
+        ? [
+            ['noon','normal'],
+            ['amazon','normal'],
+          ]
+        : [
+            ['amazon','normal'],
+            ['noon','normal'],
+          ];
   let row: DealRow | null = null;
   for (const [store,lane] of order) {
     row = await repo.claimForVerification(store, lane, workerId(`verify-${store}-${lane}`), settings.lease_seconds);
@@ -621,22 +670,70 @@ async function deliveryStep(
 ): Promise<Record<string, unknown>[]> {
 
   /*
-   * V14 HYBRID DELIVERY
+   * HYBRID DELIVERY:
    *
-   * Cloudflare:
-   * discovery + verification + intelligence + D1
+   * AMAZON:
+   *   Playwright only, so every Amazon review gets
+   *   the real Amazon-page screenshot.
    *
-   * GitHub Playwright:
-   * every automatic Amazon review delivery
-   * with a REAL product-page screenshot.
-   *
-   * Do not let Cloudflare race the screenshot worker.
+   * NOON:
+   *   Cloudflare sends verified Normal deals directly
+   *   to the isolated Noon review destination.
    */
-  void env;
-  void repo;
-  void settings;
+  const out: Record<string, unknown>[] = [];
 
-  return [];
+  const row =
+    await repo.claimNoonForDelivery(
+      workerId("deliver-noon"),
+      settings.lease_seconds,
+    );
+
+  if (!row) return out;
+
+  try {
+    await sendReview(
+      env,
+      row,
+      repo,
+      settings,
+    );
+
+    await repo.markSent(
+      row.deal_key
+    );
+
+    out.push({
+      lane:"normal",
+      store:"noon",
+      deal:row.deal_key.slice(0,10),
+      sent:true,
+    });
+
+  } catch (e) {
+    const reason =
+      `${e instanceof Error ? e.name : 'Error'}:${
+        e instanceof Error
+          ? e.message
+          : String(e)
+      }`;
+
+    await repo.deliveryRetry(
+      row.deal_key,
+      reason,
+      settings.retry_base_seconds,
+      settings.max_attempts,
+    );
+
+    out.push({
+      lane:"normal",
+      store:"noon",
+      deal:row.deal_key.slice(0,10),
+      sent:false,
+      reason,
+    });
+  }
+
+  return out;
 }
 
 export async function runCycle(env: V14Env, settings: Settings): Promise<Record<string, unknown>> {
