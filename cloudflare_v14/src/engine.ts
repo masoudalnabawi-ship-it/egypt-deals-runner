@@ -360,8 +360,13 @@ async function discoveryStep(
 }
 
 async function verifyOne(env: V14Env, repo: D1Repository, settings: Settings): Promise<Record<string, unknown> | null> {
-  const order: Array<['amazon','ultra'|'normal']> = [
-    ['amazon','ultra'],
+  /*
+   * HYBRID V14:
+   * Cloudflare verifies Amazon Normal.
+   * GitHub Playwright verifies Amazon Ultra using
+   * the fully rendered Amazon product page.
+   */
+  const order: Array<['amazon','normal']> = [
     ['amazon','normal'],
   ];
   let row: DealRow | null = null;

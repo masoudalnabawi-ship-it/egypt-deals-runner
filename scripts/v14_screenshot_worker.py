@@ -4,6 +4,7 @@ import asyncio
 import html
 import json
 import os
+import re
 import signal
 import time
 import uuid
@@ -269,6 +270,288 @@ async def complete(
                 reason[:350],
         },
     )
+
+
+
+async def claim_verify(
+    client: httpx.AsyncClient,
+    worker_id: str,
+) -> dict | None:
+    data = await api_post(
+        client,
+        "/admin/playwright-verify/claim",
+        {"worker_id": worker_id},
+    )
+    return data.get("job")
+
+
+async def complete_verify(
+    client: httpx.AsyncClient,
+    job: dict,
+    status: str,
+    proof: dict | None = None,
+    reason: str = "",
+) -> dict:
+    payload = {
+        "deal_key": job["deal_key"],
+        "status": status,
+        "reason": reason[:350],
+    }
+
+    if proof:
+        payload.update(proof)
+
+    return await api_post(
+        client,
+        "/admin/playwright-verify/complete",
+        payload,
+    )
+
+
+def _num(value: str) -> float:
+    text = (
+        str(value or "")
+        .replace("\u00a0", " ")
+        .replace("\u202f", " ")
+        .translate(
+            str.maketrans(
+                "٠١٢٣٤٥٦٧٨٩٫٬",
+                "0123456789.,",
+            )
+        )
+    )
+
+    m = re.search(
+        r"([0-9][0-9,]*(?:\.[0-9]+)?)",
+        text,
+    )
+
+    if not m:
+        return 0.0
+
+    try:
+        return float(
+            m.group(1).replace(",", "")
+        )
+    except Exception:
+        return 0.0
+
+
+def _pct(value: str) -> float:
+    text = (
+        str(value or "")
+        .translate(
+            str.maketrans(
+                "٠١٢٣٤٥٦٧٨٩٫٬",
+                "0123456789.,",
+            )
+        )
+    )
+
+    m = re.search(
+        r"-?\s*(\d+(?:\.\d+)?)\s*%",
+        text,
+    )
+
+    if not m:
+        return 0.0
+
+    value = float(m.group(1))
+    return value if 0 < value <= 99 else 0.0
+
+
+async def verify_rendered(
+    context,
+    job: dict,
+) -> dict:
+    page = await context.new_page()
+
+    try:
+        response = await page.goto(
+            str(job["url"]),
+            wait_until="domcontentloaded",
+            timeout=20000,
+        )
+
+        if (
+            response is not None
+            and response.status >= 400
+        ):
+            raise RuntimeError(
+                f"amazon_http_{response.status}"
+            )
+
+        await page.wait_for_timeout(1800)
+
+        body = await page.locator(
+            "body"
+        ).inner_text(timeout=7000)
+
+        low = body.lower()
+
+        if any(
+            x in low
+            for x in (
+                "enter the characters you see below",
+                "robot check",
+                "captcha",
+                "access denied",
+                "unusual traffic",
+            )
+        ):
+            raise RuntimeError(
+                "amazon_page_protected"
+            )
+
+        raw = await page.evaluate(
+            """
+            () => {
+              const texts = (selectors) => {
+                const out = [];
+                for (const selector of selectors) {
+                  for (const el of document.querySelectorAll(selector)) {
+                    const text = (el.textContent || '').trim();
+                    if (text) out.push(text);
+                  }
+                }
+                return out;
+              };
+
+              const image = document.querySelector('#landingImage');
+
+              return {
+                title:
+                  (document.querySelector('#productTitle')?.textContent || '')
+                  .trim(),
+
+                current: texts([
+                  '#corePriceDisplay_desktop_feature_div .priceToPay .a-offscreen',
+                  '#corePrice_feature_div .priceToPay .a-offscreen',
+                  '.apexPriceToPay .a-offscreen',
+                  '#buybox .priceToPay .a-offscreen',
+                  '#price_inside_buybox',
+                  '#newBuyBoxPrice',
+                  '#corePriceDisplay_desktop_feature_div .a-price .a-offscreen',
+                  '#corePrice_feature_div .a-price .a-offscreen'
+                ]),
+
+                old: texts([
+                  '#corePriceDisplay_desktop_feature_div .basisPrice .a-offscreen',
+                  '#corePrice_feature_div .basisPrice .a-offscreen',
+                  '.basisPrice .a-offscreen',
+                  '.a-text-price .a-offscreen'
+                ]),
+
+                savings: texts([
+                  '#corePriceDisplay_desktop_feature_div .savingsPercentage',
+                  '#corePrice_feature_div .savingsPercentage',
+                  '.savingsPercentage'
+                ]),
+
+                coupon: texts([
+                  '#couponText',
+                  '#couponFeature',
+                  '#coupon_feature_div'
+                ]),
+
+                image_url:
+                  image?.getAttribute('data-old-hires')
+                  || image?.getAttribute('src')
+                  || ''
+              };
+            }
+            """
+        )
+
+        current = 0.0
+
+        for value in raw.get("current", []):
+            n = _num(value)
+
+            if n > 0:
+                current = n
+                break
+
+        if not current:
+            raise RuntimeError(
+                "amazon_live_current_price_missing"
+            )
+
+        old = 0.0
+
+        for value in raw.get("old", []):
+            n = _num(value)
+
+            if n > current:
+                old = max(old, n)
+
+        savings = 0.0
+
+        for value in raw.get("savings", []):
+            savings = max(
+                savings,
+                _pct(value),
+            )
+
+        coupon = 0.0
+
+        for value in raw.get("coupon", []):
+            lower = str(value).lower()
+
+            if any(
+                x in lower
+                for x in (
+                    "bank",
+                    "credit card",
+                    "debit card",
+                    "installment",
+                    "instalment",
+                    "بنك",
+                    "تقسيط",
+                    "أقساط",
+                    "اقساط",
+                )
+            ):
+                continue
+
+            if any(
+                x in lower
+                for x in (
+                    "coupon",
+                    "voucher",
+                    "كوبون",
+                    "قسيمة",
+                )
+            ):
+                coupon = max(
+                    coupon,
+                    _pct(value),
+                )
+
+        return {
+            "title":
+                str(raw.get("title") or "").strip(),
+
+            "current_price":
+                round(current, 2),
+
+            "old_price":
+                round(old, 2)
+                if old > current
+                else 0,
+
+            "savings_percent":
+                round(savings, 2),
+
+            "coupon_percent":
+                round(coupon, 2),
+
+            "image_url":
+                str(raw.get("image_url") or "").strip(),
+        }
+
+    finally:
+        await page.close()
 
 
 async def capture(
@@ -551,11 +834,80 @@ async def main() -> None:
                 and time.monotonic() - started
                     < RUN_SECONDS
             ):
+                # Stage 1:
+                # Render and verify the strongest Ultra lead.
+                verify_job = None
+
+                try:
+                    verify_job = await claim_verify(
+                        client,
+                        worker_id,
+                    )
+
+                    if verify_job is not None:
+                        try:
+                            proof = await verify_rendered(
+                                context,
+                                verify_job,
+                            )
+
+                            result = await complete_verify(
+                                client,
+                                verify_job,
+                                "verified",
+                                proof=proof,
+                            )
+
+                            print(
+                                "VERIFIED",
+                                verify_job.get("external_id"),
+                                result.get("lane"),
+                                result.get("discount"),
+                                flush=True,
+                            )
+
+                        except Exception as exc:
+                            reason = (
+                                f"{type(exc).__name__}:"
+                                f"{str(exc)}"
+                            )
+
+                            print(
+                                "VERIFY_RETRY",
+                                verify_job.get("external_id"),
+                                reason,
+                                flush=True,
+                            )
+
+                            try:
+                                await complete_verify(
+                                    client,
+                                    verify_job,
+                                    "retry",
+                                    reason=reason,
+                                )
+                            except Exception as ack_exc:
+                                print(
+                                    "VERIFY_ACK_ERROR",
+                                    type(ack_exc).__name__,
+                                    str(ack_exc),
+                                    flush=True,
+                                )
+
+                except Exception as exc:
+                    print(
+                        "VERIFY_CLAIM_ERROR",
+                        type(exc).__name__,
+                        str(exc),
+                        flush=True,
+                    )
+
+                # Stage 2:
+                # Send real Amazon screenshot.
+                # Ultra first, then Normal.
                 job = None
 
                 try:
-                    # Absolute priority:
-                    # Ultra first, then Normal.
                     job = await claim(
                         client,
                         "ultra",
