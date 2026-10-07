@@ -369,7 +369,7 @@ async function deliveryStep(env: V14Env, repo: D1Repository, settings: Settings)
     const row = await repo.claimForDelivery(lane, workerId(`deliver-${lane}`), settings.lease_seconds);
     if (!row) continue;
     try {
-      await sendReview(env, row);
+      await sendReview(env, row, repo, settings);
       await repo.markSent(row.deal_key);
       out.push({ lane, store: row.store, deal: row.deal_key.slice(0,10), sent: true });
     } catch (e) {

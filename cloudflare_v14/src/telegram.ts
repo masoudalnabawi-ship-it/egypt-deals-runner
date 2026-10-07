@@ -1,4 +1,5 @@
-import type { DealRow, V14Env } from "./types";
+import type { DealRow, Settings, V14Env } from "./types";
+import type { D1Repository } from "./db";
 import { normalChatId, noonReviewChatId, ultraChatId } from "./config";
 import { htmlEscape } from "./util";
 
@@ -18,9 +19,20 @@ function reviewChat(env: V14Env, row: DealRow): string {
 
 function publicChat(env: V14Env, row: DealRow): string {
   if (row.store === "noon") {
-    return String(env.NOON_CHANNEL_ID || env.AMAZON_CHANNEL_ID || env.TELEGRAM_CHANNEL_ID || noonReviewChatId(env) || "").trim();
+    // Noon can never fall back to an Amazon destination.
+    return String(
+      env.NOON_CHANNEL_ID ||
+      noonReviewChatId(env) ||
+      ""
+    ).trim();
   }
-  return String(env.AMAZON_CHANNEL_ID || env.TELEGRAM_CHANNEL_ID || ultraChatId(env) || "").trim();
+
+  return String(
+    env.AMAZON_CHANNEL_ID ||
+    env.TELEGRAM_CHANNEL_ID ||
+    ultraChatId(env) ||
+    ""
+  ).trim();
 }
 
 function caption(row: DealRow): string {
@@ -70,17 +82,288 @@ async function telegramCall(token: string, method: string, body: Record<string, 
   return data.result;
 }
 
-export async function sendReview(env: V14Env, row: DealRow): Promise<any> {
-  const token = reviewToken(env, row); const chatId = reviewChat(env, row);
-  if (!token) throw new Error(row.store === "noon" ? "NOON_REVIEW_BOT_TOKEN_missing" : "TELEGRAM_BOT_TOKEN_missing");
-  if (!chatId) throw new Error(`telegram_chat_missing:${row.store}:${row.lane}`);
-  const cap = caption(row); const keys = keyboard(row); const image = String(row.image_url || "").trim();
+async function amazonScreenshot(
+  env: V14Env,
+  repo: D1Repository,
+  settings: Settings,
+  row: DealRow,
+): Promise<ArrayBuffer | null> {
+
+  if (
+    row.store !== "amazon" ||
+    !env.BROWSER ||
+    !settings.browser_daily_budget_ms
+  ) {
+    return null;
+  }
+
+  const day = new Date().toISOString().slice(0, 10);
+  const counterKey = `browser_ms:${day}`;
+  const used = await repo.counterGet(counterKey);
+
+  // Keep a safety reserve instead of exhausting the daily Browser budget.
+  if (used >= settings.browser_daily_budget_ms * 0.90) {
+    return null;
+  }
+
+  try {
+    const response: Response =
+      await env.BROWSER.quickAction(
+        "screenshot",
+        {
+          url: row.url,
+
+          viewport: {
+            width: 1280,
+            height: 900,
+          },
+
+          gotoOptions: {
+            waitUntil: "domcontentloaded",
+            timeout: 20000,
+          },
+
+          waitForTimeout: 1000,
+
+          setExtraHTTPHeaders: {
+            "Accept-Language":
+              "ar-EG,ar;q=0.9,en-US;q=0.8,en;q=0.7",
+          },
+
+          userAgent:
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) " +
+            "AppleWebKit/537.36 (KHTML, like Gecko) " +
+            "Chrome/140.0 Safari/537.36",
+
+          screenshotOptions: {
+            fullPage: false,
+          },
+        },
+      );
+
+    const browserMs = Number(
+      response.headers.get("X-Browser-Ms-Used") || 0
+    );
+
+    if (browserMs > 0) {
+      await repo.counterAdd(counterKey, browserMs);
+    }
+
+    if (!response.ok) return null;
+
+    const bytes = await response.arrayBuffer();
+
+    // Reject obviously empty/invalid screenshots.
+    if (bytes.byteLength < 5000) return null;
+
+    return bytes;
+
+  } catch {
+    return null;
+  }
+}
+
+
+async function sendPhotoBytes(
+  token: string,
+  chatId: string,
+  bytes: ArrayBuffer,
+  cap: string,
+  keys: Record<string, unknown>,
+): Promise<any> {
+
+  if (!token) {
+    throw new Error("telegram_token_missing");
+  }
+
+  const form = new FormData();
+
+  form.append("chat_id", chatId);
+
+  form.append(
+    "photo",
+    new Blob(
+      [bytes],
+      { type: "image/png" },
+    ),
+    "amazon-product-page.png",
+  );
+
+  form.append(
+    "caption",
+    cap.slice(0, 1024),
+  );
+
+  form.append(
+    "parse_mode",
+    "HTML",
+  );
+
+  form.append(
+    "reply_markup",
+    JSON.stringify(keys),
+  );
+
+  const r = await fetch(
+    `https://api.telegram.org/bot${token}/sendPhoto`,
+    {
+      method: "POST",
+      body: form,
+    },
+  );
+
+  let data: any = {};
+
+  try {
+    data = await r.json();
+  } catch {}
+
+  if (!r.ok || !data?.ok) {
+    throw new Error(
+      `telegram_sendPhoto_failed:${
+        String(data?.description || r.status)
+      }`
+    );
+  }
+
+  return data.result;
+}
+
+
+export async function sendReview(
+  env: V14Env,
+  row: DealRow,
+  repo: D1Repository,
+  settings: Settings,
+): Promise<any> {
+
+  /*
+   * ABSOLUTE ROUTING POLICY
+   *
+   * NOON:
+   *   normal only
+   *
+   * AMAZON ULTRA:
+   *   Amazon only
+   *   verified real discount >=65%
+   *   confidence >= configured Ultra threshold
+   */
+  if (
+    row.store === "noon" &&
+    row.lane !== "normal"
+  ) {
+    throw new Error(
+      "HARD_ROUTE_BLOCK:noon_ultra_forbidden"
+    );
+  }
+
+  if (row.lane === "ultra") {
+    if (row.store !== "amazon") {
+      throw new Error(
+        "HARD_ROUTE_BLOCK:ultra_non_amazon"
+      );
+    }
+
+    if (
+      Number(row.real_discount || 0)
+        < settings.ultra_min_discount
+    ) {
+      throw new Error(
+        "HARD_ROUTE_BLOCK:amazon_ultra_below_65"
+      );
+    }
+
+    if (
+      Number(row.confidence || 0)
+        < settings.min_confidence_ultra
+    ) {
+      throw new Error(
+        "HARD_ROUTE_BLOCK:amazon_ultra_confidence"
+      );
+    }
+  }
+
+  const token = reviewToken(env, row);
+  const chatId = reviewChat(env, row);
+
+  if (!token) {
+    throw new Error(
+      row.store === "noon"
+        ? "NOON_REVIEW_TOKEN_missing"
+        : "TELEGRAM_BOT_TOKEN_missing"
+    );
+  }
+
+  if (!chatId) {
+    throw new Error(
+      `telegram_chat_missing:${row.store}:${row.lane}`
+    );
+  }
+
+  const cap = caption(row);
+  const keys = keyboard(row);
+
+  /*
+   * AMAZON REVIEW:
+   * Prefer a REAL rendered product-page screenshot.
+   */
+  if (row.store === "amazon") {
+    const shot =
+      await amazonScreenshot(
+        env,
+        repo,
+        settings,
+        row,
+      );
+
+    if (shot) {
+      try {
+        return await sendPhotoBytes(
+          token,
+          chatId,
+          shot,
+          cap,
+          keys,
+        );
+      } catch {}
+    }
+  }
+
+  /*
+   * Safe fallback:
+   * product image if screenshot is temporarily unavailable.
+   */
+  const image =
+    String(row.image_url || "").trim();
+
   if (image) {
     try {
-      return await telegramCall(token, "sendPhoto", { chat_id: chatId, photo: image, caption: cap.slice(0, 1024), parse_mode: "HTML", reply_markup: keys });
+      return await telegramCall(
+        token,
+        "sendPhoto",
+        {
+          chat_id: chatId,
+          photo: image,
+          caption: cap.slice(0, 1024),
+          parse_mode: "HTML",
+          reply_markup: keys,
+        },
+      );
     } catch {}
   }
-  return telegramCall(token, "sendMessage", { chat_id: chatId, text: `${cap}\n\n🔗 ${htmlEscape(row.url)}`, parse_mode: "HTML", disable_web_page_preview: false, reply_markup: keys });
+
+  return telegramCall(
+    token,
+    "sendMessage",
+    {
+      chat_id: chatId,
+      text:
+        `${cap}\n\n🔗 ${htmlEscape(row.url)}`,
+      parse_mode: "HTML",
+      disable_web_page_preview: false,
+      reply_markup: keys,
+    },
+  );
 }
 
 export async function sendPublic(env: V14Env, row: DealRow, urgent = false): Promise<any> {

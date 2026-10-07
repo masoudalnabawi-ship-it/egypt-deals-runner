@@ -30,5 +30,11 @@ export function ultraChatId(env: V14Env): string {
 }
 
 export function noonReviewChatId(env: V14Env): string {
-  return String(env.NOON_REVIEW_BOT_CHAT_ID || env.NOON_NORMAL_REVIEW_CHAT_ID || normalChatId(env)).trim();
+  // HARD ISOLATION:
+  // Noon must NEVER fall back to Amazon normal review chat.
+  return String(
+    env.NOON_REVIEW_BOT_CHAT_ID ||
+    env.NOON_NORMAL_REVIEW_CHAT_ID ||
+    ""
+  ).trim();
 }
