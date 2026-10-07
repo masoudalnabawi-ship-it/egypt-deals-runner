@@ -269,7 +269,7 @@ async function completePlaywrightVerification(
     );
 
   const row =
-    await repo.findByPrefix(dealKey);
+    await repo.findByKey(dealKey);
 
   if (
     !row ||

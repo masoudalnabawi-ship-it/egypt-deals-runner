@@ -428,6 +428,19 @@ export class D1Repository {
     return rows.results || [];
   }
 
+  async findByKey(key: string): Promise<DealRow | null> {
+    const dealKey =
+      String(key || "").trim();
+
+    if (!dealKey) return null;
+
+    return await this.db.prepare(
+      "SELECT * FROM deals WHERE deal_key=? LIMIT 1"
+    )
+    .bind(dealKey)
+    .first<DealRow>();
+  }
+
   async findByPrefix(shortKey: string): Promise<DealRow | null> {
     const key = String(shortKey || "").trim();
     if (!key) return null;
