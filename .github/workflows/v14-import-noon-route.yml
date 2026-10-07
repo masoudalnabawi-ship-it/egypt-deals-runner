@@ -1,0 +1,83 @@
+name: V14 Import Noon Route
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  import:
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+
+    env:
+      BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+      NOON_CHAT: ${{ secrets.NOON_REVIEW_BOT_CHAT_ID }}
+
+    steps:
+      - name: Import Noon route securely
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          import os
+          import time
+          import hmac
+          import hashlib
+          import json
+
+          token = os.environ.get("BOT_TOKEN", "").strip()
+          chat = os.environ.get("NOON_CHAT", "").strip()
+
+          if not token or not chat:
+              raise SystemExit("SECRET_MISSING")
+
+          ts = int(time.time())
+
+          sig = hmac.new(
+              token.encode(),
+              f"{chat}|{ts}".encode(),
+              hashlib.sha256,
+          ).hexdigest()
+
+          with open("/tmp/noon-route.json", "w") as f:
+              json.dump({
+                  "chat_id": chat,
+                  "ts": ts,
+                  "signature": sig,
+              }, f)
+          PY
+
+          CODE="$(
+            curl --http1.1 \
+              -sS \
+              -A "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0 Safari/537.36" \
+              -H "Accept: application/json,text/plain,*/*" \
+              -H "Content-Type: application/json" \
+              -o /tmp/noon-response.json \
+              -w "%{http_code}" \
+              -X POST \
+              --data-binary @/tmp/noon-route.json \
+              "https://egypt-deals-v14.masoudalnabawi.workers.dev/internal/import-noon-route"
+          )"
+
+          echo "HTTP_STATUS=$CODE"
+
+          python3 - <<'PY'
+          import json
+
+          try:
+              with open("/tmp/noon-response.json") as f:
+                  data = json.load(f)
+          except Exception:
+              raise SystemExit("NON_JSON_RESPONSE")
+
+          if data.get("ok"):
+              print("✅ NOON_ROUTE_IMPORT_OK")
+          else:
+              print(
+                  "❌ NOON_ROUTE_IMPORT_ERROR=" +
+                  str(data.get("error", "unknown"))
+              )
+              raise SystemExit(1)
+          PY
