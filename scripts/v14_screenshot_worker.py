@@ -443,8 +443,8 @@ async def verify_rendered(
                 old: texts([
                   '#corePriceDisplay_desktop_feature_div .basisPrice .a-offscreen',
                   '#corePrice_feature_div .basisPrice .a-offscreen',
-                  '.basisPrice .a-offscreen',
-                  '.a-text-price .a-offscreen'
+                  '#corePriceDisplay_desktop_feature_div .a-text-price .a-offscreen',
+                  '#corePrice_feature_div .a-text-price .a-offscreen'
                 ]),
 
                 savings: texts([
