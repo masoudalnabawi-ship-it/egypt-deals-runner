@@ -752,22 +752,29 @@ async function completePlaywrightVerification(
     verifiedLiveDiscount;
 
   /*
-   * >=80% is exceptional only when the LIVE rendered
-   * Amazon evidence reaches the configured threshold.
+   * Tier-1 priority starts at the configured LIVE
+   * threshold (75% by default).
    */
-  const exceptionalLive =
+  const topPriorityLive =
     verifiedLiveDiscount >=
       settings.ultra_hot_discount;
 
+  /*
+   * Keep the legacy >=80% exceptional signal separate
+   * so existing analytics keep their historical meaning.
+   */
+  const exceptional80Live =
+    verifiedLiveDiscount >= 80;
+
   if (
-    exceptionalLive
+    topPriorityLive
     &&
     !decision.reasons.includes(
-      "amazon_exceptional_80"
+      "amazon_top_priority_live"
     )
   ) {
     decision.reasons.push(
-      "amazon_exceptional_80"
+      "amazon_top_priority_live"
     );
   }
 
@@ -836,11 +843,17 @@ async function completePlaywrightVerification(
     verified_route:
       decision.lane,
 
+    top_priority:
+      topPriorityLive,
+
+    top_priority_threshold:
+      settings.ultra_hot_discount,
+
     exceptional_priority:
-      exceptionalLive,
+      exceptional80Live,
 
     exceptional_threshold:
-      settings.ultra_hot_discount,
+      80,
 
     price_intelligence:
       profile,
@@ -872,7 +885,7 @@ async function completePlaywrightVerification(
     },
   );
 
-  if (exceptionalLive) {
+  if (exceptional80Live) {
     await repo.event(
       "amazon_exceptional_verified",
       "amazon",

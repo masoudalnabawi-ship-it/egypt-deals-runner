@@ -232,14 +232,34 @@ export function preliminaryDecision(settings: Settings, deal: DealCandidate): De
   const promo = Boolean(meta.coupon_hint || meta.flash_hint || meta.promo_hint || meta.coupon_probe || meta.goldbox);
   let lane: "normal" | "ultra" = "normal";
   if (deal.store === "amazon" && visible >= settings.ultra_min_discount) lane = "ultra";
-  const score = Math.min(100, visible + (promo ? 18 : 0) + (visible >= settings.ultra_hot_discount ? 20 : 0));
+  const topPriority =
+    deal.store === "amazon" &&
+    visible >= settings.ultra_hot_discount;
+  const score = Math.min(
+    100,
+    visible +
+      (promo ? 18 : 0) +
+      (topPriority ? 20 : 0),
+  );
+  const reasons = [
+    deal.store === "noon"
+      ? "noon_normal_only"
+      : visible >= settings.ultra_min_discount
+        ? "amazon_visible_ultra_probe"
+        : promo
+          ? "promo_probe"
+          : "normal_discovery",
+  ];
+  if (topPriority) {
+    reasons.push("amazon_top_priority_probe");
+  }
   return {
     lane,
     score: round2(score),
     confidence: 0,
     real_discount: visible,
     effective_price: deal.current_price,
-    reasons: [deal.store === "noon" ? "noon_normal_only" : visible >= 65 ? "amazon_visible_65_probe" : promo ? "promo_probe" : "normal_discovery"],
+    reasons,
     anomaly: false,
     flash: Boolean(meta.flash_hint),
     coupon_percent: 0,

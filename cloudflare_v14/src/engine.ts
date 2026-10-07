@@ -145,7 +145,7 @@ const AMAZON_ULTRA_HUNTER_ORDER: string[] = [
 /*
  * AMAZON_ULTRA_V4_EXCEPTIONAL_HUNTER
  *
- * Separate radar dedicated to >=80% discovery.
+ * Top-priority radar dedicated to >=75% discovery.
  * Highest discount Amazon filters are explored first,
  * then the historically productive categories.
  *
@@ -156,11 +156,13 @@ const AMAZON_EXCEPTIONAL_HUNTER_ORDER = [
   "90filter",
   "85filter",
   "80filter",
+  "75filter",
 
   "95off",
   "90off",
   "85off",
   "80off",
+  "75off",
 
   "goldbox",
   "limited_time",
@@ -584,8 +586,8 @@ async function scanNoonSurface(env: V14Env, repo: D1Repository, settings: Settin
  * - error rate
  * - recent false Ultra leads
  *
- * Every source keeps an exploration floor so the system
- * never becomes blind to a department that suddenly improves.
+ * Persistently empty/broken sources are cooled, but they still
+ * receive deterministic probe turns so discovery never becomes blind.
  */
 
 type AmazonHealthSnapshot = {
@@ -600,6 +602,35 @@ type AmazonHealthSnapshot = {
   false_ultra:number;
 };
 
+function amazonSourceIsCooled(
+  health:
+    AmazonHealthSnapshot | undefined,
+):boolean {
+
+  if (!health || health.scans < 12) {
+    return false;
+  }
+
+  const persistentlyEmpty =
+    health.scans >= 20 &&
+    health.fetched <= 0 &&
+    health.candidates <= 0;
+
+  const repeatedlyBroken =
+    health.fetched <= 0 &&
+    health.candidates <= 0 &&
+    (
+      health.consecutive_errors >= 3 ||
+      health.errors >= 5
+    );
+
+  return (
+    persistentlyEmpty ||
+    repeatedlyBroken
+  );
+}
+
+
 function amazonAdaptiveWeight(
   surface:Surface,
   health:
@@ -608,6 +639,15 @@ function amazonAdaptiveWeight(
 ):number {
 
   let weight = 1;
+
+  /*
+   * Dead/blocked sources do not consume the normal hot path.
+   * pickAdaptiveAmazonSurface() still gives them a sparse
+   * deterministic recovery probe.
+   */
+  if (amazonSourceIsCooled(health)) {
+    return 0;
+  }
 
   /*
    * Proven first-party Amazon deal surfaces
@@ -631,12 +671,14 @@ function amazonAdaptiveWeight(
    */
   if (ultraMode) {
     if (
-      surface.name.includes("90")
+      ["95","90","85","80","75"]
+        .some(mark =>
+          surface.name.includes(mark)
+        )
     ) {
       weight += 2;
     } else if (
-      surface.name.includes("75")
-      || surface.name.includes("70")
+      surface.name.includes("70")
     ) {
       weight += 1;
     }
@@ -794,6 +836,9 @@ function pickAdaptiveAmazonSurface(
   const weighted:
     Surface[] = [];
 
+  const cooled:
+    Surface[] = [];
+
   for (const surface of surfaces) {
 
     const weight =
@@ -805,6 +850,11 @@ function pickAdaptiveAmazonSurface(
         ultraMode,
       );
 
+    if (weight <= 0) {
+      cooled.push(surface);
+      continue;
+    }
+
     for (
       let i=0;
       i<weight;
@@ -814,10 +864,31 @@ function pickAdaptiveAmazonSurface(
     }
   }
 
+  /*
+   * Recovery probe for cooled sources: roughly one slot
+   * every 20 cursor steps. They can recover without wasting
+   * the high-frequency discovery budget.
+   */
+  if (
+    cooled.length > 0 &&
+    Math.abs(cursor) % 20 === 0
+  ) {
+    return cooled[
+      Math.floor(
+        Math.abs(cursor) / 20
+      ) % cooled.length
+    ];
+  }
+
   if (!weighted.length) {
-    return surfaces[
+    const fallback =
+      cooled.length > 0
+        ? cooled
+        : surfaces;
+
+    return fallback[
       Math.max(0, cursor - 1)
-      % surfaces.length
+      % fallback.length
     ];
   }
 
@@ -984,7 +1055,7 @@ async function discoveryStep(
     );
 
   /*
-   * Exceptional >=80% hunter has its own cursor.
+   * Top-priority >=75% hunter has its own cursor.
    * It runs independently from the ordinary 65% Ultra hunt.
    */
   const exceptionalCursor =
@@ -1017,7 +1088,7 @@ async function discoveryStep(
     Promise<Record<string, unknown>>[] = [];
 
   /*
-   * Priority 1: >=80% exceptional hunt every cycle.
+   * Priority 1: >=75% top-priority hunt every cycle.
    */
   if (exceptionalSurface) {
     tasks.push(
@@ -1030,9 +1101,9 @@ async function discoveryStep(
   }
 
   /*
-   * Priority 2: 65-79% broad Ultra hunt.
+   * Priority 2: 65-74% broad Ultra hunt.
    *
-   * It remains active, but the exceptional radar gets
+   * It remains active, but the >=75% radar gets
    * the larger share of specialist search resources.
    */
   if (

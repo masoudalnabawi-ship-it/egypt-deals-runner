@@ -134,16 +134,40 @@ export class D1Repository {
         AND (lease_until=0 OR lease_until<?)
       ORDER BY
         /*
-         * ULTRA_PRIORITY_V2_STRICT
+         * ULTRA_PRIORITY_V3_TIERED
          *
-         * Stage 1: strict discovered percentage.
+         * Tier 1 = 75%+ discovery.
+         * Tier 2 = remaining Ultra discovery (65-74%).
          *
-         * A 95% lead is ALWAYS inspected before 90%.
-         * 90% before 80%.
-         * 80% before 70%.
-         *
-         * Source reputation can NEVER promote a lower
-         * percentage above a larger percentage.
+         * Every Tier-1 lead is inspected before Tier-2.
+         */
+        CASE
+          WHEN store='amazon'
+            AND lane='ultra'
+            AND visible_discount >= 75
+          THEN 2
+
+          WHEN store='amazon'
+            AND lane='ultra'
+          THEN 1
+
+          ELSE 0
+        END DESC,
+
+        /*
+         * Inside a tier, the preliminary intelligence
+         * score ranks promo/flash evidence before raw
+         * percentage alone.
+         */
+        CASE
+          WHEN store='amazon'
+            AND lane='ultra'
+          THEN score
+          ELSE 0
+        END DESC,
+
+        /*
+         * Larger discovered discounts break score ties.
          */
         CASE
           WHEN store='amazon'
@@ -153,7 +177,7 @@ export class D1Repository {
         END DESC,
 
         /*
-         * Stage 2: self-learning source reputation,
+         * Stage 3: self-learning source reputation,
          * used only when discount percentages tie.
          *
          * +2 = source produced a real rendered Ultra
