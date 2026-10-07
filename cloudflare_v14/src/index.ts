@@ -325,6 +325,32 @@ async function completePlaywrightVerification(
       )
     );
 
+  /*
+   * ULTRA_ASIN_VARIANT_LOCK_V2
+   *
+   * Amazon may redirect or switch a selected variant.
+   * Ultra evidence must belong to the exact ASIN that
+   * discovery requested.
+   */
+  const pageAsin =
+    String(
+      body?.page_asin || ""
+    )
+      .trim()
+      .toUpperCase();
+
+  const expectedAsin =
+    String(
+      row.external_id || ""
+    )
+      .trim()
+      .toUpperCase();
+
+  const canonicalUrl =
+    String(
+      body?.canonical_url || ""
+    ).slice(0,1000);
+
   const discoveredPrice =
     Number(row.current_price || 0);
 
@@ -340,6 +366,8 @@ async function completePlaywrightVerification(
     row.deal_key,
     {
       external_id: row.external_id,
+      page_asin:pageAsin,
+      canonical_url:canonicalUrl,
       discovery_current: discoveredPrice,
       discovery_old: Number(row.old_price || 0),
       discovery_discount: Number(row.visible_discount || 0),
@@ -353,6 +381,43 @@ async function completePlaywrightVerification(
       live_coupon_percent: coupon,
     },
   );
+
+  /*
+   * Exact product/variant identity gate.
+   *
+   * If Amazon says the rendered page belongs to another
+   * ASIN, no price from that page may qualify this lead.
+   */
+  if (
+    pageAsin &&
+    expectedAsin &&
+    pageAsin !== expectedAsin
+  ) {
+    const reason =
+      `amazon_variant_asin_mismatch:${expectedAsin}:${pageAsin}`;
+
+    await repo.markRejected(
+      row.deal_key,
+      reason,
+    );
+
+    await repo.event(
+      "ultra_variant_mismatch",
+      "amazon",
+      row.deal_key,
+      {
+        expected_asin:expectedAsin,
+        page_asin:pageAsin,
+        canonical_url:canonicalUrl,
+      },
+    );
+
+    return json({
+      ok:true,
+      state:"rejected",
+      reason,
+    });
+  }
 
   if (!(current > 0)) {
     await repo.markStrongRetry(
@@ -464,6 +529,46 @@ async function completePlaywrightVerification(
     old = 0;
   }
 
+  /*
+   * Independent LIVE discount calculation.
+   *
+   * History, discovery old price and cross-store data are
+   * intentionally absent from this calculation.
+   */
+  const liveOldDiscount =
+    old > current && current > 0
+      ? (
+          (old - current)
+          / old
+        ) * 100
+      : 0;
+
+  const liveBaseDiscount =
+    Math.max(
+      liveOldDiscount,
+      savings,
+    );
+
+  const liveEffectiveDiscount =
+    Math.max(
+      0,
+      Math.min(
+        99,
+        coupon > 0
+          ? (
+              100 *
+              (
+                1
+                -
+                (1 - liveBaseDiscount / 100)
+                *
+                (1 - coupon / 100)
+              )
+            )
+          : liveBaseDiscount
+      )
+    );
+
   const incoming =
     repo.rowToCandidate(row);
 
@@ -511,6 +616,12 @@ async function completePlaywrightVerification(
       crossPageProof,
     amazon_live_current_match:
       liveCurrentMatchesDiscovery,
+    amazon_page_asin:pageAsin,
+    amazon_canonical_url:canonicalUrl,
+    amazon_live_effective_discount:
+      Math.round(
+        liveEffectiveDiscount * 100
+      ) / 100,
     verification_signals:signals,
     amazon_savings_percent:savings,
     coupon_percent:coupon,

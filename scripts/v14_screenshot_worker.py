@@ -459,6 +459,13 @@ def _coupon_equivalent(
     text: str,
     current: float,
 ) -> float:
+    """
+    ULTRA_RENDERED_EVIDENCE_V2
+
+    Product coupons count.
+    Bank/card/installment promotions NEVER count.
+    """
+
     raw = (
         str(text or "")
         .translate(
@@ -468,11 +475,6 @@ def _coupon_equivalent(
             )
         )
     )
-
-    best = _pct(raw)
-
-    if not current or current <= 0:
-        return best
 
     low = raw.lower()
 
@@ -488,22 +490,56 @@ def _coupon_equivalent(
         "bank",
         "credit card",
         "debit card",
+        "cardholder",
         "visa",
         "mastercard",
         "master card",
         "installment",
+        "installments",
         "instalment",
+        "instalments",
         "nbe",
-        "enbd",
         "cib",
         "qnb",
+        "nbk",
+        "enbd",
+        "emirates nbd",
+        "banque misr",
+        "al ahly",
+        "hsbc",
+        "mashreq",
+        "fab",
+        "adib",
         "بنك",
         "بطاقة",
         "كارت",
         "تقسيط",
         "أقساط",
         "اقساط",
+        "قسط",
     )
+
+    if not any(
+        word in low
+        for word in coupon_words
+    ):
+        return 0.0
+
+    # Conditional payment promotions are not a
+    # general Amazon product discount.
+    if any(
+        word in low
+        for word in bank_words
+    ):
+        return 0.0
+
+    best = _pct(raw)
+
+    if not current or current <= 0:
+        return round(
+            min(99.0, best),
+            2,
+        )
 
     patterns = (
         r"(?:EGP|جنيه(?:\s+مصري)?|ج\.?\s*م\.?)\s*"
@@ -518,33 +554,6 @@ def _coupon_equivalent(
             raw,
             re.IGNORECASE,
         ):
-            start = max(
-                0,
-                match.start() - 100,
-            )
-
-            end = min(
-                len(raw),
-                match.end() + 100,
-            )
-
-            context = (
-                raw[start:end]
-                .lower()
-            )
-
-            if not any(
-                word in context
-                for word in coupon_words
-            ):
-                continue
-
-            if any(
-                word in context
-                for word in bank_words
-            ):
-                continue
-
             try:
                 amount = float(
                     match.group(1)
@@ -688,6 +697,30 @@ async def verify_rendered(
               const image = document.querySelector('#landingImage');
 
               return {
+                asin:
+                  (
+                    document.querySelector(
+                      '#ASIN'
+                    )?.value
+                    ||
+                    document.querySelector(
+                      'input[name="ASIN"]'
+                    )?.value
+                    ||
+                    ''
+                  )
+                  .trim()
+                  .toUpperCase(),
+
+                canonical_url:
+                  (
+                    document.querySelector(
+                      'link[rel="canonical"]'
+                    )?.href
+                    ||
+                    location.href
+                  ),
+
                 title:
                   (document.querySelector('#productTitle')?.textContent || '')
                   .trim(),
@@ -838,9 +871,106 @@ async def verify_rendered(
                     ),
                 )
 
+        # ------------------------------------------------
+        # Exact Amazon product identity.
+        # ------------------------------------------------
+        canonical_url = str(
+            raw.get("canonical_url")
+            or ""
+        ).strip()
+
+        page_asin = str(
+            raw.get("asin")
+            or ""
+        ).strip().upper()
+
+        if not re.fullmatch(
+            r"[A-Z0-9]{10}",
+            page_asin,
+        ):
+            match = re.search(
+                r"/(?:dp|gp/product)/"
+                r"([A-Z0-9]{10})",
+                canonical_url,
+                re.IGNORECASE,
+            )
+
+            page_asin = (
+                match.group(1).upper()
+                if match
+                else ""
+            )
+
+        requested_asin = str(
+            job.get("external_id")
+            or ""
+        ).strip().upper()
+
+        if (
+            page_asin
+            and requested_asin
+            and page_asin != requested_asin
+        ):
+            raise RuntimeError(
+                "amazon_variant_asin_mismatch:"
+                + requested_asin
+                + ":"
+                + page_asin
+            )
+
+        # ------------------------------------------------
+        # If Amazon shows both old price and savings %,
+                # they should describe roughly the same discount.
+        #
+        # A wildly inconsistent struck price is ignored
+        # instead of being allowed to create a fake Ultra.
+        # ------------------------------------------------
+        old_discount = 0.0
+
+        if old > current > 0:
+            old_discount = (
+                (old - current)
+                / old
+                * 100
+            )
+
+        old_savings_consistent = True
+
+        if (
+            old_discount >= 5
+            and savings >= 5
+            and abs(
+                old_discount
+                - savings
+            ) > 7
+        ):
+            old = 0.0
+            old_discount = 0.0
+            old_savings_consistent = False
+
+        evidence_count = (
+            int(old > current > 0)
+            + int(savings >= 5)
+            + int(coupon > 0)
+            + int(discovery_current_match)
+            + int(bool(page_asin))
+        )
+
         return {
             "title":
                 str(raw.get("title") or "").strip(),
+
+            "page_asin":
+                page_asin,
+
+            "canonical_url":
+                canonical_url,
+
+            "evidence_count":
+                evidence_count,
+
+            "old_savings_consistent":
+                old_savings_consistent,
 
             "current_price":
                 round(current, 2),

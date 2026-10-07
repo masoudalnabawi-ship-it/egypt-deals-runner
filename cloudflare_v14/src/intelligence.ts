@@ -121,7 +121,30 @@ export function evaluateDeal(
     crossStore = opts.cross_store_store || null;
   }
 
-  const realDiscount = Math.max(visible, effectiveDiscount, historical, coupon);
+  /*
+   * ULTRA_INTELLIGENCE_V2_LIVE_TRUTH
+   *
+   * Historical price intelligence is valuable for scoring
+   * and anomaly detection, but it is NOT live Amazon proof.
+   *
+   * Only evidence visible on the current product page may
+   * qualify Amazon for Ultra:
+   * - live old/list price
+   * - live savings percentage
+   * - explicit non-bank product coupon
+   */
+  const liveDiscount =
+    Math.max(
+      visible,
+      effectiveDiscount,
+      coupon,
+    );
+
+  const intelligenceDiscount =
+    Math.max(
+      liveDiscount,
+      historical,
+    );
   const lowTitle = String(deal.title || "").toLowerCase();
   const accessoryLike = ACCESSORY_TERMS.some(x => lowTitle.includes(x));
   const impossibleRatio = old >= 1000 && current > 0 && current / old <= 0.035;
@@ -154,13 +177,13 @@ export function evaluateDeal(
   confidence = Math.round(clamp(confidence, 0, 1) * 1000) / 1000;
 
   const breakdown = smartDealScore({
-    realDiscount, confidence, verificationSignals: signals, effectivePrice: effective,
+    realDiscount: intelligenceDiscount, confidence, verificationSignals: signals, effectivePrice: effective,
     oldPrice: old, marketAdvantage, profile, flash: Boolean(opts.flash), coupon,
     anomaly, accessoryLike, impossibleRatio,
   });
 
   let lane: "normal" | "ultra" = "normal";
-  if (deal.store === "amazon" && realDiscount >= settings.ultra_min_discount && confidence >= settings.min_confidence_ultra) {
+  if (deal.store === "amazon" && liveDiscount >= settings.ultra_min_discount && confidence >= settings.min_confidence_ultra) {
     lane = "ultra";
     reasons.push("amazon_ultra_65");
   } else if (deal.store === "noon") {
@@ -168,7 +191,16 @@ export function evaluateDeal(
   }
 
   return {
-    lane, score: breakdown.total, confidence, real_discount: round2(realDiscount), effective_price: effective,
+    lane,
+    score: breakdown.total,
+    confidence,
+    real_discount:
+      round2(
+        lane === "ultra"
+          ? liveDiscount
+          : intelligenceDiscount
+      ),
+    effective_price: effective,
     reasons, cross_store_price: crossPrice || null, cross_store_store: crossStore,
     anomaly, flash: Boolean(opts.flash), coupon_percent: coupon, score_breakdown: breakdown,
   };
@@ -176,6 +208,16 @@ export function evaluateDeal(
 
 export function acceptable(settings: Settings, decision: DealDecision): [boolean, string] {
   if (decision.lane === "ultra") {
+    if (
+      decision.real_discount <
+      settings.ultra_min_discount
+    ) {
+      return [
+        false,
+        "ultra_live_discount_below_threshold",
+      ];
+    }
+
     if (decision.confidence < settings.min_confidence_ultra) return [false, "ultra_confidence_low"];
     return [true, "ok"];
   }
