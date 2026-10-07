@@ -735,17 +735,38 @@ async function completePlaywrightVerification(
   }
 
   /*
-   * Absolute Ultra rule remains unchanged.
+   * AMAZON_HUNTER_V3_LIVE_ULTRA_ROUTE
+   *
+   * Ultra routing is decided ONLY from the rendered,
+   * live Amazon page evidence calculated above.
+   *
+   * Price history may improve intelligence/score,
+   * but can never promote a product into Ultra.
    */
+  const verifiedLiveDiscount =
+    Math.round(
+      liveEffectiveDiscount * 100
+    ) / 100;
+
+  decision.real_discount =
+    verifiedLiveDiscount;
+
   if (
-    decision.real_discount >=
+    verifiedLiveDiscount >=
       settings.ultra_hot_discount
+    &&
+    decision.confidence >=
+      settings.min_confidence_ultra
   ) {
     decision.lane = "ultra";
     decision.score = 100;
+
   } else if (
-    decision.real_discount >=
+    verifiedLiveDiscount >=
       settings.ultra_min_discount
+    &&
+    decision.confidence >=
+      settings.min_confidence_ultra
   ) {
     decision.lane = "ultra";
     decision.score =
@@ -753,11 +774,37 @@ async function completePlaywrightVerification(
         decision.score,
         94,
       );
+
   } else {
+
     /*
-     * A lead discovered as Ultra but proven live below
-     * 65% is safely downgraded to Amazon Normal.
+     * A discovery Ultra that is still a genuine
+     * >=normal deal is downgraded safely.
+     *
+     * If the rendered discount is below even the
+     * normal threshold, do not waste the review queue.
      */
+    if (
+      verifiedLiveDiscount <
+      settings.normal_min_discount
+    ) {
+      const rejectReason =
+        "playwright_live_discount_below_normal";
+
+      await repo.markRejected(
+        row.deal_key,
+        rejectReason,
+      );
+
+      return json({
+        ok:true,
+        state:"rejected",
+        reason:rejectReason,
+        discount:
+          verifiedLiveDiscount,
+      });
+    }
+
     decision.lane = "normal";
   }
 

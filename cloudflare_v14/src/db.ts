@@ -744,6 +744,106 @@ export class D1Repository {
     ).run();
   }
 
+  /*
+   * AMAZON_HUNTER_V3_SOURCE_INTELLIGENCE
+   *
+   * Cumulative source performance plus recent false-Ultra
+   * evidence. Discovery uses this only for SOURCE selection.
+   * It never changes the actual discount threshold.
+   */
+  async amazonSourceHealth(): Promise<Array<{
+    source:string;
+    scans:number;
+    fetched:number;
+    candidates:number;
+    verified:number;
+    sent:number;
+    errors:number;
+    consecutive_errors:number;
+    false_ultra:number;
+  }>> {
+
+    const cutoff =
+      nowTs() - 172800;
+
+    const rows =
+      await this.db.prepare(`
+        SELECT
+          sh.source AS source,
+          sh.scans AS scans,
+          sh.fetched AS fetched,
+          sh.candidates AS candidates,
+          sh.verified AS verified,
+          sh.sent AS sent,
+          sh.errors AS errors,
+          sh.consecutive_errors AS consecutive_errors,
+
+          COALESCE(
+            (
+              SELECT COUNT(*)
+              FROM events e
+              JOIN deals d
+                ON d.deal_key=e.deal_key
+              WHERE
+                d.store='amazon'
+                AND d.source=sh.source
+                AND e.event='ultra_false_discovery'
+                AND e.ts>=?
+            ),
+            0
+          ) AS false_ultra
+
+        FROM source_health sh
+        WHERE sh.store='amazon'
+      `)
+      .bind(cutoff)
+      .all<{
+        source:string;
+        scans:number;
+        fetched:number;
+        candidates:number;
+        verified:number;
+        sent:number;
+        errors:number;
+        consecutive_errors:number;
+        false_ultra:number;
+      }>();
+
+    return (rows.results || []).map(
+      row => ({
+        source:
+          String(row.source || ""),
+
+        scans:
+          Number(row.scans || 0),
+
+        fetched:
+          Number(row.fetched || 0),
+
+        candidates:
+          Number(row.candidates || 0),
+
+        verified:
+          Number(row.verified || 0),
+
+        sent:
+          Number(row.sent || 0),
+
+        errors:
+          Number(row.errors || 0),
+
+        consecutive_errors:
+          Number(
+            row.consecutive_errors || 0
+          ),
+
+        false_ultra:
+          Number(row.false_ultra || 0),
+      })
+    );
+  }
+
+
   async stats(): Promise<Record<string, Record<string, Record<string, number>>>> {
     const rows = await this.db.prepare(
       "SELECT store,lane,state,COUNT(*) AS n FROM deals GROUP BY store,lane,state"

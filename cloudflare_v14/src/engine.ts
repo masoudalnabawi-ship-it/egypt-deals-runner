@@ -470,6 +470,283 @@ async function scanNoonSurface(env: V14Env, repo: D1Repository, settings: Settin
   return { store: 'noon', source: surface.name, fetched, queued, error: Boolean(error) };
 }
 
+
+/*
+ * AMAZON_HUNTER_V3_ADAPTIVE
+ *
+ * Source selection now learns from:
+ * - verified / candidate conversion
+ * - sent / scan productivity
+ * - candidate yield
+ * - error rate
+ * - recent false Ultra leads
+ *
+ * Every source keeps an exploration floor so the system
+ * never becomes blind to a department that suddenly improves.
+ */
+
+type AmazonHealthSnapshot = {
+  source:string;
+  scans:number;
+  fetched:number;
+  candidates:number;
+  verified:number;
+  sent:number;
+  errors:number;
+  consecutive_errors:number;
+  false_ultra:number;
+};
+
+function amazonAdaptiveWeight(
+  surface:Surface,
+  health:
+    AmazonHealthSnapshot | undefined,
+  ultraMode=false,
+):number {
+
+  let weight = 1;
+
+  /*
+   * Proven first-party Amazon deal surfaces
+   * keep a strong baseline.
+   */
+  if (surface.name === "goldbox") {
+    weight += 3;
+  }
+
+  if (surface.name === "limited_time") {
+    weight += 2;
+  }
+
+  if (surface.name === "clearance") {
+    weight += 1;
+  }
+
+  /*
+   * Ultra discovery still favors searches aimed
+   * at the largest discounts.
+   */
+  if (ultraMode) {
+    if (
+      surface.name.includes("90")
+    ) {
+      weight += 2;
+    } else if (
+      surface.name.includes("75")
+      || surface.name.includes("70")
+    ) {
+      weight += 1;
+    }
+  }
+
+  /*
+   * New / under-sampled sources receive exploration,
+   * not punishment.
+   */
+  if (
+    !health
+    || health.scans < 3
+  ) {
+    return Math.max(
+      1,
+      Math.min(7, weight + 1)
+    );
+  }
+
+  const candidates =
+    Math.max(
+      0,
+      health.candidates
+    );
+
+  const verified =
+    Math.max(
+      0,
+      health.verified
+    );
+
+  const scans =
+    Math.max(
+      1,
+      health.scans
+    );
+
+  const verifyRate =
+    candidates > 0
+      ? verified / candidates
+      : 0;
+
+  const sentPerScan =
+    Math.max(
+      0,
+      health.sent
+    ) / scans;
+
+  const candidatesPerScan =
+    candidates / scans;
+
+  const errorRate =
+    Math.max(
+      0,
+      health.errors
+    ) / scans;
+
+  /*
+   * Verified conversion is the strongest signal.
+   */
+  if (
+    candidates >= 5
+    && verifyRate >= 0.65
+  ) {
+    weight += 3;
+
+  } else if (
+    candidates >= 5
+    && verifyRate >= 0.40
+  ) {
+    weight += 2;
+
+  } else if (
+    candidates >= 5
+    && verifyRate >= 0.25
+  ) {
+    weight += 1;
+
+  } else if (
+    candidates >= 8
+    && verifyRate < 0.12
+  ) {
+    weight -= 2;
+  }
+
+  /*
+   * Sources that regularly generate sendable deals
+   * deserve more search budget.
+   */
+  if (sentPerScan >= 0.70) {
+    weight += 2;
+  } else if (sentPerScan >= 0.30) {
+    weight += 1;
+  }
+
+  /*
+   * Productive pages deserve deeper coverage.
+   */
+  if (candidatesPerScan >= 1.20) {
+    weight += 1;
+  }
+
+  /*
+   * Protection / network errors cool a source down.
+   */
+  if (
+    errorRate >= 0.40
+    || health.consecutive_errors >= 3
+  ) {
+    weight -= 1;
+  }
+
+  /*
+   * Search sources repeatedly producing fake Ultra
+   * references are heavily cooled.
+   */
+  if (health.false_ultra >= 3) {
+    weight -= 2;
+  } else if (health.false_ultra >= 1) {
+    weight -= 1;
+  }
+
+  return Math.max(
+    1,
+    Math.min(
+      7,
+      Math.round(weight)
+    )
+  );
+}
+
+
+function pickAdaptiveAmazonSurface(
+  surfaces:Surface[],
+  healthRows:
+    AmazonHealthSnapshot[],
+  cursor:number,
+  ultraMode=false,
+):Surface | undefined {
+
+  if (!surfaces.length) {
+    return undefined;
+  }
+
+  const healthMap =
+    new Map(
+      healthRows.map(
+        row => [
+          row.source,
+          row,
+        ]
+      )
+    );
+
+  const weighted:
+    Surface[] = [];
+
+  for (const surface of surfaces) {
+
+    const weight =
+      amazonAdaptiveWeight(
+        surface,
+        healthMap.get(
+          surface.name
+        ),
+        ultraMode,
+      );
+
+    for (
+      let i=0;
+      i<weight;
+      i++
+    ) {
+      weighted.push(surface);
+    }
+  }
+
+  if (!weighted.length) {
+    return surfaces[
+      Math.max(0, cursor - 1)
+      % surfaces.length
+    ];
+  }
+
+  return weighted[
+    Math.max(0, cursor - 1)
+    % weighted.length
+  ];
+}
+
+
+function amazonPagedSurface(
+  surface:Surface,
+  page:number,
+):Surface {
+
+  const url =
+    new URL(surface.url);
+
+  url.searchParams.set(
+    "page",
+    String(
+      Math.max(2, page)
+    ),
+  );
+
+  return {
+    ...surface,
+    url:url.toString(),
+  };
+}
+
+
 async function discoveryStep(
   env: V14Env,
   repo: D1Repository,
@@ -480,6 +757,9 @@ async function discoveryStep(
     "cycle_count",
     1,
   );
+
+  const amazonHealth =
+    await repo.amazonSourceHealth();
 
   const aCur = await repo.counterAdd(
     "amazon_surface_cursor",
@@ -504,10 +784,12 @@ async function discoveryStep(
     );
 
   const aSurface =
-    amazonRegular[
-      (aCur - 1)
-      % amazonRegular.length
-    ];
+    pickAdaptiveAmazonSurface(
+      amazonRegular,
+      amazonHealth,
+      aCur,
+      false,
+    );
 
   /*
    * Separate Ultra hunter runs every cycle.
@@ -519,15 +801,34 @@ async function discoveryStep(
       1,
     );
 
-  const ultraSourceName =
-    AMAZON_ULTRA_HUNTER_ORDER[
-      (ultraCursor - 1)
-      % AMAZON_ULTRA_HUNTER_ORDER.length
+  const ultraNames =
+    [
+      ...new Set(
+        AMAZON_ULTRA_HUNTER_ORDER
+      )
     ];
 
+  const ultraPool =
+    ultraNames
+      .map(
+        name =>
+          AMAZON_SURFACES.find(
+            x => x.name === name
+          )
+      )
+      .filter(
+        (
+          value
+        ): value is Surface =>
+          Boolean(value)
+      );
+
   const ultraSurface =
-    AMAZON_SURFACES.find(
-      x => x.name === ultraSourceName
+    pickAdaptiveAmazonSurface(
+      ultraPool,
+      amazonHealth,
+      ultraCursor,
+      true,
     );
 
   const tasks:
@@ -634,6 +935,48 @@ async function discoveryStep(
       );
     }
   }
+
+
+  /*
+   * AMAZON HUNTER V3 SMART DEPTH
+   *
+   * Every 4 cycles, a productive adaptive source gets
+   * page 2 as well. This expands coverage without
+   * aggressive concurrency or blind multi-page crawling.
+   */
+  if (
+    cycle % 4 === 0
+    && aSurface
+  ) {
+
+    const health =
+      amazonHealth.find(
+        row =>
+          row.source ===
+          aSurface.name
+      );
+
+    const weight =
+      amazonAdaptiveWeight(
+        aSurface,
+        health,
+        false,
+      );
+
+    if (weight >= 3) {
+      tasks.push(
+        scanAmazonSurface(
+          repo,
+          settings,
+          amazonPagedSurface(
+            aSurface,
+            2,
+          ),
+        ),
+      );
+    }
+  }
+
 
 
   /*
