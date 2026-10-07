@@ -8,6 +8,7 @@ import re
 import signal
 import time
 import uuid
+from urllib.parse import quote
 
 import httpx
 from playwright.async_api import async_playwright
@@ -57,6 +58,55 @@ MIN_GAP = float(
         "1.5",
     )
 )
+
+NOON_SCAN_SECONDS = max(
+    180,
+    int(
+        os.getenv(
+            "V14_NOON_SCAN_SECONDS",
+            "240",
+        )
+    ),
+)
+
+NOON_MAX_PRODUCTS = max(
+    4,
+    min(
+        20,
+        int(
+            os.getenv(
+                "V14_NOON_MAX_PRODUCTS",
+                "12",
+            )
+        ),
+    ),
+)
+
+# One rendered Noon search every few minutes.
+# Full category rotation completes without burst traffic.
+NOON_SURFACES = [
+    ("mobiles", "mobiles", "mobile phones"),
+    ("laptops", "computers", "laptops"),
+    ("appliances", "appliances", "home appliances"),
+    ("tablets", "computers", "tablets"),
+    ("tvs", "electronics", "televisions"),
+    ("audio", "electronics", "headphones earbuds speakers"),
+    ("gaming", "electronics", "gaming"),
+    ("smartwatches", "electronics", "smart watches"),
+    ("mobile_accessories", "mobiles", "mobile accessories"),
+    ("computer_accessories", "computers", "computer accessories"),
+    ("kitchen", "kitchen", "kitchen appliances"),
+    ("beauty", "beauty", "beauty"),
+    ("personal_care", "beauty", "personal care"),
+    ("fashion", "fashion", "fashion"),
+    ("shoes", "fashion", "shoes"),
+    ("sports", "sports", "sports fitness"),
+    ("toys", "toys", "toys"),
+    ("baby", "baby", "baby"),
+    ("grocery", "grocery", "grocery"),
+    ("automotive", "automotive", "car accessories"),
+]
+
 
 
 def required() -> None:
@@ -372,6 +422,128 @@ def _pct(value: str) -> float:
     return value if 0 < value <= 99 else 0.0
 
 
+def _coupon_equivalent(
+    text: str,
+    current: float,
+) -> float:
+    raw = (
+        str(text or "")
+        .translate(
+            str.maketrans(
+                "٠١٢٣٤٥٦٧٨٩٫٬",
+                "0123456789.,",
+            )
+        )
+    )
+
+    best = _pct(raw)
+
+    if not current or current <= 0:
+        return best
+
+    low = raw.lower()
+
+    coupon_words = (
+        "coupon",
+        "voucher",
+        "كوبون",
+        "قسيمة",
+        "خصم فوري",
+    )
+
+    bank_words = (
+        "bank",
+        "credit card",
+        "debit card",
+        "visa",
+        "mastercard",
+        "master card",
+        "installment",
+        "instalment",
+        "nbe",
+        "enbd",
+        "cib",
+        "qnb",
+        "بنك",
+        "بطاقة",
+        "كارت",
+        "تقسيط",
+        "أقساط",
+        "اقساط",
+    )
+
+    patterns = (
+        r"(?:EGP|جنيه(?:\s+مصري)?|ج\.?\s*م\.?)\s*"
+        r"([0-9][0-9,]*(?:\.[0-9]+)?)",
+        r"([0-9][0-9,]*(?:\.[0-9]+)?)\s*"
+        r"(?:EGP|جنيه(?:\s+مصري)?|ج\.?\s*م\.?)",
+    )
+
+    for pattern in patterns:
+        for match in re.finditer(
+            pattern,
+            raw,
+            re.IGNORECASE,
+        ):
+            start = max(
+                0,
+                match.start() - 100,
+            )
+
+            end = min(
+                len(raw),
+                match.end() + 100,
+            )
+
+            context = (
+                raw[start:end]
+                .lower()
+            )
+
+            if not any(
+                word in context
+                for word in coupon_words
+            ):
+                continue
+
+            if any(
+                word in context
+                for word in bank_words
+            ):
+                continue
+
+            try:
+                amount = float(
+                    match.group(1)
+                    .replace(",", "")
+                )
+            except Exception:
+                continue
+
+            if (
+                amount <= 0
+                or amount >= current * 0.95
+            ):
+                continue
+
+            pct = (
+                amount
+                / current
+                * 100
+            )
+
+            if 0 < pct <= 80:
+                best = max(
+                    best,
+                    pct,
+                )
+
+    return round(
+        min(99.0, best),
+        2,
+    )
+
+
 async def verify_rendered(
     context,
     job: dict,
@@ -627,7 +799,10 @@ async def verify_rendered(
             ):
                 coupon = max(
                     coupon,
-                    _pct(value),
+                    _coupon_equivalent(
+                        value,
+                        current,
+                    ),
                 )
 
         return {
@@ -926,6 +1101,710 @@ async def send_telegram(
         )
 
 
+def _noon_currency_values(
+    text: str,
+) -> list[float]:
+    raw = (
+        str(text or "")
+        .translate(
+            str.maketrans(
+                "٠١٢٣٤٥٦٧٨٩٫٬",
+                "0123456789.,",
+            )
+        )
+    )
+
+    values = []
+
+    patterns = (
+        r"(?:EGP|جنيه(?:\s+مصري)?|ج\.?\s*م\.?)\s*"
+        r"([0-9][0-9,]*(?:\.[0-9]+)?)",
+        r"([0-9][0-9,]*(?:\.[0-9]+)?)\s*"
+        r"(?:EGP|جنيه(?:\s+مصري)?|ج\.?\s*م\.?)",
+    )
+
+    skip_words = (
+        "month",
+        "monthly",
+        "installment",
+        "instalment",
+        "credit card",
+        "debit card",
+        "visa",
+        "mastercard",
+        "bank",
+        "شهر",
+        "شهريا",
+        "شهرياً",
+        "تقسيط",
+        "قسط",
+        "بطاقة",
+        "بنك",
+    )
+
+    for pattern in patterns:
+        for match in re.finditer(
+            pattern,
+            raw,
+            re.IGNORECASE,
+        ):
+            start = max(
+                0,
+                match.start() - 60,
+            )
+
+            end = min(
+                len(raw),
+                match.end() + 60,
+            )
+
+            context = (
+                raw[start:end]
+                .lower()
+            )
+
+            if any(
+                word in context
+                for word in skip_words
+            ):
+                continue
+
+            try:
+                value = float(
+                    match.group(1)
+                    .replace(",", "")
+                )
+            except Exception:
+                continue
+
+            if value > 0:
+                values.append(value)
+
+    unique = []
+
+    for value in values:
+        if not any(
+            abs(value - old) <= 0.01
+            for old in unique
+        ):
+            unique.append(value)
+
+    return unique
+
+
+def _noon_card_candidate(
+    ref: dict,
+    source: str,
+    category: str,
+) -> dict | None:
+    values = _noon_currency_values(
+        str(ref.get("text") or "")
+    )
+
+    if len(values) < 2:
+        return None
+
+    current = min(values)
+    old = max(values)
+
+    if not (
+        old > current * 1.05
+    ):
+        return None
+
+    discount = (
+        (old - current)
+        / old
+        * 100
+    )
+
+    if discount < 10:
+        return None
+
+    title = str(
+        ref.get("title") or ""
+    ).strip()
+
+    if len(title) < 5:
+        return None
+
+    return {
+        "external_id":
+            str(ref.get("sku") or ""),
+        "title":
+            title[:300],
+        "url":
+            str(ref.get("url") or ""),
+        "current_price":
+            round(current, 2),
+        "old_price":
+            round(old, 2),
+        "image_url":
+            str(
+                ref.get("image_url")
+                or ""
+            ),
+        "source":
+            source,
+        "category":
+            category,
+    }
+
+
+async def _noon_product_candidate(
+    client: httpx.AsyncClient,
+    ref: dict,
+    source: str,
+    category: str,
+) -> dict | None:
+    sku = str(
+        ref.get("sku") or ""
+    ).strip()
+
+    if not sku:
+        return None
+
+    api = (
+        "https://www.noon.com/"
+        "_vs/nc/mp-customer-catalog-api/"
+        "api/v3/product/"
+        + sku
+    )
+
+    response = await client.get(
+        api,
+        headers={
+            "accept":
+                "application/json,text/plain,*/*",
+            "x-locale":
+                "en-eg",
+            "x-mp-country":
+                "eg",
+            "referer":
+                "https://www.noon.com/egypt-en/",
+        },
+        timeout=15,
+    )
+
+    if not response.is_success:
+        raise RuntimeError(
+            f"noon_product_http_"
+            f"{response.status_code}"
+          )
+
+    data = response.json()
+
+    product = data.get("product")
+
+    if not isinstance(product, dict):
+        raise RuntimeError(
+            "noon_product_missing"
+        )
+
+    market = json.dumps(
+        {
+            "meta": data.get("meta"),
+            "currency":
+                product.get("currency"),
+            "country":
+                product.get("country"),
+        },
+        ensure_ascii=False,
+    ).lower()
+
+    if any(
+        x in market
+        for x in (
+            '"currency": "aed"',
+            '"country": "ae"',
+            "united arab emirates",
+            "dubai",
+            "abu dhabi",
+        )
+    ):
+        raise RuntimeError(
+            "noon_wrong_market"
+        )
+
+    variants = [
+        x
+        for x in (
+            product.get("variants")
+            if isinstance(
+                product.get("variants"),
+                list,
+            )
+            else []
+        )
+        if isinstance(x, dict)
+    ]
+
+    requested = sku.upper()
+
+    chosen = None
+
+    for variant in variants:
+        variant_sku = str(
+            variant.get("sku")
+            or variant.get("catalog_sku")
+            or ""
+        ).upper()
+
+        if variant_sku == requested:
+            chosen = variant
+            break
+
+    if chosen is None and variants:
+        chosen = variants[0]
+
+    offers = []
+
+    if isinstance(chosen, dict):
+        offers = [
+            x
+            for x in (
+                chosen.get("offers")
+                if isinstance(
+                    chosen.get("offers"),
+                    list,
+                )
+                else []
+            )
+            if isinstance(x, dict)
+        ]
+
+    if not offers:
+        offers = [
+            x
+            for x in (
+                product.get("offers")
+                if isinstance(
+                    product.get("offers"),
+                    list,
+                )
+                else []
+            )
+            if isinstance(x, dict)
+        ]
+
+    def price_now(offer: dict) -> float:
+        for key in (
+            "sale_price",
+            "salePrice",
+            "offer_price",
+            "offerPrice",
+            "price",
+        ):
+            value = _num(
+                str(offer.get(key) or "")
+            )
+
+            if value > 0:
+                return value
+
+        return 0.0
+
+    pool = [
+        offer
+        for offer in offers
+        if (
+            offer.get("is_buyable")
+            is not False
+            and price_now(offer) > 0
+        )
+    ]
+
+    if not pool:
+        pool = [
+            offer
+            for offer in offers
+            if price_now(offer) > 0
+        ]
+
+    if not pool:
+        raise RuntimeError(
+            "noon_offer_missing"
+        )
+
+    pool.sort(
+        key=price_now
+    )
+
+    offer = pool[0]
+
+    current = price_now(offer)
+
+    old = _num(
+        str(
+            offer.get("price")
+            or offer.get("regular_price")
+            or offer.get("regularPrice")
+            or ""
+        )
+    )
+
+    if not (
+        old > current
+    ):
+        old = 0.0
+
+    if not old:
+        return None
+
+    discount = (
+        (old - current)
+        / old
+        * 100
+    )
+
+    if discount < 10:
+        return None
+
+    title = str(
+        product.get("product_title")
+        or product.get("name")
+        or product.get("title")
+        or ref.get("title")
+        or ""
+    ).strip()
+
+    if len(title) < 5:
+        return None
+
+    image = str(
+        ref.get("image_url")
+        or ""
+    )
+
+    images = product.get(
+        "image_urls"
+    )
+
+    if (
+        isinstance(images, list)
+        and images
+    ):
+        first = images[0]
+
+        if isinstance(first, str):
+            image = first
+
+        elif isinstance(first, dict):
+            image = str(
+                first.get("url")
+                or first.get("src")
+                or image
+            )
+
+    return {
+        "external_id":
+            sku,
+        "title":
+            title[:300],
+        "url":
+            str(ref.get("url") or ""),
+        "current_price":
+            round(current, 2),
+        "old_price":
+            round(old, 2),
+        "image_url":
+            image,
+        "source":
+            source,
+        "category":
+            category,
+    }
+
+
+async def discover_noon_rendered(
+    context,
+    client: httpx.AsyncClient,
+    cursor: int,
+) -> dict:
+    source, category, query = (
+        NOON_SURFACES[
+            cursor
+            % len(NOON_SURFACES)
+        ]
+    )
+
+    url = (
+        "https://www.noon.com/"
+        "egypt-en/search/?q="
+        + quote(query)
+        + "&isCarouselView=false"
+        + "&limit=50"
+    )
+
+    page = await context.new_page()
+
+    started = time.monotonic()
+
+    try:
+        response = await page.goto(
+            url,
+            wait_until="domcontentloaded",
+            timeout=22000,
+        )
+
+        if (
+            response is not None
+            and response.status >= 400
+        ):
+            raise RuntimeError(
+                f"noon_search_http_"
+                f"{response.status}"
+            )
+
+        await page.wait_for_timeout(
+            1800
+        )
+
+        body = await page.locator(
+            "body"
+        ).inner_text(
+            timeout=7000
+        )
+
+        low = body.lower()
+
+        if any(
+            x in low
+            for x in (
+                "access denied",
+                "captcha",
+                "unusual traffic",
+                "robot check",
+            )
+        ):
+            raise RuntimeError(
+                "noon_search_protected"
+            )
+
+        refs = await page.evaluate(
+            """
+            () => {
+              const out = [];
+              const seen = new Set();
+
+              const links =
+                document.querySelectorAll(
+                  'a[href*="/p/"]'
+                );
+
+              for (const a of links) {
+                let href = '';
+
+                try {
+                  href =
+                    new URL(
+                      a.getAttribute('href') || '',
+                      location.href
+                    ).href;
+                } catch {
+                  continue;
+                }
+
+                if (
+                  !href.includes(
+                    'noon.com/egypt-en/'
+                  )
+                ) {
+                  continue;
+                }
+
+                const m =
+                  href.match(
+                    /\\/([A-Z0-9-]{5,})\\/p\\/?(?:[?#]|$)/i
+                  );
+
+                if (!m) continue;
+
+                const sku =
+                  m[1].toUpperCase();
+
+                if (seen.has(sku)) {
+                  continue;
+                }
+
+                seen.add(sku);
+
+                let node = a;
+                let card = a;
+
+                for (
+                  let i = 0;
+                  i < 8;
+                  i++
+                ) {
+                  node =
+                    node.parentElement;
+
+                  if (!node) break;
+
+                  const text =
+                    (
+                      node.innerText
+                      || ''
+                    ).trim();
+
+                  if (
+                    text.length >= 20
+                    && text.length <= 1800
+                    && /EGP|جنيه|%|off|خصم/i.test(
+                      text
+                    )
+                  ) {
+                    card = node;
+                  }
+                }
+
+                const img =
+                  card.querySelector(
+                    'img'
+                  );
+
+                const title =
+                  (
+                    a.getAttribute(
+                      'aria-label'
+                    )
+                    || img?.getAttribute(
+                      'alt'
+                    )
+                    || a.getAttribute(
+                      'title'
+                    )
+                    || (
+                      card.innerText
+                      || ''
+                    )
+                      .split('\\n')
+                      .map(
+                        x => x.trim()
+                      )
+                      .find(
+                        x =>
+                          x.length >= 5
+                          && !/^EGP\\b/i.test(x)
+                      )
+                    || ''
+                  ).trim();
+
+                out.push({
+                  sku,
+                  url: href,
+                  title,
+                  text:
+                    (
+                      card.innerText
+                      || ''
+                    ).trim(),
+                  image_url:
+                    img?.getAttribute(
+                      'src'
+                    )
+                    || img?.getAttribute(
+                      'data-src'
+                    )
+                    || ''
+                });
+
+                if (out.length >= 30) {
+                  break;
+                }
+              }
+
+              return out;
+            }
+            """
+        )
+
+    finally:
+        await page.close()
+
+    refs = (
+        refs
+        if isinstance(refs, list)
+        else []
+    )
+
+    deals = []
+
+    for ref in refs[
+        :NOON_MAX_PRODUCTS
+    ]:
+        if not isinstance(ref, dict):
+            continue
+
+        candidate = None
+
+        try:
+            candidate = (
+                await _noon_product_candidate(
+                    client,
+                    ref,
+                    source,
+                    category,
+                )
+            )
+        except Exception:
+            candidate = None
+
+        if candidate is None:
+            candidate = (
+                _noon_card_candidate(
+                    ref,
+                    source,
+                    category,
+                )
+            )
+
+        if candidate is not None:
+            deals.append(candidate)
+
+        await asyncio.sleep(0.12)
+
+    latency_ms = int(
+        (
+            time.monotonic()
+            - started
+        )
+        * 1000
+    )
+
+    result = await api_post(
+        client,
+        "/admin/noon-ingest",
+        {
+            "source":
+                source,
+            "category":
+                category,
+            "seen":
+                len(refs),
+            "latency_ms":
+                latency_ms,
+            "deals":
+                deals,
+        },
+    )
+
+    return {
+        "source":
+            source,
+        "seen":
+            len(refs),
+        "deals":
+            len(deals),
+        "queued":
+            result.get(
+                "queued",
+                0,
+            ),
+    }
+
+
 async def main() -> None:
     required()
 
@@ -993,11 +1872,52 @@ async def main() -> None:
             follow_redirects=True
         ) as client:
 
+            noon_cursor = 0
+            next_noon_scan = 0.0
+
             while (
                 not stop.is_set()
                 and time.monotonic() - started
                     < RUN_SECONDS
             ):
+                # NOON RENDERED DISCOVERY
+                if (
+                    time.monotonic()
+                    >= next_noon_scan
+                ):
+                    try:
+                        noon_result = (
+                            await discover_noon_rendered(
+                                context,
+                                client,
+                                noon_cursor,
+                            )
+                        )
+
+                        print(
+                            "NOON_SCAN",
+                            json.dumps(
+                                noon_result,
+                                ensure_ascii=False,
+                            ),
+                            flush=True,
+                        )
+
+                    except Exception as exc:
+                        print(
+                            "NOON_SCAN_ERROR",
+                            type(exc).__name__,
+                            str(exc),
+                            flush=True,
+                        )
+
+                    noon_cursor += 1
+
+                    next_noon_scan = (
+                        time.monotonic()
+                        + NOON_SCAN_SECONDS
+                    )
+
                 # Stage 1:
                 # Render and verify the strongest Ultra lead.
                 verify_job = None

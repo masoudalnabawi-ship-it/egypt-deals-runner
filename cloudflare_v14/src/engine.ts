@@ -262,7 +262,15 @@ async function scanAmazonSurface(repo: D1Repository, settings: Settings, surface
 async function scanNoonSurface(env: V14Env, repo: D1Repository, settings: Settings, surface: Surface): Promise<Record<string, unknown>> {
   let fetched = 0, queued = 0, latency = 0, error = '';
   try {
-    const result = await fetchNoonSurfaceWithFallback(env, repo, settings, surface); latency = result.latency;
+    /*
+     * Direct API only here.
+     * Rendered Noon discovery is handled by GitHub
+     * Playwright and does not consume CF Browser budget.
+     */
+    void env;
+
+    const result =
+      await fetchNoonSurface(surface); latency = result.latency;
     const deals = parseNoon(result.text, surface); fetched = deals.length;
     queued = await admitNoon(repo, settings, deals);
   } catch (e) { error = `${e instanceof Error ? e.name : 'Error'}:${e instanceof Error ? e.message : String(e)}`; }
@@ -361,8 +369,8 @@ async function discoveryStep(
    *
    * Amazon Ultra remains the priority path.
    * Noon gets one rotating surface every 3 cycles.
-   * Direct API is attempted first; Browser fallback
-   * remains protected by its existing daily budget.
+   * Cloudflare uses the cheap direct API only.
+   * GitHub Playwright provides the rendered safety net.
    */
   if (
     NOON_SURFACES.length > 0 &&

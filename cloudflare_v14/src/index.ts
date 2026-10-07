@@ -3,7 +3,7 @@ import { getSettings } from './config';
 import { D1Repository } from './db';
 import { handleTelegramUpdate, runCycle } from './engine';
 import { setWebhook } from './telegram';
-import { acceptable, buildPriceProfile, evaluateDeal } from './intelligence';
+import { acceptable, buildPriceProfile, evaluateDeal, preliminaryDecision } from './intelligence';
 import { inspectDeal } from './shield';
 
 
@@ -891,6 +891,247 @@ async function completeScreenshotJob(
   });
 }
 
+async function ingestNoonPlaywright(
+  request: Request,
+  env: V14Env,
+): Promise<Response> {
+  if (!adminAllowed(request, env)) {
+    return json(
+      {ok:false,error:"unauthorized"},
+      401,
+    );
+  }
+
+  let body: any = {};
+
+  try {
+    body = await request.json();
+  } catch {
+    return json(
+      {ok:false,error:"invalid_json"},
+      400,
+    );
+  }
+
+  const rows =
+    Array.isArray(body?.deals)
+      ? body.deals.slice(0, 30)
+      : [];
+
+  const source =
+    String(
+      body?.source || "rendered"
+    )
+      .toLowerCase()
+      .replace(/[^a-z0-9_-]+/g, "_")
+      .slice(0, 40)
+      || "rendered";
+
+  const category =
+    String(
+      body?.category || "general"
+    )
+      .toLowerCase()
+      .replace(/[^a-z0-9_-]+/g, "_")
+      .slice(0, 40)
+      || "general";
+
+  const sourceName =
+    `gha_noon_${source}`;
+
+  const fetched =
+    Math.max(
+      rows.length,
+      Math.min(
+        100,
+        Math.floor(
+          Number(body?.seen || 0)
+        )
+      )
+    );
+
+  const latency =
+    Math.max(
+      0,
+      Math.min(
+        120000,
+        Math.floor(
+          Number(body?.latency_ms || 0)
+        )
+      )
+    );
+
+  const repo =
+    new D1Repository(
+      env.egypt_deals_v14_db
+    );
+
+  const settings =
+    getSettings(env);
+
+  let accepted = 0;
+  let queued = 0;
+
+  for (const raw of rows) {
+    const sku =
+      String(
+        raw?.external_id ||
+        raw?.sku ||
+        ""
+      )
+        .trim()
+        .slice(0, 80);
+
+    const title =
+      String(raw?.title || "")
+        .trim()
+        .slice(0, 300);
+
+    const url =
+      String(raw?.url || "")
+        .trim()
+        .slice(0, 1000);
+
+    const current =
+      Number(
+        raw?.current_price || 0
+      );
+
+    let old =
+      Number(
+        raw?.old_price || 0
+      );
+
+    if (
+      !sku ||
+      title.length < 5 ||
+      !(current > 0)
+    ) {
+      continue;
+    }
+
+    let parsed: URL;
+
+    try {
+      parsed = new URL(url);
+    } catch {
+      continue;
+    }
+
+    if (
+      parsed.protocol !== "https:" ||
+      !(
+        parsed.hostname === "www.noon.com" ||
+        parsed.hostname === "noon.com"
+      ) ||
+      !parsed.pathname.includes("/egypt-en/")
+    ) {
+      continue;
+    }
+
+    if (!(old > current)) {
+      old = 0;
+    }
+
+    const visible =
+      old > current
+        ? (
+            (old - current)
+            / old
+          ) * 100
+        : 0;
+
+    /*
+     * The rendered discovery worker is a lead generator.
+     * We keep only worthwhile Noon candidates here;
+     * Cloudflare still performs independent product API
+     * verification before Telegram delivery.
+     */
+    if (
+      visible <
+      settings.normal_min_discount
+    ) {
+      continue;
+    }
+
+    const deal: DealCandidate = {
+      store:"noon",
+      external_id:sku,
+      title,
+      url,
+      current_price:current,
+      old_price:
+        old > current
+          ? old
+          : null,
+      image_url:
+        String(
+          raw?.image_url || ""
+        ).slice(0, 1500),
+      category,
+      source:sourceName,
+      metadata:{
+        github_playwright_noon_discovery:true,
+        rendered_search_page:true,
+        locale:"en-eg",
+        currency:"EGP",
+      },
+    };
+
+    const preliminary =
+      preliminaryDecision(
+        settings,
+        deal,
+      );
+
+    preliminary.lane =
+      "normal";
+
+    const result =
+      await repo.upsertCandidate(
+        deal,
+        preliminary,
+      );
+
+    accepted++;
+
+    if (result.new_or_reopened) {
+      queued++;
+    }
+  }
+
+  await repo.sourceResult(
+    "noon",
+    sourceName,
+    category,
+    fetched,
+    queued,
+    latency,
+    "",
+  );
+
+  await repo.event(
+    "github_noon_ingest",
+    "noon",
+    "",
+    {
+      source:sourceName,
+      fetched,
+      accepted,
+      queued,
+    },
+  );
+
+  return json({
+    ok:true,
+    source:sourceName,
+    fetched,
+    accepted,
+    queued,
+  });
+}
+
+
 async function bootstrap(request: Request, env: V14Env): Promise<Response> {
   if (!adminAllowed(request, env)) return json({ok:false,error:'unauthorized'}, 401);
 
@@ -970,6 +1211,16 @@ export default {
       url.pathname === "/internal/import-noon-route"
     ) {
       return importNoonRoute(request, env);
+    }
+
+    if (
+      request.method === "POST" &&
+      url.pathname === "/admin/noon-ingest"
+    ) {
+      return ingestNoonPlaywright(
+        request,
+        env,
+      );
     }
 
     if (

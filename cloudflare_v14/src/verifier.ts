@@ -6,7 +6,7 @@ export class VerificationRejected extends Error {}
 
 const BANK_OFFER_MARKERS = [
   "bank", "credit card", "debit card", "cardholder", "installment", "installments", "instalment", "instalments",
-  "cib", "qnb", "nbk", "mashreq", "emirates nbd", "fab", "adib", "hsbc", "al ahly", "nbe", "banque misr",
+  "cib", "qnb", "nbk", "enbd", "visa", "mastercard", "mashreq", "emirates nbd", "fab", "adib", "hsbc", "al ahly", "nbe", "banque misr",
   "بنك", "بطاقة ائتمان", "بطاقة خصم", "كارت ائتمان", "كارت خصم", "تقسيط", "أقساط", "اقساط",
 ];
 
@@ -25,8 +25,119 @@ function couponPercent(text: string): number {
   return 0;
 }
 
-function extractExplicitAmazonCoupon(html: string): number {
+function couponEquivalentPercent(
+  text: string,
+  current: number,
+): number {
+  const normalized =
+    String(text || "")
+      .replace(
+        /[٠-٩]/g,
+        d =>
+          String(
+            "٠١٢٣٤٥٦٧٨٩".indexOf(d)
+          )
+      )
+      .replace(/٫/g, ".")
+      .replace(/٬/g, ",");
+
+  let best =
+    couponPercent(normalized);
+
+  if (!(current > 0)) {
+    return best;
+  }
+
+  const patterns = [
+    /(?:EGP|جنيه(?:\s+مصري)?|ج\.?\s*م\.?)\s*([0-9][0-9,]*(?:\.[0-9]+)?)/gi,
+    /([0-9][0-9,]*(?:\.[0-9]+)?)\s*(?:EGP|جنيه(?:\s+مصري)?|ج\.?\s*م\.?)/gi,
+  ];
+
+  for (const re of patterns) {
+    let m: RegExpExecArray | null;
+
+    while ((m = re.exec(normalized)) !== null) {
+      const start =
+        Math.max(0, m.index - 100);
+
+      const end =
+        Math.min(
+          normalized.length,
+          m.index + m[0].length + 100
+        );
+
+      const context =
+        normalized
+          .slice(start, end)
+          .toLowerCase();
+
+      /*
+       * Fixed money only counts when it belongs
+       * to an explicit product coupon/voucher.
+       */
+      if (
+        ![
+          "coupon",
+          "voucher",
+          "كوبون",
+          "قسيمة",
+          "خصم فوري",
+        ].some(x => context.includes(x))
+      ) {
+        continue;
+      }
+
+      /*
+       * Bank/card/installment offers are conditional,
+       * never general product coupons.
+       */
+      if (
+        BANK_OFFER_MARKERS.some(
+          x => context.includes(x)
+        )
+      ) {
+        continue;
+      }
+
+      const amount =
+        parseNumber(m[1]);
+
+      if (
+        !(amount > 0) ||
+        amount >= current * 0.95
+      ) {
+        continue;
+      }
+
+      const equivalent =
+        (amount / current) * 100;
+
+      if (
+        equivalent > 0 &&
+        equivalent <= 80
+      ) {
+        best =
+          Math.max(
+            best,
+            equivalent
+          );
+      }
+    }
+  }
+
+  return Math.min(
+    99,
+    Math.round(best * 100) / 100
+  );
+}
+
+
+function extractExplicitAmazonCoupon(
+  html: string,
+  current: number,
+): number {
   const regions: string[] = [];
+
   const patterns = [
     /<(?:div|span|label)\b[^>]*id=["']couponText[^"']*["'][^>]*>([\s\S]{0,2500}?)<\/(?:div|span|label)>/gi,
     /<(?:div|span)\b[^>]*id=["']couponFeature[^"']*["'][^>]*>([\s\S]{0,4000}?)<\/(?:div|span)>/gi,
@@ -34,16 +145,48 @@ function extractExplicitAmazonCoupon(html: string): number {
     /<[^>]*data-feature-name=["']coupon["'][^>]*>([\s\S]{0,4000}?)<\/[a-z0-9]+>/gi,
     /<[^>]*class=["'][^"']*(?:couponBadge|couponLabel)[^"']*["'][^>]*>([\s\S]{0,2000}?)<\/[a-z0-9]+>/gi,
   ];
+
   for (const re of patterns) {
     let m: RegExpExecArray | null;
-    while ((m = re.exec(html)) !== null && regions.length < 20) regions.push(stripTags(m[1]));
+
+    while (
+      (m = re.exec(html)) !== null &&
+      regions.length < 20
+    ) {
+      regions.push(
+        stripTags(m[1])
+      );
+    }
   }
+
   let best = 0;
+
   for (const text of regions) {
-    const low = text.toLowerCase();
-    if (!["coupon","voucher","كوبون","قسيمة","قسيمة خصم"].some(x => low.includes(x))) continue;
-    best = Math.max(best, couponPercent(text));
+    const low =
+      text.toLowerCase();
+
+    if (
+      ![
+        "coupon",
+        "voucher",
+        "كوبون",
+        "قسيمة",
+        "قسيمة خصم",
+      ].some(x => low.includes(x))
+    ) {
+      continue;
+    }
+
+    best =
+      Math.max(
+        best,
+        couponEquivalentPercent(
+          text,
+          current,
+        ),
+      );
   }
+
   return best;
 }
 
@@ -199,7 +342,7 @@ function amazonFromHtml(incoming: DealCandidate, html: string, via: string): {de
       Math.max(signalCount, 3);
   }
 
-  const coupon = extractExplicitAmazonCoupon(html);
+  const coupon = extractExplicitAmazonCoupon(html, current);
   if (coupon > 0) signalCount = Math.max(signalCount, 2);
   const low = html.toLowerCase();
   const flash = ["limited time deal","lightning deal","deal of the day","عرض لفترة محدودة","صفقة لفترة محدودة","عرض محدود"].some(x => low.includes(x));
@@ -356,7 +499,7 @@ async function browserScrapeAmazon(env: V14Env, repo: D1Repository, settings: Se
   let coupon = 0;
   for (const t of texts(["#couponText","#couponFeature","#coupon_feature_div"])) {
     const low = t.toLowerCase();
-    if (["coupon","voucher","كوبون","قسيمة"].some(x => low.includes(x))) coupon = Math.max(coupon, couponPercent(t));
+    if (["coupon","voucher","كوبون","قسيمة"].some(x => low.includes(x))) coupon = Math.max(coupon, couponEquivalentPercent(t, current));
   }
   if (coupon > 0) signals = Math.max(signals, 2);
   const title = cleanText(texts(["#productTitle"])[0] || incoming.title) || incoming.title;
