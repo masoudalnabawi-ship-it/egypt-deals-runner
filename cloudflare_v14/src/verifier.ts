@@ -1,5 +1,6 @@
 import type { DealCandidate, DealRow, Settings, V14Env } from "./types";
 import { D1Repository } from "./db";
+import { parseNoon } from "./noon";
 import { cleanText, discountPercent, isProtectedPage, parseNumber, pickAttr, safeJsonParse, stripTags } from "./util";
 
 export class VerificationRejected extends Error {}
@@ -666,86 +667,230 @@ function validNoonTitle(title: string): boolean {
   return /[A-Za-z\u0600-\u06FF]/.test(t);
 }
 
-async function verifyNoon(env: V14Env, repo: D1Repository, settings: Settings, incoming: DealCandidate): Promise<{deal: DealCandidate; meta: Record<string, unknown>}> {
-  if (!incoming.external_id) throw new VerificationRejected("noon_sku_missing");
-  const sku = encodeURIComponent(incoming.external_id);
-  const api = `https://www.noon.com/_vs/nc/mp-customer-catalog-api/api/v3/product/${sku}`;
-  const r = await fetch(api, {
-    headers: {
-      "accept": "application/json,text/plain,*/*",
-      "x-locale": "en-eg",
-      "x-mp-country": "eg",
-      "referer": "https://www.noon.com/egypt-en/",
+async function verifyNoon(
+  env: V14Env,
+  repo: D1Repository,
+  settings: Settings,
+  incoming: DealCandidate,
+): Promise<{
+  deal: DealCandidate;
+  meta: Record<string, unknown>;
+}> {
+
+  void env;
+  void repo;
+  void settings;
+
+  if (!incoming.external_id) {
+    throw new VerificationRejected(
+      "noon_sku_missing"
+    );
+  }
+
+  let parsedUrl: URL;
+
+  try {
+    parsedUrl =
+      new URL(incoming.url);
+  } catch {
+    throw new VerificationRejected(
+      "noon_invalid_product_url"
+    );
+  }
+
+  if (
+    !(
+      parsedUrl.hostname === "www.noon.com" ||
+      parsedUrl.hostname === "noon.com"
+    ) ||
+    !(
+      parsedUrl.pathname.includes("/egypt-en/") ||
+      parsedUrl.pathname.includes("/egypt-ar/")
+    )
+  ) {
+    throw new VerificationRejected(
+      "noon_wrong_market"
+    );
+  }
+
+  const r =
+    await fetch(
+      incoming.url,
+      {
+        headers: {
+          "user-agent":
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) " +
+            "AppleWebKit/537.36 (KHTML, like Gecko) " +
+            "Chrome/140.0 Safari/537.36",
+
+          "accept":
+            "text/html,application/xhtml+xml,application/json;q=0.9,*/*;q=0.8",
+
+          "accept-language":
+            "en-EG,en;q=0.9,ar-EG;q=0.8,ar;q=0.7",
+
+          "cache-control":
+            "no-cache",
+        },
+
+        redirect:"follow",
+      },
+    );
+
+  const html =
+    await r.text();
+
+  if (!r.ok) {
+    throw new VerificationRejected(
+      `noon_product_http_${r.status}`
+    );
+  }
+
+  if (
+    !html ||
+    html.length < 1500
+  ) {
+    throw new VerificationRejected(
+      "noon_product_empty"
+    );
+  }
+
+  const low =
+    html.toLowerCase();
+
+  if (
+    low.includes("access denied") ||
+    low.includes("captcha") ||
+    low.includes("unusual traffic")
+  ) {
+    throw new VerificationRejected(
+      "noon_product_protected"
+    );
+  }
+
+  const surface = {
+    name:
+      incoming.source ||
+      "product_page",
+
+    category:
+      incoming.category ||
+      "unknown",
+
+    url:
+      incoming.url,
+
+    priority:1,
+  };
+
+  const parsed =
+    parseNoon(
+      html,
+      surface,
+    );
+
+  const requested =
+    incoming.external_id
+      .trim()
+      .toUpperCase();
+
+  const exact =
+    parsed.find(
+      x =>
+        String(
+          x.external_id || ""
+        )
+          .trim()
+          .toUpperCase()
+        === requested
+    );
+
+  if (!exact) {
+    throw new VerificationRejected(
+      "noon_product_structured_data_missing"
+    );
+  }
+
+  const current =
+    Number(
+      exact.current_price || 0
+    );
+
+  const old =
+    Number(
+      exact.old_price || 0
+    );
+
+  if (!(current > 0)) {
+    throw new VerificationRejected(
+      "noon_no_live_price"
+    );
+  }
+
+  const title =
+    cleanText(
+      exact.title ||
+      incoming.title
+    );
+
+  if (!validNoonTitle(title)) {
+    throw new VerificationRejected(
+      "noon_invalid_product_title"
+    );
+  }
+
+  let signals = 2;
+
+  if (old > current) {
+    signals = 3;
+  }
+
+  const deal: DealCandidate = {
+    ...incoming,
+
+    external_id:
+      requested,
+
+    title,
+
+    current_price:
+      current,
+
+    old_price:
+      old > current
+        ? old
+        : null,
+
+    image_url:
+      exact.image_url ||
+      incoming.image_url,
+
+    metadata:{
+      ...(incoming.metadata || {}),
+      ...(exact.metadata || {}),
+      noon_public_product_page:true,
+      locale:"en-eg",
+      currency:"EGP",
     },
-    redirect: "follow"
-  });
-  if (!r.ok) throw new VerificationRejected(`noon_api_http_${r.status}`);
-  let data: any; try { data = await r.json(); } catch { throw new VerificationRejected("noon_api_invalid_json"); }
-  const product = data?.product;
-  if (!product || typeof product !== "object") throw new VerificationRejected("noon_api_product_missing");
-  const marketBlob = JSON.stringify({ meta: data?.meta, product: { currency: product?.currency, locale: product?.locale, country: product?.country } }).toLowerCase();
-  if (["\"currency\":\"aed\"", "dubai", "abu dhabi", "united arab emirates", "\"country\":\"ae\""] .some(x => marketBlob.includes(x))) {
-    throw new VerificationRejected("noon_wrong_market");
-  }
-  const requested = incoming.external_id.toUpperCase();
-  const variants = Array.isArray(product.variants) ? product.variants.filter((x: any) => x && typeof x === "object") : [];
-  let chosen = variants.find((v: any) => String(v.sku || "").toUpperCase() === requested) || variants[0];
-  const offers = Array.isArray(chosen?.offers) ? chosen.offers.filter((x: any) => x && typeof x === "object") : [];
-  const cur = (o: any) => parseNumber(o?.sale_price ?? o?.salePrice) || parseNumber(o?.price);
-  const buyable = offers.filter((o: any) => o?.is_buyable !== false && cur(o) > 0);
-  const pool = buyable.length ? buyable : offers.filter((o: any) => cur(o) > 0);
-  if (!pool.length) throw new VerificationRejected("noon_no_live_price");
-  pool.sort((a: any,b: any) => cur(a)-cur(b));
-  const offer = pool[0]; const current = cur(offer); const listed = parseNumber(offer?.price); const old = listed > current ? listed : 0;
-  const title = cleanText(product.product_title || product.name || product.title || incoming.title);
-  if (!validNoonTitle(title)) throw new VerificationRejected("noon_invalid_product_title");
-  let image = incoming.image_url || ""; if (Array.isArray(product.image_urls) && product.image_urls[0]) image = String(product.image_urls[0]);
-  let brand: any = product.brand; if (brand && typeof brand === "object") brand = brand.name || brand.title || "";
-  let ratingValue = 0, ratingCount = 0; if (product.product_rating && typeof product.product_rating === "object") { ratingValue = parseNumber(product.product_rating.value); ratingCount = Number(product.product_rating.count || 0) || 0; }
-  let signals = 1; if (old > current) signals++; if (String(chosen?.sku || "").toUpperCase() === requested) signals++;
-  const liveDiscount = old > current ? ((old-current)/old)*100 : 0;
-  if (liveDiscount >= 50 && signals < 2) throw new VerificationRejected("noon_extreme_discount_unconfirmed");
-  const raw = JSON.stringify(product).toLowerCase();
-  const flash = ["flash","limited time","deal of the day"].some(x => raw.includes(x));
+  };
 
-  // Browser budget is reserved for suspicious/extreme Noon drops. It never creates a deal;
-  // it only confirms that the exact EGP price is visible on the live product page.
-  if (liveDiscount >= 50 && env.BROWSER && await canUseBrowser(repo, settings)) {
-    const response: Response = await env.BROWSER.quickAction("scrape", {
-      url: incoming.url,
-      elements: [
-        { selector: '[data-qa*="price" i]' },
-        { selector: '[data-testid*="price" i]' },
-        { selector: '[class*="price" i]' },
-        { selector: '[aria-label*="EGP" i]' },
-        { selector: '[itemprop="price"]' }
-      ],
-      gotoOptions: { waitUntil: "domcontentloaded", timeout: 20000 },
-      waitForTimeout: 800,
-      userAgent: "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0 Safari/537.36"
-    });
-    const ms = Number(response.headers.get("X-Browser-Ms-Used") || 0);
-    if (ms > 0) await repo.counterAdd(`browser_ms:${new Date().toISOString().slice(0,10)}`, ms);
-    if (!response.ok) throw new VerificationRejected(`noon_browser_http_${response.status}`);
-    const payload: any = await response.json();
-    const seen: number[] = [];
-    for (const group of Array.isArray(payload?.result) ? payload.result : []) {
-      for (const item of Array.isArray(group?.results) ? group.results : []) {
-        for (const value of [item?.text, item?.html, ...(Array.isArray(item?.attributes) ? item.attributes.map((a:any)=>a?.value) : [])]) {
-          const n = parseNumber(value); if (n > 0) seen.push(n);
-        }
-      }
-    }
-    const tolerance = Math.max(1, current * 0.01);
-    if (!seen.some(v => Math.abs(v-current) <= tolerance)) throw new VerificationRejected("noon_live_price_not_visible");
-    signals = Math.max(signals, 2);
-  }
+  return {
+    deal,
 
-  const deal: DealCandidate = { ...incoming, external_id: String(product.sku || incoming.external_id), title, current_price: current, old_price: old || null,
-    image_url: image, metadata: { ...(incoming.metadata || {}), brand: String(brand || ""), seller: String(offer.store_name || ""),
-      offer_code: String(offer.offer_code || product.offer_code || ""), in_stock: offer.is_buyable !== false, stock: offer.stock,
-      rating: ratingValue, review_count: ratingCount, locale: "en-eg", currency: "EGP", noon_catalog_api: true } };
-  return { deal, meta: { http_via: "direct:noon_catalog_api", coupon_percent: 0, flash, verification_signals: Math.min(signals,3) } };
+    meta:{
+      http_via:
+        "direct:noon_public_product_page",
+
+      rendered_dom:false,
+
+      coupon_percent:0,
+
+      flash:false,
+
+      verification_signals:
+        signals,
+    },
+  };
 }
 
 export async function verifyRow(

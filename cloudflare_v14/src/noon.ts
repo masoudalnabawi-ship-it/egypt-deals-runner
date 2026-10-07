@@ -309,35 +309,79 @@ export async function fetchNoonSurface(
 ): Promise<{text: string; latency: number}> {
 
   const started = Date.now();
-  const query = noonSurfaceQuery(surface);
 
-  const q = encodeURIComponent(query);
-
-  // Noon has exposed both forms over time.
-  // Try both safely and accept only valid Egypt JSON with hits[].
-  const endpoints = [
-    `${BASE}/_vs/nc/mp-customer-catalog-api/api/v3/search?q=${q}&limit=50`,
-    `${BASE}/_vs/nc/mp-customer-catalog-api/api/v3/u/search?q=${q}&limit=50`,
-  ];
-
-  let lastError: unknown = null;
-
-  for (const url of endpoints) {
-    try {
-      const text = await fetchNoonApiUrl(url);
-
-      return {
-        text,
-        latency: Date.now() - started,
-      };
-    } catch (error) {
-      lastError = error;
-    }
+  /*
+   * Public catalog pages only.
+   *
+   * Noon currently rejects the internal /_vs API
+   * from Cloudflare, so V14 no longer depends on it.
+   */
+  if (
+    surface.url.includes("/search/") ||
+    surface.url.includes("/_vs/")
+  ) {
+    throw new Error(
+      "noon_public_catalog_surface_required"
+    );
   }
 
-  throw (
-    lastError instanceof Error
-      ? lastError
-      : new Error("noon_api_unavailable")
+  const res = await fetch(
+    surface.url,
+    {
+      headers: {
+        "user-agent":
+          "Mozilla/5.0 (Windows NT 10.0; Win64; x64) " +
+          "AppleWebKit/537.36 (KHTML, like Gecko) " +
+          "Chrome/140.0 Safari/537.36",
+
+        "accept":
+          "text/html,application/xhtml+xml,application/json;q=0.9,*/*;q=0.8",
+
+        "accept-language":
+          "en-EG,en;q=0.9,ar-EG;q=0.8,ar;q=0.7",
+
+        "cache-control":
+          "no-cache",
+      },
+
+      redirect:"follow",
+    },
   );
+
+  const text =
+    await res.text();
+
+  if (!res.ok) {
+    throw new Error(
+      `noon_public_http_${res.status}`
+    );
+  }
+
+  if (
+    !text ||
+    text.length < 2000
+  ) {
+    throw new Error(
+      "noon_public_empty_page"
+    );
+  }
+
+  const low =
+    text.toLowerCase();
+
+  if (
+    low.includes("access denied") ||
+    low.includes("captcha") ||
+    low.includes("unusual traffic")
+  ) {
+    throw new Error(
+      "noon_public_protected"
+    );
+  }
+
+  return {
+    text,
+    latency:
+      Date.now() - started,
+  };
 }

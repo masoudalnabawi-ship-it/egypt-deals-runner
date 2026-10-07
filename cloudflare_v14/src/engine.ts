@@ -371,27 +371,32 @@ async function discoveryStep(
   }
 
   /*
-   * NOON NORMAL DISCOVERY RESTORED.
+   * NOON PUBLIC CATALOG DISCOVERY
    *
-   * Amazon Ultra remains the priority path.
-   * Noon gets one rotating surface every 3 cycles.
-   * Cloudflare uses the cheap direct API only.
-   * GitHub Playwright provides the rendered safety net.
+   * Only public category pages are scanned.
+   * Internal API/search endpoints are intentionally
+   * excluded because Noon currently blocks them.
    */
+  const noonPublicSurfaces =
+    NOON_SURFACES.filter(
+      x =>
+        !x.url.includes("/search/") &&
+        !x.url.includes("/_vs/")
+    );
+
   if (
-    NOON_SURFACES.length > 0 &&
-    cycle % 3 === 0
+    noonPublicSurfaces.length > 0
   ) {
     const noonCursor =
       await repo.counterAdd(
-        "noon_surface_cursor",
+        "noon_public_surface_cursor",
         1,
       );
 
     const noonSurface =
-      NOON_SURFACES[
+      noonPublicSurfaces[
         (noonCursor - 1)
-        % NOON_SURFACES.length
+        % noonPublicSurfaces.length
       ];
 
     if (noonSurface) {

@@ -99,27 +99,46 @@ NOON_MAX_PRODUCTS = max(
 # One rendered Noon search every few minutes.
 # Full category rotation completes without burst traffic.
 NOON_SURFACES = [
-    ("mobiles", "mobiles", "mobile phones"),
-    ("laptops", "computers", "laptops"),
-    ("appliances", "appliances", "home appliances"),
-    ("tablets", "computers", "tablets"),
-    ("tvs", "electronics", "televisions"),
-    ("audio", "electronics", "headphones earbuds speakers"),
-    ("gaming", "electronics", "gaming"),
-    ("smartwatches", "electronics", "smart watches"),
-    ("mobile_accessories", "mobiles", "mobile accessories"),
-    ("computer_accessories", "computers", "computer accessories"),
-    ("kitchen", "kitchen", "kitchen appliances"),
-    ("beauty", "beauty", "beauty"),
-    ("personal_care", "beauty", "personal care"),
-    ("fashion", "fashion", "fashion"),
-    ("shoes", "fashion", "shoes"),
-    ("sports", "sports", "sports fitness"),
-    ("toys", "toys", "toys"),
-    ("baby", "baby", "baby"),
-    ("grocery", "grocery", "grocery"),
-    ("automotive", "automotive", "car accessories"),
+    (
+        "mobiles",
+        "mobiles",
+        "mobile phones",
+    ),
+    (
+        "laptops",
+        "computers",
+        "laptops",
+    ),
+    (
+        "appliances",
+        "appliances",
+        "home appliances",
+    ),
 ]
+
+NOON_PUBLIC_URLS = {
+    "mobiles":
+        "https://www.noon.com/egypt-en/"
+        "electronics-and-mobiles/"
+        "mobiles-and-accessories/"
+        "mobiles-20905/category/"
+        "?isCarouselView=false&limit=50",
+
+    "laptops":
+        "https://www.noon.com/egypt-en/"
+        "electronics-and-mobiles/"
+        "computers-and-accessories/"
+        "computers-new/laptops/"
+        "all-products-eg/"
+        "?isCarouselView=false&limit=50",
+
+    "appliances":
+        "https://www.noon.com/egypt-en/"
+        "home-and-kitchen/"
+        "home-appliances-31235/"
+        "home-appliances-31235/"
+        "?isCarouselView=false&limit=50",
+}
 
 
 
@@ -1906,13 +1925,14 @@ async def discover_noon_rendered(
         ]
     )
 
-    url = (
-        "https://www.noon.com/"
-        "egypt-en/search/?q="
-        + quote(query)
-        + "&isCarouselView=false"
-        + "&limit=50"
+    url = NOON_PUBLIC_URLS.get(
+        source
     )
+
+    if not url:
+        raise RuntimeError(
+            "noon_public_surface_missing"
+        )
 
     page = await context.new_page()
 
@@ -2132,28 +2152,13 @@ async def discover_noon_rendered(
         if not isinstance(ref, dict):
             continue
 
-        candidate = None
-
-        try:
-            candidate = (
-                await _noon_product_candidate(
-                    client,
-                    ref,
-                    source,
-                    category,
-                )
+        candidate = (
+            _noon_card_candidate(
+                ref,
+                source,
+                category,
             )
-        except Exception:
-            candidate = None
-
-        if candidate is None:
-            candidate = (
-                _noon_card_candidate(
-                    ref,
-                    source,
-                    category,
-                )
-            )
+        )
 
         if candidate is not None:
             deals.append(candidate)
@@ -2340,6 +2345,8 @@ async def main() -> None:
                 "--no-sandbox",
                 "--disable-dev-shm-usage",
                 "--disable-blink-features=AutomationControlled",
+                "--disable-http2",
+                "--disable-quic",
             ],
         )
 
@@ -2388,21 +2395,13 @@ async def main() -> None:
                     >= next_noon_scan
                 ):
                     try:
-                        try:
-                            noon_result = (
-                                await discover_noon_api(
-                                    client,
-                                    noon_cursor,
-                                )
+                        noon_result = (
+                            await discover_noon_rendered(
+                                context,
+                                client,
+                                noon_cursor,
                             )
-                        except Exception:
-                            noon_result = (
-                                await discover_noon_rendered(
-                                    context,
-                                    client,
-                                    noon_cursor,
-                                )
-                            )
+                        )
 
                         print(
                             "NOON_SCAN",
