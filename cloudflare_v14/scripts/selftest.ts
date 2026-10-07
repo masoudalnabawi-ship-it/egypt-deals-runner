@@ -1,7 +1,8 @@
 import { strict as assert } from 'node:assert';
 import { evaluateDeal, acceptable, preliminaryDecision } from '../src/intelligence';
 import { getSettings } from '../src/config';
-import type { DealCandidate, Settings } from '../src/types';
+import { dealQualityBand, nearDuplicateGuard } from '../src/quality';
+import type { DealCandidate, DealRow, Settings } from '../src/types';
 
 const settings: Settings = {
   ultra_min_discount:65, ultra_hot_discount:75, normal_min_discount:10,
@@ -37,5 +38,69 @@ assert.equal(hotPrelim.score,95);
 const tier2Prelim = preliminaryDecision(settings,{...amazon,current_price:260});
 assert.equal(tier2Prelim.lane,'ultra');
 assert.ok(!tier2Prelim.reasons.includes('amazon_top_priority_probe'));
+
+const recentRow = {
+  deal_key:'recent-1',
+  store:'amazon',
+  external_id:'B0RECENT01',
+  title:'Samsung Galaxy A55 256GB 8GB RAM',
+  url:'https://www.amazon.eg/dp/B0RECENT01',
+  image_url:'',
+  category:'mobiles',
+  source:'goldbox',
+  current_price:252,
+  old_price:1000,
+  effective_price:252,
+  visible_discount:74.8,
+  real_discount:74.8,
+  lane:'ultra',
+  score:92,
+  confidence:0.90,
+  state:'sent',
+  discovered_at:1,
+  updated_at:1,
+  verified_at:1,
+  sent_at:1,
+  attempts:0,
+  next_attempt_at:0,
+  lease_owner:null,
+  lease_until:0,
+  last_error:'',
+  metadata_json:'{}',
+} as DealRow;
+
+const currentRow = {
+  ...recentRow,
+  deal_key:'current-1',
+  external_id:'B0CURRENT1',
+  current_price:250,
+  effective_price:250,
+  real_discount:75,
+  score:95,
+  state:'verified',
+  sent_at:null,
+} as DealRow;
+
+const duplicate =
+  nearDuplicateGuard(
+    currentRow,
+    [recentRow],
+  );
+assert.equal(duplicate.duplicate,true);
+
+const clearlyBetter =
+  nearDuplicateGuard(
+    {
+      ...currentRow,
+      current_price:230,
+      effective_price:230,
+    } as DealRow,
+    [recentRow],
+  );
+assert.equal(clearlyBetter.duplicate,false);
+
+const band =
+  dealQualityBand(currentRow);
+assert.equal(band.code,'elite');
 
 console.log('V14_CLOUDFLARE_CORE_SELFTEST_PASS');

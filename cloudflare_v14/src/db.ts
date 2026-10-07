@@ -700,6 +700,43 @@ export class D1Repository {
     return Number(result.meta.changes || 0);
   }
 
+  async recentSentComparable(
+    store: Store,
+    lane: Lane,
+    category: string,
+    sinceSeconds = 21600,
+    limit = 40,
+  ): Promise<DealRow[]> {
+    const cutoff =
+      nowTs() -
+      Math.max(300, sinceSeconds);
+
+    const rows =
+      await this.db.prepare(`
+        SELECT *
+        FROM deals
+        WHERE store=?
+          AND lane=?
+          AND category=?
+          AND state='sent'
+          AND sent_at IS NOT NULL
+          AND sent_at>=?
+        ORDER BY sent_at DESC
+        LIMIT ?
+      `)
+      .bind(
+        store,
+        lane,
+        String(category || "unknown"),
+        cutoff,
+        Math.max(1, Math.min(100, limit)),
+      )
+      .all<DealRow>();
+
+    return rows.results || [];
+  }
+
+
   async recentPrices(key: string, limit = 30): Promise<number[]> {
     const rows = await this.db.prepare(`
       SELECT price FROM price_history WHERE deal_key=? AND price>0 ORDER BY observed_at DESC LIMIT ?
@@ -785,10 +822,15 @@ export class D1Repository {
     errors:number;
     consecutive_errors:number;
     false_ultra:number;
+    published:number;
+    manual_rejects:number;
   }>> {
 
     const cutoff =
       nowTs() - 172800;
+
+    const reviewerCutoff =
+      nowTs() - 1209600;
 
     const rows =
       await this.db.prepare(`
@@ -815,12 +857,46 @@ export class D1Repository {
                 AND e.ts>=?
             ),
             0
-          ) AS false_ultra
+          ) AS false_ultra,
+
+          COALESCE(
+            (
+              SELECT COUNT(*)
+              FROM events e
+              JOIN deals d
+                ON d.deal_key=e.deal_key
+              WHERE
+                d.store='amazon'
+                AND d.source=sh.source
+                AND e.event='manual_publish'
+                AND e.ts>=?
+            ),
+            0
+          ) AS published,
+
+          COALESCE(
+            (
+              SELECT COUNT(*)
+              FROM events e
+              JOIN deals d
+                ON d.deal_key=e.deal_key
+              WHERE
+                d.store='amazon'
+                AND d.source=sh.source
+                AND e.event='manual_reject'
+                AND e.ts>=?
+            ),
+            0
+          ) AS manual_rejects
 
         FROM source_health sh
         WHERE sh.store='amazon'
       `)
-      .bind(cutoff)
+      .bind(
+        cutoff,
+        reviewerCutoff,
+        reviewerCutoff,
+      )
       .all<{
         source:string;
         scans:number;
@@ -831,6 +907,8 @@ export class D1Repository {
         errors:number;
         consecutive_errors:number;
         false_ultra:number;
+        published:number;
+        manual_rejects:number;
       }>();
 
     return (rows.results || []).map(
@@ -863,6 +941,12 @@ export class D1Repository {
 
         false_ultra:
           Number(row.false_ultra || 0),
+
+        published:
+          Number(row.published || 0),
+
+        manual_rejects:
+          Number(row.manual_rejects || 0),
       })
     );
   }

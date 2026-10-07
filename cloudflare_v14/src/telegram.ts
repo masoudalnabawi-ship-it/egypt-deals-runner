@@ -2,6 +2,7 @@ import type { DealRow, Settings, V14Env } from "./types";
 import type { D1Repository } from "./db";
 import { normalChatId, noonReviewChatId, ultraChatId } from "./config";
 import { htmlEscape } from "./util";
+import { dealQualityBand } from "./quality";
 
 function readMeta(row: DealRow): Record<string, unknown> {
   try { const x = JSON.parse(row.metadata_json || "{}"); return x && typeof x === "object" ? x : {}; } catch { return {}; }
@@ -49,6 +50,7 @@ function caption(row: DealRow): string {
   const effective = Number(row.effective_price || current);
   const external = htmlEscape(String(row.external_id || ""));
   const category = htmlEscape(String(row.category || "")).slice(0, 70);
+  const quality = dealQualityBand(row);
   const lines = [
     `${icon} <b>V14 ${laneAr} • ${store}</b>`, "", `🛒 <b>${title}</b>`, "",
     `💰 <b>السعر الآن:</b> ${current.toLocaleString("en-US", {minimumFractionDigits: 2, maximumFractionDigits: 2})} ج.م`,
@@ -58,7 +60,21 @@ function caption(row: DealRow): string {
     const implied = current ? ((current - effective) / current) * 100 : 0;
     if (implied > 0 && implied <= 60) lines.push(`🎟 <b>بعد الكوبون/العرض:</b> ${effective.toLocaleString("en-US", {minimumFractionDigits: 2, maximumFractionDigits: 2})} ج.م`);
   }
-  lines.push(`📉 <b>الخصم الحقيقي:</b> ${real.toFixed(1)}%`, `🧠 <b>التقييم:</b> ${score.toFixed(1)}/100`, `🛡 <b>الثقة:</b> ${(confidence * 100).toFixed(0)}%`);
+  lines.push(
+    `📉 <b>الخصم الحقيقي:</b> ${real.toFixed(1)}%`,
+    `🧠 <b>التقييم:</b> ${score.toFixed(1)}/100`,
+    `🛡 <b>الثقة:</b> ${(confidence * 100).toFixed(0)}%`,
+    `⭐ <b>جودة العرض:</b> ${quality.label}`,
+  );
+  if (
+    isAmazon &&
+    row.lane === "ultra" &&
+    real >= 75
+  ) {
+    lines.push(
+      `🚀 <b>الأولوية:</b> Tier-1 (75%+)`
+    );
+  }
   if (external) lines.push(`🆔 <b>${isAmazon ? "ASIN" : "SKU"}:</b> <code>${external}</code>`);
   if (category) lines.push(`📂 <b>القسم:</b> ${category}`);
   return lines.join("\n");

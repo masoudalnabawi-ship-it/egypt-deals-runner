@@ -8,6 +8,7 @@ import { titleSimilarity, compatibility, signature } from './identity';
 import { discountPercent, safeJsonParse } from './util';
 import { VerificationRejected, verifyRow } from './verifier';
 import { answerCallback, clearButtons, sendPublic, sendReview, tokenForWebhook } from './telegram';
+import { nearDuplicateGuard } from './quality';
 
 function workerId(prefix: string): string {
   return `${prefix}-${crypto.randomUUID().slice(0, 8)}`;
@@ -445,12 +446,14 @@ function bestCrossStoreMatch(deal: DealCandidate, rows: DealRow[]): { row: DealR
 async function admitAmazon(repo: D1Repository, settings: Settings, surface: Surface, deals: DealCandidate[]): Promise<number> {
   let queued = 0;
 
-  const exceptionalSource =
+  const topPrioritySource =
     (
-      surface.name.includes("80filter")
+      surface.name.includes("75filter")
+      || surface.name.includes("80filter")
       || surface.name.includes("85filter")
       || surface.name.includes("90filter")
       || surface.name.includes("95filter")
+      || surface.name === "75off"
       || surface.name === "80off"
       || surface.name === "85off"
       || surface.name === "90off"
@@ -462,7 +465,7 @@ async function admitAmazon(repo: D1Repository, settings: Settings, surface: Surf
    * candidates. Allow more of them into verification.
    */
   const sourceLimit =
-    exceptionalSource
+    topPrioritySource
       ? Math.min(
           20,
           Math.max(
@@ -504,7 +507,7 @@ async function admitAmazon(repo: D1Repository, settings: Settings, surface: Surf
      * evidence or an explicit promo signal.
      */
     if (
-      exceptionalSource
+      topPrioritySource
       &&
       visiblePct <
         settings.ultra_min_discount
@@ -600,6 +603,8 @@ type AmazonHealthSnapshot = {
   errors:number;
   consecutive_errors:number;
   false_ultra:number;
+  published:number;
+  manual_rejects:number;
 };
 
 function amazonSourceIsCooled(
@@ -798,6 +803,34 @@ function amazonAdaptiveWeight(
   if (health.false_ultra >= 3) {
     weight -= 2;
   } else if (health.false_ultra >= 1) {
+    weight -= 1;
+  }
+
+  /*
+   * Human review outcomes are the strongest quality signal.
+   * Publishing rewards a source; repeated manual rejection
+   * cools it. These are recent 14-day signals.
+   */
+  if (
+    health.published >= 3 &&
+    health.published >=
+      health.manual_rejects * 2
+  ) {
+    weight += 2;
+  } else if (health.published >= 1) {
+    weight += 1;
+  }
+
+  if (
+    health.manual_rejects >= 3 &&
+    health.manual_rejects >
+      health.published
+  ) {
+    weight -= 2;
+  } else if (
+    health.manual_rejects >= 1 &&
+    health.published === 0
+  ) {
     weight -= 1;
   }
 
@@ -1659,6 +1692,43 @@ async function deliveryStep(
 
   if (!row) return out;
 
+  const duplicate =
+    nearDuplicateGuard(
+      row,
+      await repo.recentSentComparable(
+        row.store,
+        row.lane,
+        row.category,
+        21600,
+        40,
+      ),
+    );
+
+  if (duplicate.duplicate) {
+    await repo.markRejected(
+      row.deal_key,
+      `near_duplicate:${duplicate.similarity.toFixed(3)}`,
+    );
+
+    await repo.event(
+      "near_duplicate_blocked",
+      row.store,
+      row.deal_key,
+      duplicate,
+    );
+
+    out.push({
+      lane:row.lane,
+      store:row.store,
+      deal:row.deal_key.slice(0,10),
+      sent:false,
+      reason:"near_duplicate",
+      similarity:duplicate.similarity,
+    });
+
+    return out;
+  }
+
   try {
     await sendReview(
       env,
@@ -1968,8 +2038,21 @@ export async function handleTelegramUpdate(env: V14Env, route: 'main'|'noon', up
   if (!row) { await answerCallback(token, cbId, 'العرض غير موجود في قاعدة V14', true); return new Response('ok'); }
 
   if (action === 'r') {
-    await repo.event('manual_reject', row.store, row.deal_key, {action:'reject'});
-    await answerCallback(token, cbId, 'تم رفض العرض ❌');
+    await repo.event(
+      'manual_reject',
+      row.store,
+      row.deal_key,
+      {action:'reject'},
+    );
+    await repo.markRejected(
+      row.deal_key,
+      'manual_reject',
+    );
+    await answerCallback(
+      token,
+      cbId,
+      'تم رفض العرض ❌',
+    );
   } else if (action === 'p' || action === 'u') {
     if (await repo.hasEvent(row.deal_key, 'manual_publish')) { await answerCallback(token, cbId, 'تم نشر العرض بالفعل'); return new Response('ok'); }
     try {

@@ -5,6 +5,7 @@ import { handleTelegramUpdate, runCycle, runDiscoveryOnly, runProcessingCycle } 
 import { setWebhook } from './telegram';
 import { acceptable, buildPriceProfile, evaluateDeal, preliminaryDecision } from './intelligence';
 import { inspectDeal } from './shield';
+import { nearDuplicateGuard } from './quality';
 
 
 function json(data: unknown, status = 200): Response {
@@ -981,6 +982,39 @@ async function claimScreenshotJob(
     });
   }
 
+  const duplicate =
+    nearDuplicateGuard(
+      row,
+      await repo.recentSentComparable(
+        row.store,
+        row.lane,
+        row.category,
+        21600,
+        40,
+      ),
+    );
+
+  if (duplicate.duplicate) {
+    await repo.markRejected(
+      row.deal_key,
+      `near_duplicate:${duplicate.similarity.toFixed(3)}`,
+    );
+
+    await repo.event(
+      "near_duplicate_blocked",
+      row.store,
+      row.deal_key,
+      duplicate,
+    );
+
+    return json({
+      ok:true,
+      job:null,
+      suppressed:"near_duplicate",
+      similarity:duplicate.similarity,
+    });
+  }
+
   return json({
     ok: true,
     job: {
@@ -1443,12 +1477,29 @@ export default {
   async fetch(request: Request, env: V14Env): Promise<Response> {
     const url = new URL(request.url);
     if (request.method === 'GET' && url.pathname === '/') {
-      return json({ service:'egypt-deals-v14', status:'ok', mode:'cloudflare', policy:{amazon_ultra_min:65,amazon_hot_min:80,noon_ultra:false} });
+      return json({
+        service:'egypt-deals-v14',
+        status:'ok',
+        mode:'cloudflare',
+        intelligence:'deal-intelligence-v2',
+        policy:{
+          amazon_ultra_min:65,
+          amazon_hot_min:75,
+          noon_ultra:false,
+          near_duplicate_guard:true,
+        },
+      });
     }
     if (request.method === 'GET' && url.pathname === '/health') {
       const repo = new D1Repository(env.egypt_deals_v14_db);
       return json({
         ok:true,
+        intelligence:{
+          version:"deal-intelligence-v2",
+          amazon_tier1_min:75,
+          near_duplicate_guard:true,
+          source_outcome_learning:true,
+        },
         stats:await repo.stats(),
         browser_ms_today:
           await repo.counterGet(
