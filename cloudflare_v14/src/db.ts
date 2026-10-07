@@ -240,6 +240,67 @@ export class D1Repository {
     ).run();
   }
 
+
+  async claimAmazonForScreenshot(
+    lane: Lane,
+    workerId: string,
+    leaseSeconds: number,
+  ): Promise<DealRow | null> {
+    const now = nowTs();
+
+    const row = await this.db.prepare(`
+      SELECT *
+      FROM deals
+      WHERE store='amazon'
+        AND lane=?
+        AND state='verified'
+        AND next_attempt_at<=?
+        AND (lease_until=0 OR lease_until<?)
+      ORDER BY
+        CASE
+          WHEN lane='ultra'
+          THEN real_discount
+          ELSE score
+        END DESC,
+        confidence DESC,
+        verified_at ASC
+      LIMIT 1
+    `).bind(
+      lane,
+      now,
+      now,
+    ).first<DealRow>();
+
+    if (!row) {
+      return null;
+    }
+
+    const result = await this.db.prepare(`
+      UPDATE deals
+      SET
+        state='delivering',
+        lease_owner=?,
+        lease_until=?,
+        updated_at=?
+      WHERE deal_key=?
+        AND store='amazon'
+        AND state='verified'
+        AND (lease_until=0 OR lease_until<?)
+    `).bind(
+      workerId,
+      now + leaseSeconds,
+      now,
+      row.deal_key,
+      now,
+    ).run();
+
+    return Number(
+      result.meta.changes || 0
+    ) > 0
+      ? row
+      : null;
+  }
+
   async claimForDelivery(lane: Lane, workerId: string, leaseSeconds: number): Promise<DealRow | null> {
     const now = nowTs();
     const row = await this.db.prepare(`

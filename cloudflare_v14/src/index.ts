@@ -180,6 +180,172 @@ async function importNoonRoute(
   });
 }
 
+
+async function claimScreenshotJob(
+  request: Request,
+  env: V14Env,
+): Promise<Response> {
+  let body: any = {};
+
+  try {
+    body = await request.json();
+  } catch {}
+
+  const lane =
+    body?.lane === "normal"
+      ? "normal"
+      : "ultra";
+
+  const workerId =
+    String(
+      body?.worker_id ||
+      `gha-${crypto.randomUUID().slice(0, 8)}`
+    ).slice(0, 80);
+
+  const repo =
+    new D1Repository(
+      env.egypt_deals_v14_db
+    );
+
+  /*
+   * Give Playwright enough time to open Amazon,
+   * capture, upload to Telegram, then acknowledge.
+   */
+  const row =
+    await repo.claimAmazonForScreenshot(
+      lane,
+      workerId,
+      300,
+    );
+
+  if (!row) {
+    return json({
+      ok: true,
+      job: null,
+    });
+  }
+
+  /*
+   * Final Ultra safety gate BEFORE the external
+   * screenshot worker sees the job.
+   */
+  if (
+    row.lane === "ultra" &&
+    (
+      Number(row.real_discount || 0) < 65 ||
+      Number(row.confidence || 0) < 0.76
+    )
+  ) {
+    await repo.markRejected(
+      row.deal_key,
+      "screenshot_gate_invalid_ultra",
+    );
+
+    return json({
+      ok: true,
+      job: null,
+    });
+  }
+
+  return json({
+    ok: true,
+    job: {
+      deal_key: row.deal_key,
+      store: row.store,
+      lane: row.lane,
+      external_id: row.external_id,
+      title: row.title,
+      url: row.url,
+      current_price: row.current_price,
+      old_price: row.old_price,
+      effective_price: row.effective_price,
+      real_discount: row.real_discount,
+      score: row.score,
+      confidence: row.confidence,
+      category: row.category,
+    },
+  });
+}
+
+
+async function completeScreenshotJob(
+  request: Request,
+  env: V14Env,
+): Promise<Response> {
+  let body: any = {};
+
+  try {
+    body = await request.json();
+  } catch {
+    return json(
+      {ok:false,error:"invalid_json"},
+      400,
+    );
+  }
+
+  const dealKey =
+    String(body?.deal_key || "").trim();
+
+  const status =
+    String(body?.status || "").trim();
+
+  const reason =
+    String(
+      body?.reason ||
+      "playwright_delivery_failed"
+    ).slice(0, 400);
+
+  if (
+    !dealKey ||
+    dealKey.length > 128
+  ) {
+    return json(
+      {ok:false,error:"invalid_deal_key"},
+      400,
+    );
+  }
+
+  const repo =
+    new D1Repository(
+      env.egypt_deals_v14_db
+    );
+
+  if (status === "sent") {
+    await repo.markSent(dealKey);
+
+    await repo.event(
+      "playwright_screenshot_sent",
+      "amazon",
+      dealKey,
+      {},
+    );
+
+    return json({
+      ok:true,
+      state:"sent",
+    });
+  }
+
+  await repo.deliveryRetry(
+    dealKey,
+    `playwright:${reason}`,
+    30,
+    8,
+  );
+
+  await repo.event(
+    "playwright_screenshot_retry",
+    "amazon",
+    dealKey,
+    {reason},
+  );
+
+  return json({
+    ok:true,
+    state:"verified_retry",
+  });
+}
+
 async function bootstrap(request: Request, env: V14Env): Promise<Response> {
   if (!adminAllowed(request, env)) return json({ok:false,error:'unauthorized'}, 401);
 
@@ -259,6 +425,40 @@ export default {
       url.pathname === "/internal/import-noon-route"
     ) {
       return importNoonRoute(request, env);
+    }
+
+    if (
+      request.method === "POST" &&
+      url.pathname === "/admin/screenshot/claim"
+    ) {
+      if (!adminAllowed(request, env)) {
+        return json(
+          {ok:false,error:"unauthorized"},
+          401,
+        );
+      }
+
+      return claimScreenshotJob(
+        request,
+        env,
+      );
+    }
+
+    if (
+      request.method === "POST" &&
+      url.pathname === "/admin/screenshot/complete"
+    ) {
+      if (!adminAllowed(request, env)) {
+        return json(
+          {ok:false,error:"unauthorized"},
+          401,
+        );
+      }
+
+      return completeScreenshotJob(
+        request,
+        env,
+      );
     }
 
     if (request.method === 'POST' && url.pathname === '/admin/bootstrap') return bootstrap(request, env);
