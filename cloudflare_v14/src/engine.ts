@@ -582,22 +582,29 @@ async function verifyOne(env: V14Env, repo: D1Repository, settings: Settings): P
   }
 }
 
-async function deliveryStep(env: V14Env, repo: D1Repository, settings: Settings): Promise<Record<string, unknown>[]> {
-  const out: Record<string, unknown>[] = [];
-  for (const lane of ['ultra','normal'] as const) {
-    const row = await repo.claimForDelivery(lane, workerId(`deliver-${lane}`), settings.lease_seconds);
-    if (!row) continue;
-    try {
-      await sendReview(env, row, repo, settings);
-      await repo.markSent(row.deal_key);
-      out.push({ lane, store: row.store, deal: row.deal_key.slice(0,10), sent: true });
-    } catch (e) {
-      const reason = `${e instanceof Error ? e.name : 'Error'}:${e instanceof Error ? e.message : String(e)}`;
-      await repo.deliveryRetry(row.deal_key, reason, settings.retry_base_seconds, settings.max_attempts);
-      out.push({ lane, store: row.store, deal: row.deal_key.slice(0,10), sent: false, reason });
-    }
-  }
-  return out;
+async function deliveryStep(
+  env: V14Env,
+  repo: D1Repository,
+  settings: Settings,
+): Promise<Record<string, unknown>[]> {
+
+  /*
+   * V14 HYBRID DELIVERY
+   *
+   * Cloudflare:
+   * discovery + verification + intelligence + D1
+   *
+   * GitHub Playwright:
+   * every automatic Amazon review delivery
+   * with a REAL product-page screenshot.
+   *
+   * Do not let Cloudflare race the screenshot worker.
+   */
+  void env;
+  void repo;
+  void settings;
+
+  return [];
 }
 
 export async function runCycle(env: V14Env, settings: Settings): Promise<Record<string, unknown>> {

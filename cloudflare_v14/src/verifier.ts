@@ -671,17 +671,120 @@ export async function verifyRow(
         || 0
       );
 
+    /*
+     * SMART CROSS-PAGE AMAZON PROOF
+     *
+     * Amazon frequently removes the crossed/list price
+     * from the raw product HTML while keeping it visible
+     * on search/deals surfaces.
+     *
+     * We may preserve that Amazon-origin old price ONLY
+     * when:
+     * - the discovery observation is fresh
+     * - the exact product's live current price matches
+     * - discovery had a genuine old > current pair
+     * - the live product page does not contradict it
+     *
+     * >=90% remains stricter and still requires stronger
+     * live/rendered evidence.
+     */
+    const discoveryCurrent =
+      Number(incoming.current_price || 0);
+
+    const discoveryOld =
+      Number(incoming.old_price || 0);
+
+    const directCurrent =
+      Number(direct.deal.current_price || 0);
+
+    const directOld =
+      Number(direct.deal.old_price || 0);
+
+    const currentGap =
+      discoveryCurrent > 0 && directCurrent > 0
+        ? Math.abs(
+            directCurrent - discoveryCurrent
+          ) / discoveryCurrent
+        : 999;
+
+    const discoveryAge =
+      Math.max(
+        0,
+        Math.floor(Date.now() / 1000) -
+          Number(row.updated_at || 0)
+      );
+
+    const crossPageProof =
+      discoveryVisible >=
+        settings.normal_min_discount &&
+      discoveryVisible < 90 &&
+      discoveryOld > discoveryCurrent &&
+      discoveryCurrent > 0 &&
+      directCurrent > 0 &&
+      !(directOld > directCurrent) &&
+      currentGap <= 0.015 &&
+      discoveryAge <= 900;
+
+    if (crossPageProof) {
+      direct.deal.old_price =
+        discoveryOld;
+
+      direct.meta.verification_signals =
+        Math.max(
+          3,
+          Number(
+            direct.meta.verification_signals || 0
+          )
+        );
+
+      direct.meta.amazon_cross_page_proof =
+        true;
+
+      direct.meta.amazon_live_current_match =
+        true;
+
+      direct.meta.amazon_discovery_discount =
+        discoveryVisible;
+
+      direct.meta.amazon_live_price_gap_pct =
+        Math.round(
+          currentGap * 10000
+        ) / 100;
+
+      return direct;
+    }
+
     // Important:
     // Discovery discount is NEVER accepted as proof.
     // But a strong search/Goldbox lead should not be discarded just
     // because Amazon's first HTML response omitted dynamic savings.
-    const weakDirectEvidence = Boolean(
-      directVisible
-        < settings.normal_min_discount
-      && directCoupon <= 0
-      && directSavings
-        < settings.normal_min_discount
-    );
+    const directCouponCombined =
+      100 -
+      (
+        (100 - Math.max(0, directVisible)) *
+        (100 - Math.max(0, directCoupon))
+      ) / 100;
+
+    const directEffectiveEvidence =
+      Math.max(
+        directVisible,
+        directSavings,
+        directCouponCombined,
+      );
+
+    /*
+     * A candidate discovered as Ultra must still
+     * prove >=65% effective discount.
+     * A 20% live discount may never silently pass
+     * as proof of a discovered 70/80/90% offer.
+     */
+    const weakDirectEvidence =
+      directEffectiveEvidence <
+        (
+          strongUltraCandidate
+            ? settings.ultra_min_discount
+            : settings.normal_min_discount
+        );
 
     if (
       strongCandidate &&
