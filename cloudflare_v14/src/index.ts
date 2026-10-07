@@ -1549,21 +1549,214 @@ export default {
     return json({ok:false,error:'not_found'},404);
   },
 
-  async scheduled(controller: ScheduledController, env: V14Env, ctx: ExecutionContext): Promise<void> {
-    const job: JobMessage = { type:'cycle', scheduled_at: controller.scheduledTime };
-    ctx.waitUntil(env.JOBS.send(job));
+  /*
+   * V14_DISCOVERY_WATCHDOG_V1
+   *
+   * Normal path:
+   *   Cron -> Queue -> runCycle
+   *
+   * Emergency path:
+   *   If no completed cycle heartbeat has been seen
+   *   for 3 minutes, Cron runs one cycle directly.
+   *
+   * This means a stuck Queue consumer can no longer
+   * stop Amazon discovery for an hour.
+   */
+  async scheduled(
+    controller: ScheduledController,
+    env: V14Env,
+    ctx: ExecutionContext,
+  ): Promise<void> {
+
+    const repo =
+      new D1Repository(
+        env.egypt_deals_v14_db
+      );
+
+    const now =
+      Math.floor(
+        Date.now() / 1000
+      );
+
+    const heartbeat =
+      await repo.counterGet(
+        "cycle_heartbeat_ts"
+      );
+
+    const watchdogStarted =
+      await repo.counterGet(
+        "cycle_watchdog_started_ts"
+      );
+
+    const staleHeartbeat =
+      !heartbeat ||
+      now - heartbeat > 180;
+
+    if (staleHeartbeat) {
+
+      /*
+       * Prevent every Cron minute from starting
+       * another emergency cycle simultaneously.
+       */
+      if (
+        !watchdogStarted ||
+        now - watchdogStarted > 180
+      ) {
+
+        await repo.counterSet(
+          "cycle_watchdog_started_ts",
+          now,
+        );
+
+        console.warn(
+          JSON.stringify({
+            event:
+              "v14_discovery_watchdog_direct_cycle",
+            heartbeat,
+            now,
+          })
+        );
+
+        ctx.waitUntil(
+          runCycle(
+            env,
+            getSettings(env),
+          )
+          .then(() => undefined)
+          .catch(
+            error => {
+              console.error(
+                JSON.stringify({
+                  event:
+                    "v14_watchdog_cycle_error",
+                  error:
+                    error instanceof Error
+                      ? `${error.name}:${error.message}`
+                      : String(error),
+                })
+              );
+            }
+          )
+        );
+
+        return;
+      }
+    }
+
+    const job: JobMessage = {
+      type:"cycle",
+      scheduled_at:
+        controller.scheduledTime,
+    };
+
+    /*
+     * If Queue publishing itself fails,
+     * immediately fall back to direct execution.
+     */
+    ctx.waitUntil(
+      env.JOBS.send(job)
+      .catch(
+        async error => {
+
+          console.error(
+            JSON.stringify({
+              event:
+                "v14_queue_publish_failed",
+              error:
+                error instanceof Error
+                  ? `${error.name}:${error.message}`
+                  : String(error),
+            })
+          );
+
+          await runCycle(
+            env,
+            getSettings(env),
+          );
+        }
+      )
+    );
   },
 
-  async queue(batch: MessageBatch<JobMessage>, env: V14Env): Promise<void> {
-    const settings = getSettings(env);
-    for (const message of batch.messages) {
-      if (message.body?.type !== 'cycle') { message.ack(); continue; }
-      try {
-        await runCycle(env, settings);
+  async queue(
+    batch: MessageBatch<JobMessage>,
+    env: V14Env,
+  ): Promise<void> {
+
+    const settings =
+      getSettings(env);
+
+    for (
+      const message
+      of batch.messages
+    ) {
+
+      if (
+        message.body?.type !== "cycle"
+      ) {
         message.ack();
+        continue;
+      }
+
+      /*
+       * Do not replay an hour of old Cron messages
+       * after Queue recovery. That would create an
+       * aggressive Amazon traffic burst.
+       */
+      const scheduledAt =
+        Number(
+          message.body?.scheduled_at
+          || 0
+        );
+
+      const ageMs =
+        scheduledAt > 0
+          ? Date.now() - scheduledAt
+          : 0;
+
+      if (
+        ageMs >
+        5 * 60 * 1000
+      ) {
+
+        console.warn(
+          JSON.stringify({
+            event:
+              "v14_stale_queue_cycle_dropped",
+            age_ms:
+              ageMs,
+          })
+        );
+
+        message.ack();
+        continue;
+      }
+
+      try {
+
+        await runCycle(
+          env,
+          settings,
+        );
+
+        message.ack();
+
       } catch (e) {
-        console.error(JSON.stringify({event:'cycle_error',error:e instanceof Error ? `${e.name}:${e.message}` : String(e)}));
-        message.retry({delaySeconds:30});
+
+        console.error(
+          JSON.stringify({
+            event:
+              "cycle_error",
+            error:
+              e instanceof Error
+                ? `${e.name}:${e.message}`
+                : String(e),
+          })
+        );
+
+        message.retry({
+          delaySeconds:30,
+        });
       }
     }
   },

@@ -1597,6 +1597,18 @@ async function deliveryStep(
 
 export async function runCycle(env: V14Env, settings: Settings): Promise<Record<string, unknown>> {
   const repo = new D1Repository(env.egypt_deals_v14_db);
+
+  /*
+   * V14_CYCLE_HEARTBEAT_V1
+   *
+   * Lets the Cron watchdog know whether the Queue
+   * consumer is actually completing discovery cycles.
+   */
+  await repo.counterSet(
+    "cycle_started_ts",
+    Math.floor(Date.now() / 1000),
+  );
+
   const stale = await repo.releaseStaleLeases();
   const discovery = await discoveryStep(env, repo, settings);
   const verified: Record<string, unknown>[] = [];
@@ -1604,7 +1616,14 @@ export async function runCycle(env: V14Env, settings: Settings): Promise<Record<
   const delivered = await deliveryStep(env, repo, settings);
   const stats = await repo.stats();
   const result = { event:'v14_cycle', stale_released: stale, discovery, verified, delivered, stats };
+
+  await repo.counterSet(
+    "cycle_heartbeat_ts",
+    Math.floor(Date.now() / 1000),
+  );
+
   console.log(JSON.stringify(result));
+
   return result;
 }
 

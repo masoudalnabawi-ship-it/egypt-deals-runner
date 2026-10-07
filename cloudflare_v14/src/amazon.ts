@@ -352,6 +352,15 @@ export async function fetchAmazonSurface(surface: Surface): Promise<{text: strin
       "cache-control": "no-cache",
     },
     redirect: "follow",
+
+    /*
+     * AMAZON_DISCOVERY_FETCH_TIMEOUT_V1
+     *
+     * One stalled Amazon request must never block
+     * the whole minute-by-minute discovery cycle.
+     */
+    signal:
+      AbortSignal.timeout(12000),
   });
   const text = await res.text();
   if (!res.ok) throw new Error(`amazon_http_${res.status}`);

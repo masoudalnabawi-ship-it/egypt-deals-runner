@@ -655,7 +655,17 @@ async function fetchAmazonDirect(url: string): Promise<string> {
     "user-agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0 Safari/537.36",
     "accept-language": "ar-EG,ar;q=0.9,en-US;q=0.8,en;q=0.7",
     "accept": "text/html,application/xhtml+xml,application/json;q=0.9,*/*;q=0.8", "cache-control": "no-cache",
-  }, redirect: "follow" });
+  },
+
+  /*
+   * AMAZON_DIRECT_VERIFY_TIMEOUT_V1
+   */
+  redirect: "follow",
+
+  signal:
+    AbortSignal.timeout(12000),
+
+  });
   const text = await r.text();
   if (!r.ok) throw new Error(`amazon_direct_http_${r.status}`);
   return text;
@@ -734,6 +744,12 @@ async function verifyNoon(
         },
 
         redirect:"follow",
+
+        /*
+         * NOON_PRODUCT_VERIFY_TIMEOUT_V1
+         */
+        signal:
+          AbortSignal.timeout(12000),
       },
     );
 

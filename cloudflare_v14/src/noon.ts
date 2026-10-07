@@ -345,6 +345,15 @@ export async function fetchNoonSurface(
       },
 
       redirect:"follow",
+
+      /*
+       * NOON_DISCOVERY_FETCH_TIMEOUT_V1
+       *
+       * Noon must never hold the shared discovery
+       * Promise.all indefinitely.
+       */
+      signal:
+        AbortSignal.timeout(12000),
     },
   );
 
