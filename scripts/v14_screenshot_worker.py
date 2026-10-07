@@ -406,14 +406,65 @@ async def verify_rendered(
         raw = await page.evaluate(
             """
             () => {
+              const isRenderedPriceEvidence = (el) => {
+                /*
+                 * Amazon frequently keeps stale/alternate prices
+                 * in the DOM. An .a-offscreen node is legitimate
+                 * only when its visible price container is rendered.
+                 */
+                const anchor =
+                  el.closest(
+                    '.a-price, .basisPrice, .priceToPay, ' +
+                    '#price_inside_buybox, #newBuyBoxPrice, ' +
+                    '#coupon_feature_div, #couponFeature'
+                  ) || el;
+
+                if (
+                  anchor.hidden ||
+                  anchor.getAttribute('aria-hidden') === 'true'
+                ) {
+                  return false;
+                }
+
+                const style =
+                  window.getComputedStyle(anchor);
+
+                if (
+                  style.display === 'none' ||
+                  style.visibility === 'hidden' ||
+                  Number(style.opacity || 1) === 0
+                ) {
+                  return false;
+                }
+
+                const rect =
+                  anchor.getBoundingClientRect();
+
+                return (
+                  rect.width > 0 &&
+                  rect.height > 0
+                );
+              };
+
               const texts = (selectors) => {
                 const out = [];
+
                 for (const selector of selectors) {
-                  for (const el of document.querySelectorAll(selector)) {
-                    const text = (el.textContent || '').trim();
+                  for (
+                    const el
+                    of document.querySelectorAll(selector)
+                  ) {
+                    if (!isRenderedPriceEvidence(el)) {
+                      continue;
+                    }
+
+                    const text =
+                      (el.textContent || '').trim();
+
                     if (text) out.push(text);
                   }
                 }
+
                 return out;
               };
 
