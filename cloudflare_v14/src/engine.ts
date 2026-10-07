@@ -29,20 +29,44 @@ function workerId(prefix: string): string {
  * product-page verifier confirms >=65% REAL discount.
  */
 const AMAZON_ULTRA_HUNTER_ORDER: string[] = [
-  "90filter",
-  "90off",
-  "90filter",
-  "90off",
+  /*
+   * Weighted from real V14 source performance.
+   *
+   * Proven historical Ultra producers get more
+   * opportunities, while global percentage filters
+   * remain as exploration/safety sources.
+   *
+   * Verification remains completely independent:
+   * NO source can bypass the rendered Amazon
+   * product-page Ultra proof.
+   */
 
-  "75filter",
-  "75off",
-  "75filter",
+  "books",
+  "books",
+  "books",
 
+  "tvs",
+  "tvs",
+
+  "shoes_65hot",
+  "shoes_65hot",
+
+  "goldbox",
+  "goldbox",
+
+  "networking_65hot",
+  "gaming_65hot",
+  "beauty_65hot",
+
+  /*
+   * Keep percentage filters for exploration,
+   * but do not waste most cycles on sources that
+   * frequently return zero usable results.
+   */
+  "90filter",
+  "75filter",
   "70filter",
-  "70off",
-
   "65filter",
-  "65off",
 ];
 
 
@@ -345,7 +369,10 @@ async function discoveryStep(
         x => x.name === "goldbox"
       );
 
-    if (goldbox) {
+    if (
+      goldbox &&
+      goldbox.name !== ultraSurface?.name
+    ) {
       tasks.push(
         scanAmazonSurface(
           repo,
