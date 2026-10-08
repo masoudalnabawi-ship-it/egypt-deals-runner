@@ -532,14 +532,14 @@ export async function sendPublic(
   if (!chatId) throw new Error(`telegram_public_chat_missing:${row.store}`);
   const prefix = urgent ? "🚀 <b>نشر عاجل</b>\n\n" : "✅ <b>عرض معتمد</b>\n\n";
   const cap = prefix + caption(row);
-  const keys = { inline_keyboard: [[{ text: "🔗 فتح المنتج", url: row.url }]] };
+  const keys = row.store === "amazon" ? { inline_keyboard: [] } : { inline_keyboard: [[{ text: "🔗 فتح المنتج", url: row.url }]] };
   // Amazon publication must reuse the actual screenshot from the reviewed Telegram photo.
   const image = row.store === "amazon"
     ? String(reviewScreenshotFileId || "").trim()
     : String(row.image_url || "").trim();
   if (row.store === "amazon" && !image) throw new Error("amazon_review_screenshot_missing");
   if (image) {
-    try { return await telegramCall(token, "sendPhoto", { chat_id: chatId, photo: image, caption: cap.slice(0,1024), parse_mode: "HTML", reply_markup: keys }); }
+    try { return await telegramCall(token, "sendPhoto", { chat_id: chatId, photo: image, caption: `${cap.slice(0, Math.max(0, 950 - row.url.length))}\n\n🛒 <a href="${htmlEscape(row.url)}">اضغط هنا لشراء المنتج من أمازون 🔗</a>`, parse_mode: "HTML", reply_markup: keys }); }
     catch (error) { if (row.store === "amazon") throw error; }
   }
   return telegramCall(token, "sendMessage", { chat_id: chatId, text: `${cap}\n\n🔗 ${htmlEscape(row.url)}`, parse_mode: "HTML", disable_web_page_preview: false, reply_markup: keys });

@@ -1907,20 +1907,6 @@ export async function handleTelegramUpdate(env: V14Env, route: 'main'|'noon', up
     return new Response("ok");
   }
 
-  const actorId = Number(cb.from?.id || 0);
-  if (!actorId) {
-    await answerCallback(token, cbId, "تعذر تحديد المستخدم", true);
-    return new Response("ok");
-  }
-  const check = await fetch(
-    `https://api.telegram.org/bot${token}/getChatMember?chat_id=${encodeURIComponent(chatId)}&user_id=${actorId}`
-  );
-  const member = await check.json() as any;
-  if (!check.ok || !member.ok || !["creator", "administrator"].includes(member.result?.status)) {
-    await answerCallback(token, cbId, "الأزرار متاحة لمشرفي المجموعة فقط", true);
-    return new Response("ok");
-  }
-
   const parts =
     String(cb.data || "").split(":");
 
