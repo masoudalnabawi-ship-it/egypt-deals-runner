@@ -16,7 +16,7 @@ from playwright.sync_api import sync_playwright
 
 WORKER = os.environ.get(
     "V14_WORKER_URL",
-    "https://egypt-deals-v14.masoudalnabawi.workers.dev",
+    "",
 ).rstrip("/")
 ADMIN_KEY = os.environ.get("V14_GITHUB_PIPELINE_KEY", "").strip()
 BOT_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN", "").strip()
@@ -47,6 +47,14 @@ PRICE_SELECTORS = [
     ".reinventPricePriceToPayMargin .a-offscreen",
     "span.a-price[data-a-color='price'] .a-offscreen",
     ".apexPriceToPay .a-offscreen",
+    "#priceblock_ourprice",
+    "#priceblock_dealprice",
+    "#priceblock_saleprice",
+    "#price_inside_buybox",
+    "#newBuyBoxPrice",
+    "#tp_price_block_total_price_ww .a-offscreen",
+    "#corePrice_desktop .a-price .a-offscreen",
+    "#corePriceDisplay_desktop_feature_div .a-price-whole",
 ]
 
 OLD_PRICE_SELECTORS = [
@@ -183,31 +191,36 @@ def coupon_percent(page) -> float:
     selectors = [
         "#couponTextpctch",
         "#couponText",
-        ".promoPriceBlockMessage",
-        "#promoPriceBlockMessage_feature_div",
+        "#couponBadge",
     ]
-    texts = []
+    blocked = (
+        "bank", "credit card", "debit card",
+        "visa", "mastercard", "cashback",
+        "بنك", "بنكي", "بطاقة ائتمان",
+        "بطاقة خصم", "كاش باك", "تقسيط",
+        "prime", "برايم",
+    )
+    best = 0.0
     for selector in selectors:
         try:
             loc = page.locator(selector)
             for i in range(min(loc.count(), 4)):
-                texts.append((loc.nth(i).text_content(timeout=800) or "").strip())
+                text = (loc.nth(i).inner_text(timeout=1000) or "").strip()
+                low = text.lower()
+                if any(word in low for word in blocked):
+                    continue
+                if not any(word in low for word in ("coupon", "كوبون", "قسيمة", "خصم")):
+                    continue
+                matches = re.findall(
+                    r"(\\d{1,2}(?:\\.\\d+)?)\\s*%",
+                    text.translate(ARABIC_DIGITS),
+                )
+                if len(matches) == 1:
+                    value = float(matches[0])
+                    if 0 < value <= 60:
+                        best = max(best, value)
         except Exception:
-            pass
-    try:
-        body = (page.locator("body").inner_text(timeout=2000) or "")[:14000]
-        texts.append(body)
-    except Exception:
-        pass
-    best = 0.0
-    for text in texts:
-        low = text.lower()
-        if any(word in low for word in ("coupon", "كوبون", "قسيمة", "خصم إضافي")):
-            for m in re.finditer(r"(\d{1,2}(?:\.\d+)?)\s*%", text.translate(ARABIC_DIGITS)):
-                try:
-                    best = max(best, min(60.0, float(m.group(1))))
-                except ValueError:
-                    pass
+            continue
     return best
 
 def inspect_amazon(page, url: str, expected_asin: str = "") -> dict[str, Any]:
@@ -225,6 +238,12 @@ def inspect_amazon(page, url: str, expected_asin: str = "") -> dict[str, Any]:
         raise RuntimeError("amazon_blocked")
 
     current_text = first_text(page, PRICE_SELECTORS)
+    if not parse_number(current_text):
+        for _ in range(3):
+            page.wait_for_timeout(1500)
+            current_text = first_text(page, PRICE_SELECTORS)
+            if parse_number(current_text):
+                break
     old_text = first_text(page, OLD_PRICE_SELECTORS)
     saving_text = first_text(page, SAVING_SELECTORS)
 
