@@ -2,7 +2,7 @@ name: Amazon V14 Pipeline
 
 on:
   schedule:
-    - cron: "7,22,37,52 * * * *"
+    - cron: "7,17,27,37,47,57 * * * *"
   workflow_dispatch:
     inputs:
       send_test:
