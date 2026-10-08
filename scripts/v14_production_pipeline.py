@@ -198,7 +198,7 @@ def asin_from_page(page, expected: str = "") -> str:
             return m.group(1)
         if re.fullmatch(r"[A-Z0-9]{10}", value.upper()):
             return value.upper()
-    return expected if re.fullmatch(r"[A-Z0-9]{10}", expected) else ""
+    return ""
 
 def coupon_percent(page) -> float:
     selectors = [
@@ -291,6 +291,8 @@ def inspect_amazon(page, url: str, expected_asin: str = "") -> dict[str, Any]:
 
     canonical = first_attr(page, "link[rel='canonical']", "href") or page.url
     page_asin = asin_from_page(page, expected_asin)
+    if expected_asin and page_asin != expected_asin.strip().upper():
+        raise RuntimeError(f"asin_mismatch:expected={expected_asin}:actual={page_asin}")
     title = first_text(page, ["#productTitle", "h1#title", "h1"])
     image_url = (
         first_attr(page, "#landingImage", "src")
@@ -413,6 +415,13 @@ def build_caption(job: dict[str, Any], live_discount: float) -> str:
 NORMAL_REVIEW_CHAT = os.environ.get("AMAZON_NORMAL_REVIEW_CHAT_ID", "").strip()
 
 
+def capture_product_screenshot(page, path: Path) -> None:
+    top = page.evaluate("""() => { const e = document.querySelector("#dp-container") || document.querySelector("#ppd"); return e ? Math.max(0, e.getBoundingClientRect().top + scrollY) : 0; }""")
+    bottom = page.evaluate("""() => { const selectors = ["#detailBullets_feature_div", "#productDetails_feature_div", "#prodDetails", "#productDetails_db_sections", "#detailBulletsWrapper_feature_div"]; const positions = selectors.map(s => document.querySelector(s)).filter(Boolean).map(e => e.getBoundingClientRect().top + scrollY).filter(y => y > 350); return positions.length ? Math.min(...positions) : 1050; }""")
+    height = max(500, min(1200, int(bottom - top)))
+    page.screenshot(path=str(path), type="jpeg", quality=85, clip={"x": 0, "y": int(top), "width": 1440, "height": height})
+
+
 def send_review_photo(job: dict[str, Any], photo: Path, live_discount: float) -> int:
     if not (REVIEW_CHAT if str(job.get("lane") or "normal").lower() == "ultra" else NORMAL_REVIEW_CHAT):
         raise RuntimeError("telegram_review_chat_missing")
@@ -493,12 +502,7 @@ def deliver_one(page, lane: str, ultra_min: float) -> bool:
 
         with tempfile.TemporaryDirectory(prefix="v14-shot-") as td:
             shot = Path(td) / "deal.jpg"
-            page.screenshot(
-                path=str(shot),
-                type="jpeg",
-                quality=80,
-                full_page=False,
-            )
+            capture_product_screenshot(page, shot)
             live_job = {**job, "current_price": obs["current_price"], "old_price": obs["old_price"]}
             message_id = send_review_photo(live_job, shot, live_discount)
 
@@ -563,7 +567,7 @@ def screenshot_test() -> int:
         try:
             observation = inspect_amazon(page, target, "B0DK4Z4GPJ")
             observation["effective_discount"] = effective_discount(observation)
-            page.screenshot(path=str(output / "amazon-product.jpg"), type="jpeg", quality=90, full_page=False)
+            capture_product_screenshot(page, output / "amazon-product.jpg")
             (output / "observation.json").write_text(json.dumps(observation, ensure_ascii=False, indent=2), encoding="utf-8")
             print("SCREENSHOT_TEST_OK", output, flush=True)
         finally:
