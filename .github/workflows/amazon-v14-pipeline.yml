@@ -93,5 +93,5 @@ jobs:
       - name: Drain V14 verification and review queues
         run: |
           python scripts/v14_production_pipeline.py \
-            --max-verify 4 \
-            --max-deliver 8
+            --max-verify 20 \
+            --max-deliver 40
