@@ -1,0 +1,62 @@
+name: Amazon V14 Watchdog
+on:
+  schedule:
+    - cron: '3,13,23,33,43,53 * * * *'
+  workflow_dispatch:
+permissions:
+  actions: read
+  contents: read
+concurrency:
+  group: amazon-v14-watchdog
+  cancel-in-progress: false
+jobs:
+  watchdog:
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - name: Check scheduled Amazon pipeline and alert on downtime
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          ALERT_CHAT_ID: ${{ secrets.AMAZON_NORMAL_REVIEW_CHAT_ID }}
+        run: |
+          python3 - <<'PY'
+          import datetime as dt
+          import json
+          import os
+          import urllib.request
+          import urllib.parse
+
+          repo = os.environ['GH_REPO']
+          token = os.environ['GH_TOKEN']
+          endpoint = f'https://api.github.com/repos/{repo}/actions/workflows/amazon-v14-pipeline.yml/runs?per_page=30'
+          request = urllib.request.Request(endpoint, headers={
+              'Authorization': f'Bearer {token}',
+              'Accept': 'application/vnd.github+json',
+              'User-Agent': 'amazon-v14-watchdog',
+          })
+          with urllib.request.urlopen(request, timeout=20) as response:
+              runs = json.load(response)['workflow_runs']
+          now = dt.datetime.now(dt.timezone.utc)
+          scheduled = [run for run in runs if run.get('event') == 'schedule']
+          def age_seconds(run):
+              return (now - dt.datetime.fromisoformat(run['created_at'].replace('Z', '+00:00'))).total_seconds()
+          successful = any(run.get('conclusion') == 'success' and age_seconds(run) < 2400 for run in scheduled)
+          if successful:
+              print('WATCHDOG_OK: scheduled pipeline succeeded within 40 minutes')
+          else:
+              print('WATCHDOG_ALERT: no successful scheduled pipeline within 40 minutes')
+              bot = os.environ.get('TELEGRAM_BOT_TOKEN', '')
+              chat = os.environ.get('ALERT_CHAT_ID', '')
+              if not bot or not chat:
+                  raise RuntimeError('Watchdog Telegram alert credentials missing')
+              text = '🚨 مراقب أمازون V14: لم يُسجل تشغيل مجدول ناجح خلال آخر 40 دقيقة. راجع GitHub Actions.'
+              data = urllib.parse.urlencode({'chat_id': chat, 'text': text}).encode()
+              with urllib.request.urlopen(urllib.request.Request(
+                  f'https://api.telegram.org/bot{bot}/sendMessage', data=data
+              ), timeout=20) as response:
+                  result = json.load(response)
+              if not result.get('ok'):
+                  raise RuntimeError('Telegram rejected watchdog alert')
+          PY
