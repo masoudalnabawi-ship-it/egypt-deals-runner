@@ -322,7 +322,7 @@ def effective_discount(obs: dict[str, Any]) -> float:
     if old > current > 0:
         old_discount = ((old - current) / old) * 100.0
 
-    base = max(old_discount, savings)
+    base = old_discount  # Only a verified old/current price pair establishes the base discount
     combined = 100.0 - ((100.0 - base) * (100.0 - coupon) / 100.0)
     return round(max(0.0, min(99.0, combined)), 2)
 
@@ -471,6 +471,11 @@ def deliver_one(page, lane: str, ultra_min: float) -> bool:
         )
         live_discount = effective_discount(obs)
 
+        if lane == "normal" and not (10 <= live_discount < ultra_min):
+            api_post("/admin/screenshot/complete", {"deal_key": key, "status": "invalid_normal", "reason": f"live_discount_{live_discount}_outside_normal_range", "live_discount": live_discount, "proof": obs}, retries=10)
+            print("NORMAL DISCOUNT OUT OF RANGE", key[:12], live_discount, flush=True)
+            return True
+
         if lane == "ultra" and live_discount < ultra_min:
             api_post(
                 "/admin/screenshot/complete",
@@ -494,7 +499,8 @@ def deliver_one(page, lane: str, ultra_min: float) -> bool:
                 quality=80,
                 full_page=False,
             )
-            message_id = send_review_photo(job, shot, live_discount)
+            live_job = {**job, "current_price": obs["current_price"], "old_price": obs["old_price"]}
+            message_id = send_review_photo(live_job, shot, live_discount)
 
         proof = {
             **obs,
@@ -541,11 +547,38 @@ def deliver_one(page, lane: str, ultra_min: float) -> bool:
             print("❌ DELIVERY COMPLETE FAIL", repr(complete_exc), flush=True)
         return True
 
+def screenshot_test() -> int:
+    import json
+    target = "https://www.amazon.eg/dp/B0DK4Z4GPJ"
+    output = Path("/tmp/amazon-v14-screenshot-test")
+    output.mkdir(parents=True, exist_ok=True)
+    with sync_playwright() as playwright:
+        chrome = shutil.which("google-chrome") or shutil.which("google-chrome-stable") or shutil.which("chromium")
+        options = {"headless": True, "args": ["--no-sandbox", "--disable-dev-shm-usage"]}
+        if chrome:
+            options["executable_path"] = chrome
+        browser = playwright.chromium.launch(**options)
+        context = browser.new_context(locale="ar-EG", timezone_id="Africa/Cairo", user_agent=UA, viewport={"width": 1440, "height": 1800}, device_scale_factor=1)
+        page = context.new_page()
+        try:
+            observation = inspect_amazon(page, target, "B0DK4Z4GPJ")
+            observation["effective_discount"] = effective_discount(observation)
+            page.screenshot(path=str(output / "amazon-product.jpg"), type="jpeg", quality=90, full_page=False)
+            (output / "observation.json").write_text(json.dumps(observation, ensure_ascii=False, indent=2), encoding="utf-8")
+            print("SCREENSHOT_TEST_OK", output, flush=True)
+        finally:
+            browser.close()
+    return 0
+
+
 def main() -> int:
     parser = argparse.ArgumentParser()
+    parser.add_argument("--screenshot-test", action="store_true")
     parser.add_argument("--max-verify", type=int, default=4)
     parser.add_argument("--max-deliver", type=int, default=8)
     args = parser.parse_args()
+    if args.screenshot_test:
+        return screenshot_test()
 
     if not ADMIN_KEY:
         die("V14_GITHUB_PIPELINE_KEY missing")

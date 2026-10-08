@@ -53,6 +53,18 @@ jobs:
             python -m playwright install chromium
           fi
 
+      - name: Test real Amazon product screenshot
+        run: python scripts/v14_production_pipeline.py --screenshot-test
+
+      - name: Save screenshot and price evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: amazon-v14-screenshot-proof
+          path: /tmp/amazon-v14-screenshot-test/
+          if-no-files-found: warn
+          retention-days: 7
+
       - name: Drain V14 verification and review queues
         run: |
           python scripts/v14_production_pipeline.py \
