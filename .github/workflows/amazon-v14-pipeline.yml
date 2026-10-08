@@ -71,7 +71,7 @@ jobs:
           retention-days: 7
 
       - name: Send one normal review test message
-        if: github.event.inputs.send_test == "true"
+        if: github.event.inputs.send_test == 'true'
         run: python scripts/v14_production_pipeline.py --send-test
 
       - name: Drain V14 verification and review queues
