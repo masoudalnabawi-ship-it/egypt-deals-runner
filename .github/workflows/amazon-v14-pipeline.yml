@@ -55,5 +55,5 @@ jobs:
       - name: Drain V14 verification and review queues
         run: |
           python scripts/v14_production_pipeline.py \
-            --max-verify 0 \
+            --max-verify 1 \
             --max-deliver 0
