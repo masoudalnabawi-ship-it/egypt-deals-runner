@@ -260,6 +260,30 @@ def inspect_amazon(page, url: str, expected_asin: str = "") -> dict[str, Any]:
     old_text = first_text(page, OLD_PRICE_SELECTORS)
     saving_text = first_text(page, SAVING_SELECTORS)
 
+    if not parse_number(current_text):
+        try:
+            price_counts = {
+                selector: page.locator(selector).count()
+                for selector in PRICE_SELECTORS
+            }
+            size_count = page.locator(
+                "#native_dropdown_selected_size_name, "
+                "#variation_size_name, "
+                "#inline-twister-expander-content-size_name"
+            ).count()
+            print(
+                "AMAZON_PRICE_DIAGNOSTIC",
+                {
+                    "url": page.url,
+                    "title": page.title()[:120],
+                    "price_counts": price_counts,
+                    "size_selectors": size_count,
+                },
+                flush=True,
+            )
+        except Exception as exc:
+            print("AMAZON_DIAGNOSTIC_ERROR", repr(exc), flush=True)
+
     current = parse_number(current_text)
     old = parse_number(old_text)
     savings = parse_percent(saving_text)
