@@ -20,6 +20,7 @@ jobs:
       V14_GITHUB_PIPELINE_KEY: ${{ secrets.AMAZON_V14_PIPELINE_KEY }}
       TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
       AMAZON_REVIEW_GROUP_ID: ${{ secrets.AMAZON_REVIEW_GROUP_ID }}
+      AMAZON_NORMAL_REVIEW_CHAT_ID: ${{ secrets.AMAZON_NORMAL_REVIEW_CHAT_ID }}
 
     steps:
       - name: Checkout live V14

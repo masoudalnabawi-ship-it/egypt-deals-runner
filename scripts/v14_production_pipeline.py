@@ -410,7 +410,12 @@ def build_caption(job: dict[str, Any], live_discount: float) -> str:
         lines.append(f"📂 <b>القسم:</b> {category}")
     return "\n".join(lines)[:1000]
 
+NORMAL_REVIEW_CHAT = os.environ.get("AMAZON_NORMAL_REVIEW_CHAT_ID", "").strip()
+
+
 def send_review_photo(job: dict[str, Any], photo: Path, live_discount: float) -> int:
+    if not (REVIEW_CHAT if str(job.get("lane") or "normal").lower() == "ultra" else NORMAL_REVIEW_CHAT):
+        raise RuntimeError("telegram_review_chat_missing")
     short = str(job.get("deal_key") or "")[:16]
     url = str(job.get("url") or "")
     keyboard = {
@@ -430,7 +435,7 @@ def send_review_photo(job: dict[str, Any], photo: Path, live_discount: float) ->
         r = requests.post(
             f"https://api.telegram.org/bot{BOT_TOKEN}/sendPhoto",
             data={
-                "chat_id": REVIEW_CHAT,
+                "chat_id": (REVIEW_CHAT if str(job.get("lane") or "normal").lower() == "ultra" else NORMAL_REVIEW_CHAT),
                 "caption": build_caption(job, live_discount),
                 "parse_mode": "HTML",
                 "reply_markup": json.dumps(keyboard, ensure_ascii=False),
@@ -494,7 +499,7 @@ def deliver_one(page, lane: str, ultra_min: float) -> bool:
         proof = {
             **obs,
             "telegram_message_id": message_id,
-            "review_chat": REVIEW_CHAT,
+            "review_chat": (REVIEW_CHAT if lane == "ultra" else NORMAL_REVIEW_CHAT),
             "via": "github_playwright_v14",
         }
         api_post(
