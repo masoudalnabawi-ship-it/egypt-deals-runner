@@ -1907,6 +1907,20 @@ export async function handleTelegramUpdate(env: V14Env, route: 'main'|'noon', up
     return new Response("ok");
   }
 
+  const actorId = Number(cb.from?.id || 0);
+  if (!actorId) {
+    await answerCallback(token, cbId, "تعذر تحديد المستخدم", true);
+    return new Response("ok");
+  }
+  const check = await fetch(
+    `https://api.telegram.org/bot${token}/getChatMember?chat_id=${encodeURIComponent(chatId)}&user_id=${actorId}`
+  );
+  const member = await check.json() as any;
+  if (!check.ok || !member.ok || !["creator", "administrator"].includes(member.result?.status)) {
+    await answerCallback(token, cbId, "الأزرار متاحة لمشرفي المجموعة فقط", true);
+    return new Response("ok");
+  }
+
   const parts =
     String(cb.data || "").split(":");
 
@@ -1946,7 +1960,9 @@ export async function handleTelegramUpdate(env: V14Env, route: 'main'|'noon', up
       if (reviewed > 0 && freshPrice > reviewed * 1.02) { await answerCallback(token, cbId, 'السعر ارتفع منذ المراجعة؛ لم يتم النشر', true); return new Response('ok'); }
       const publicRow: DealRow = { ...row, title: fresh.title || row.title, url: fresh.url || row.url, image_url: fresh.image_url || row.image_url,
         current_price: freshPrice || reviewed, old_price: fresh.old_price ?? row.old_price };
-      await sendPublic(env, publicRow, action === 'u', repo);
+      const photoList = Array.isArray(message.photo) ? message.photo : [];
+      const reviewScreenshotFileId = String(photoList[photoList.length - 1]?.file_id || "");
+      await sendPublic(env, publicRow, action === 'u', repo, reviewScreenshotFileId);
       await repo.event('manual_publish', row.store, row.deal_key, {urgent: action === 'u'});
       await answerCallback(token, cbId, action === 'u' ? 'تم النشر العاجل 🚀' : 'تم النشر ✅');
     } catch (e) {

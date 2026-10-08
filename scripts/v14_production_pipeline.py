@@ -422,7 +422,7 @@ def capture_product_screenshot(page, path: Path) -> None:
     page.screenshot(path=str(path), type="jpeg", quality=85, clip={"x": 0, "y": int(top), "width": 1440, "height": height})
 
 
-def send_review_photo(job: dict[str, Any], photo: Path, live_discount: float) -> int:
+def send_review_photo(job: dict[str, Any], photo: Path, live_discount: float) -> dict[str, Any]:
     if not (REVIEW_CHAT if str(job.get("lane") or "normal").lower() == "ultra" else NORMAL_REVIEW_CHAT):
         raise RuntimeError("telegram_review_chat_missing")
     short = str(job.get("deal_key") or "")[:16]
@@ -457,7 +457,12 @@ def send_review_photo(job: dict[str, Any], photo: Path, live_discount: float) ->
     data = r.json()
     if not data.get("ok"):
         raise RuntimeError(f"telegram_not_ok:{str(data)[:400]}")
-    return int((data.get("result") or {}).get("message_id") or 0)
+    result = data.get("result") or {}
+    photos = result.get("photo") or []
+    file_id = str(photos[-1].get("file_id") or "") if photos else ""
+    if not file_id:
+        raise RuntimeError("telegram_screenshot_file_id_missing")
+    return {"message_id": int(result.get("message_id") or 0), "file_id": file_id}
 
 def deliver_one(page, lane: str, ultra_min: float) -> bool:
     claim = api_post(
@@ -504,11 +509,13 @@ def deliver_one(page, lane: str, ultra_min: float) -> bool:
             shot = Path(td) / "deal.jpg"
             capture_product_screenshot(page, shot)
             live_job = {**job, "current_price": obs["current_price"], "old_price": obs["old_price"]}
-            message_id = send_review_photo(live_job, shot, live_discount)
+            telegram_result = send_review_photo(live_job, shot, live_discount)
+            message_id = telegram_result["message_id"]
 
         proof = {
             **obs,
             "telegram_message_id": message_id,
+            "telegram_screenshot_file_id": telegram_result["file_id"],
             "review_chat": (REVIEW_CHAT if lane == "ultra" else NORMAL_REVIEW_CHAT),
             "via": "github_playwright_v14",
         }

@@ -1614,12 +1614,12 @@ export default {
       });
     }
     if (request.method === 'POST' && url.pathname === '/telegram/main') {
-      if ((request.headers.get('x-telegram-bot-api-secret-token') || '') !== String(env.TELEGRAM_WEBHOOK_SECRET || '')) return new Response('forbidden',{status:403});
+      if (!String(env.TELEGRAM_WEBHOOK_SECRET || '') || (request.headers.get('x-telegram-bot-api-secret-token') || '') !== String(env.TELEGRAM_WEBHOOK_SECRET || '')) return new Response('forbidden',{status:403});
       return handleTelegramUpdate(env,'main',await request.json());
     }
     if (request.method === 'POST' && url.pathname === '/telegram/noon') {
       const expected = String(env.NOON_TELEGRAM_WEBHOOK_SECRET || env.TELEGRAM_WEBHOOK_SECRET || '');
-      if ((request.headers.get('x-telegram-bot-api-secret-token') || '') !== expected) return new Response('forbidden',{status:403});
+      if (!expected || (request.headers.get('x-telegram-bot-api-secret-token') || '') !== expected) return new Response('forbidden',{status:403});
       return handleTelegramUpdate(env,'noon',await request.json());
     }
     if (

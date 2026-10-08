@@ -1,6 +1,8 @@
 name: Amazon V14 Pipeline
 
 on:
+  schedule:
+    - cron: "7,22,37,52 * * * *"
   workflow_dispatch:
     inputs:
       send_test:
@@ -59,6 +61,7 @@ jobs:
           fi
 
       - name: Test real Amazon product screenshot
+        if: github.event_name == 'workflow_dispatch'
         run: python scripts/v14_production_pipeline.py --screenshot-test
 
       - name: Save screenshot and price evidence
@@ -77,5 +80,5 @@ jobs:
       - name: Drain V14 verification and review queues
         run: |
           python scripts/v14_production_pipeline.py \
-            --max-verify 1 \
-            --max-deliver 0
+            --max-verify 4 \
+            --max-deliver 8
