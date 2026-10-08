@@ -1,0 +1,59 @@
+name: Amazon V14 Pipeline
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: amazon-v14-pipeline
+  cancel-in-progress: false
+
+jobs:
+  pipeline:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    env:
+      V14_WORKER_URL: https://egypt-amazon-v14.masoud-amazon-eg.workers.dev
+      V14_GITHUB_PIPELINE_KEY: ${{ secrets.AMAZON_V14_PIPELINE_KEY }}
+      TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+      AMAZON_REVIEW_GROUP_ID: ${{ secrets.AMAZON_REVIEW_GROUP_ID }}
+
+    steps:
+      - name: Checkout live V14
+        uses: actions/checkout@v4
+        with:
+          ref: v14-cloudflare
+
+      - name: Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install Playwright controller
+        run: |
+          python -m pip install --upgrade pip
+          pip install "playwright==1.56.0" requests
+
+          CHROME="$(
+            command -v google-chrome ||
+            command -v google-chrome-stable ||
+            command -v chromium ||
+            true
+          )"
+
+          if [ -n "$CHROME" ]; then
+            echo "✅ SYSTEM_CHROME=$CHROME"
+            "$CHROME" --version || true
+          else
+            echo "⚠️ System Chrome not found; installing Playwright Chromium only"
+            python -m playwright install chromium
+          fi
+
+      - name: Drain V14 verification and review queues
+        run: |
+          python scripts/v14_production_pipeline.py \
+            --max-verify 0 \
+            --max-deliver 0
