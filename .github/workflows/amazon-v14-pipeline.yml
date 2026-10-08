@@ -35,6 +35,18 @@ jobs:
         with:
           ref: v14-cloudflare
 
+      - name: Sync Amazon review chat IDs to Cloudflare
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUD_API_KEY }}
+          AMAZON_NORMAL_REVIEW_CHAT_ID: ${{ secrets.AMAZON_NORMAL_REVIEW_CHAT_ID }}
+          AMAZON_REVIEW_GROUP_ID: ${{ secrets.AMAZON_REVIEW_GROUP_ID }}
+        run: |
+          cd cloudflare_amazon_v14
+          npm install --no-audit --no-fund
+          printf "%s" "$AMAZON_NORMAL_REVIEW_CHAT_ID" | npx wrangler secret put AMAZON_NORMAL_REVIEW_CHAT_ID
+          printf "%s" "$AMAZON_REVIEW_GROUP_ID" | npx wrangler secret put AMAZON_REVIEW_GROUP_ID
+          echo AMAZON_REVIEW_IDS_SYNCED_OK
+
       - name: Python
         uses: actions/setup-python@v5
         with:
