@@ -176,8 +176,16 @@ export function evaluateDeal(
   if (current <= 0) confidence = 0;
   confidence = Math.round(clamp(confidence, 0, 1) * 1000) / 1000;
 
+  // Prevent weak history or a single bad price from masquerading as a glitch.
+  const historicalOnly = historical > liveDiscount && liveDiscount < settings.normal_min_discount;
+  if (historicalOnly && (!profile.mature_history || signals < 2 || accessoryLike ||
+      historical < 70 || !profile.new_verified_low)) {
+    reasons.push('v15_historical_glitch_unconfirmed');
+    historical = 0;
+  }
+
   const breakdown = smartDealScore({
-    realDiscount: intelligenceDiscount, confidence, verificationSignals: signals, effectivePrice: effective,
+    realDiscount: Math.max(liveDiscount, historical), confidence, verificationSignals: signals, effectivePrice: effective,
     oldPrice: old, marketAdvantage, profile, flash: Boolean(opts.flash), coupon,
     anomaly, accessoryLike, impossibleRatio,
   });
@@ -198,7 +206,7 @@ export function evaluateDeal(
       round2(
         lane === "ultra"
           ? liveDiscount
-          : intelligenceDiscount
+          : Math.max(liveDiscount, historical)
       ),
     effective_price: effective,
     reasons, cross_store_price: crossPrice || null, cross_store_store: crossStore,
@@ -221,6 +229,8 @@ export function acceptable(settings: Settings, decision: DealDecision): [boolean
     if (decision.confidence < settings.min_confidence_ultra) return [false, "ultra_confidence_low"];
     return [true, "ok"];
   }
+  // V15: a historical-price drop may qualify for MANUAL normal review.
+  // Historical evidence never qualifies a deal for Ultra and is not a live list price.
   if (decision.real_discount < settings.normal_min_discount) return [false, "discount_below_normal_threshold"];
   if (decision.confidence < settings.min_confidence_normal) return [false, "normal_confidence_low"];
   return [true, "ok"];

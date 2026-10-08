@@ -33,6 +33,15 @@ const pf = (
 });
 
 export const AMAZON_SURFACES: Surface[] = [
+  // V15: unfiltered discovery for mispriced products with no displayed discount.
+  q("glitch_electronics", "electronics", "electronics", 2.2),
+  q("glitch_mobiles", "mobiles", "smartphones", 2.2),
+  q("glitch_laptops", "computers", "laptops", 2.2),
+  q("glitch_appliances", "appliances", "home appliances", 2.2),
+  q("glitch_tvs", "electronics", "televisions", 2.2),
+  q("glitch_cameras", "electronics", "digital cameras", 2.0),
+  q("glitch_gaming", "electronics", "gaming consoles", 2.0),
+  q("glitch_home", "home", "home products", 1.8),
   { name: "goldbox", category: "global", url: `${BASE}/gp/goldbox/`, priority: 3.5 },
   q("limited_time","global","limited time deals",1.8), q("clearance","global","clearance deals",1.5),
   q("90off","global","90% off deals",2.2), q("75off","global","75% off deals",2.1),

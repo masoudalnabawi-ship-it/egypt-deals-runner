@@ -475,6 +475,17 @@ async function admitAmazon(repo: D1Repository, settings: Settings, surface: Surf
         )
       : settings.amazon_discovery_limit;
 
+  // V15: one rotating no-discount candidate per unfiltered glitch surface.
+  // No inferred discount is claimed; the existing verifier remains mandatory.
+  const glitchSurface = surface.name.startsWith('glitch_');
+  let glitchProbeId = '';
+  if (glitchSurface) {
+    const eligible = deals.filter(x => x.current_price > 0 && discountPercent(x) === 0);
+    if (eligible.length) {
+      const c = await repo.counterAdd(`glitch_probe:${surface.name}`, 1);
+      glitchProbeId = eligible[(c - 1) % eligible.length].external_id;
+    }
+  }
   let probeId = '';
   if (deals.length && !['goldbox','limited_time','clearance'].includes(surface.name)) {
     const eligible = deals.filter(x => x.current_price > 0);
@@ -488,6 +499,8 @@ async function admitAmazon(repo: D1Repository, settings: Settings, surface: Surf
   for (const base of ranked.slice(0, Math.max(sourceLimit, 1) * 2)) {
     if (!(base.current_price > 0)) continue;
     const deal: DealCandidate = { ...base, metadata: { ...(base.metadata || {}) } };
+    const isGlitchProbe = Boolean(glitchProbeId && deal.external_id === glitchProbeId);
+    if (isGlitchProbe) Object.assign(deal.metadata!, { glitch_probe: true, glitch_probe_surface: surface.name });
     const isProbe = Boolean(probeId && deal.external_id === probeId);
     if (isProbe) Object.assign(deal.metadata!, { coupon_probe: true, coupon_probe_surface: surface.name });
     const meta = deal.metadata || {};
@@ -517,8 +530,12 @@ async function admitAmazon(repo: D1Repository, settings: Settings, surface: Surf
       continue;
     }
 
-    if (!(isProbe || goldbox || promo || visible)) continue;
+    if (!(isProbe || isGlitchProbe || goldbox || promo || visible)) continue;
     const prelim = preliminaryDecision(settings, deal);
+    if (isGlitchProbe) {
+      prelim.score = Math.max(prelim.score, 22);
+      prelim.reasons.push('v15_no_discount_glitch_probe');
+    }
     if (isProbe) {
       prelim.score = Math.max(prelim.score, 87);
       if (!prelim.reasons.includes('amazon_coupon_probe')) prelim.reasons.push('amazon_coupon_probe');
