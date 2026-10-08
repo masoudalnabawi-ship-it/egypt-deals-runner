@@ -418,7 +418,7 @@ NORMAL_REVIEW_CHAT = os.environ.get("AMAZON_NORMAL_REVIEW_CHAT_ID", "").strip()
 def capture_product_screenshot(page, path: Path) -> None:
     top = page.evaluate("""() => { const e = document.querySelector("#dp-container") || document.querySelector("#ppd"); return e ? Math.max(0, e.getBoundingClientRect().top + scrollY) : 0; }""")
     bottom = page.evaluate("""() => { const selectors = ["#detailBullets_feature_div", "#productDetails_feature_div", "#prodDetails", "#productDetails_db_sections", "#detailBulletsWrapper_feature_div"]; const positions = selectors.map(s => document.querySelector(s)).filter(Boolean).map(e => e.getBoundingClientRect().top + scrollY).filter(y => y > 350); return positions.length ? Math.min(...positions) : 1050; }""")
-    height = max(500, min(1200, int(bottom - top)))
+    height = max(500, min(900, int(bottom - top)))
     page.screenshot(path=str(path), type="jpeg", quality=85, clip={"x": 0, "y": int(top), "width": 1440, "height": height})
 
 
