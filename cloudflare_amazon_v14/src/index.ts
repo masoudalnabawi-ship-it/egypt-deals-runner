@@ -1743,6 +1743,30 @@ export default {
       (
         async () => {
 
+          // Queue processing first so a slow discovery cannot starve delivery.
+          /*
+           * Priority #2:
+           * verification / delivery are queued
+           * only AFTER the discovery attempt.
+           */
+          try {
+
+            await env.JOBS.send(job);
+
+          } catch (e) {
+
+            console.error(
+              JSON.stringify({
+                event:
+                  "v14_processing_queue_publish_failed",
+                error:
+                  e instanceof Error
+                    ? `${e.name}:${e.message}`
+                    : String(e),
+              })
+            );
+          }
+
           /*
            * Priority #1:
            * keep Amazon/Noon discovery alive.
@@ -1768,28 +1792,7 @@ export default {
             );
           }
 
-          /*
-           * Priority #2:
-           * verification / delivery are queued
-           * only AFTER the discovery attempt.
-           */
-          try {
 
-            await env.JOBS.send(job);
-
-          } catch (e) {
-
-            console.error(
-              JSON.stringify({
-                event:
-                  "v14_processing_queue_publish_failed",
-                error:
-                  e instanceof Error
-                    ? `${e.name}:${e.message}`
-                    : String(e),
-              })
-            );
-          }
         }
       )()
     );
