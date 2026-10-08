@@ -147,6 +147,19 @@ def first_text(page, selectors: list[str]) -> str:
             continue
     return ""
 
+def first_price_text(page, selectors: list[str]) -> str:
+    for selector in selectors:
+        try:
+            loc = page.locator(selector)
+            for i in range(min(loc.count(), 8)):
+                value = (loc.nth(i).text_content(timeout=1200) or "").strip()
+                if parse_number(value) > 0:
+                    return value
+        except Exception:
+            continue
+    return ""
+
+
 def first_attr(page, selector: str, attr: str) -> str:
     try:
         loc = page.locator(selector).first
@@ -237,11 +250,11 @@ def inspect_amazon(page, url: str, expected_asin: str = "") -> dict[str, Any]:
     if page_blocked(page):
         raise RuntimeError("amazon_blocked")
 
-    current_text = first_text(page, PRICE_SELECTORS)
+    current_text = first_price_text(page, PRICE_SELECTORS)
     if not parse_number(current_text):
         for _ in range(3):
             page.wait_for_timeout(1500)
-            current_text = first_text(page, PRICE_SELECTORS)
+            current_text = first_price_text(page, PRICE_SELECTORS)
             if parse_number(current_text):
                 break
     old_text = first_text(page, OLD_PRICE_SELECTORS)
