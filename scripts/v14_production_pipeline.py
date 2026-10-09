@@ -648,13 +648,14 @@ def screenshot_test() -> int:
 def send_test_message() -> int:
     if not BOT_TOKEN or not NORMAL_REVIEW_CHAT:
         die("normal_review_test_credentials_missing")
-    image = Path("/tmp/amazon-v14-screenshot-test/amazon-product.jpg")
-    if not image.is_file():
-        die("test_screenshot_missing")
-    job = {"lane": "normal", "title": "اختبار V14 - أديداس باريدا شوز", "current_price": 2309.0, "old_price": 5455.0, "confidence": 0, "score": 0, "category": "أحذية", "url": "https://www.amazon.eg/dp/B0DK4Z4GPJ", "deal_key": "test-b0dk4z4gpj"}
-    caption = "🧪 <b>رسالة اختبار فقط - غير مخصصة للنشر</b>\n\n🛒 <b>أديداس باريدا شوز</b>\n\n💰 <b>السعر الآن:</b> 2,309.00 ج.م\n🏷 <b>السعر السابق:</b> <s>5,455.00</s> ج.م\n📉 <b>الخصم:</b> 57.67%"
-    with image.open("rb") as fh:
-        response = requests.post(f"https://api.telegram.org/bot{BOT_TOKEN}/sendPhoto", data={"chat_id": NORMAL_REVIEW_CHAT, "caption": caption, "parse_mode": "HTML", "reply_markup": json.dumps({"inline_keyboard": [[{"text": "🔗 فتح المنتج", "url": job["url"]}]]}, ensure_ascii=False)}, files={"photo": ("amazon-v14-test.jpg", fh, "image/jpeg")}, timeout=45)
+    response = requests.post(
+        f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage",
+        data={
+            "chat_id": NORMAL_REVIEW_CHAT,
+            "text": "Amazon V14 - Telegram connection test only. No product offer.",
+        },
+        timeout=25,
+    )
     response.raise_for_status()
     if not response.json().get("ok"):
         raise RuntimeError("telegram_test_rejected")
