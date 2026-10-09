@@ -464,6 +464,35 @@ def send_review_photo(job: dict[str, Any], photo: Path, live_discount: float) ->
         raise RuntimeError("telegram_screenshot_file_id_missing")
     return {"message_id": int(result.get("message_id") or 0), "file_id": file_id}
 
+
+def unwanted_product_v14(job, obs):
+    text = " ".join(
+        str(x or "") for x in (
+            job.get("title"),
+            job.get("category"),
+            obs.get("title"),
+            obs.get("category"),
+        )
+    ).casefold()
+
+    english = (
+        r"\b(?:books?|textbooks?|workbooks?|paperbacks?|"
+        r"hardcovers?|novels?|notebooks?|book\s*covers?|"
+        r"book\s*sleeves?|exercise\s*books?|study\s*guides?|"
+        r"exam\s*(?:prep|preparation)|sofas?|couches?|"
+        r"loveseats?|sectional\s*sofas?|sofa\s*covers?)\b"
+    )
+
+    arabic = (
+        "كتاب", "كتب", "مذكرة", "مذكرات",
+        "رواية", "روايات", "كراسة", "كشكول",
+        "تجليد", "كنبة", "كنب", "أريكة",
+        "اريكة", "انتريه", "أنتريه",
+    )
+
+    return bool(re.search(english, text)) or any(x in text for x in arabic)
+
+
 def deliver_one(page, lane: str, ultra_min: float) -> bool:
     claim = api_post(
         "/admin/screenshot/claim",
@@ -483,6 +512,22 @@ def deliver_one(page, lane: str, ultra_min: float) -> bool:
             str(job.get("url") or ""),
             str(job.get("external_id") or ""),
         )
+
+        if unwanted_product_v14(job, obs):
+            api_post(
+                "/admin/screenshot/complete",
+                {
+                    "deal_key": key,
+                    "status": "invalid_ultra",
+                    "reason": "blocked_unwanted_product_v14",
+                    "live_discount": 0,
+                    "proof": obs,
+                },
+                retries=10,
+            )
+            print("BLOCKED UNWANTED PRODUCT", key[:12], flush=True)
+            return True
+
         live_discount = effective_discount(obs)
 
         if lane == "normal" and not (10 <= live_discount < ultra_min):
