@@ -45,6 +45,16 @@ jobs:
           successful = any(run.get('conclusion') == 'success' and age_seconds(run) < 2400 for run in scheduled)
           if successful:
               print('WATCHDOG_OK: scheduled pipeline succeeded within 40 minutes')
+              if now.minute < 10:
+                  bot = os.environ.get("TELEGRAM_BOT_TOKEN", "")
+                  chat = os.environ.get("ALERT_CHAT_ID", "")
+                  if not bot or not chat:
+                      raise RuntimeError("Watchdog credentials missing")
+                  data = urllib.parse.urlencode({"chat_id": chat, "text": "Amazon V14: System operational. Pipeline succeeded within 40 minutes."}).encode()
+                  with urllib.request.urlopen(urllib.request.Request("https://api.telegram.org/bot" + bot + "/sendMessage", data=data), timeout=20) as response:
+                      result = json.load(response)
+                  if not result.get("ok"):
+                      raise RuntimeError("Watchdog Telegram message rejected")
           else:
               print('WATCHDOG_ALERT: no successful scheduled pipeline within 40 minutes')
               bot = os.environ.get('TELEGRAM_BOT_TOKEN', '')
