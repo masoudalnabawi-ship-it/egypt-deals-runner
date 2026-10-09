@@ -39,7 +39,7 @@ jobs:
           with urllib.request.urlopen(request, timeout=20) as response:
               runs = json.load(response)['workflow_runs']
           now = dt.datetime.now(dt.timezone.utc)
-          scheduled = [run for run in runs if run.get('event') == 'schedule']
+          scheduled = [run for run in runs if run.get("event") in ("schedule", "workflow_dispatch")]
           def age_seconds(run):
               return (now - dt.datetime.fromisoformat(run['created_at'].replace('Z', '+00:00'))).total_seconds()
           successful = any(run.get('conclusion') == 'success' and age_seconds(run) < 2400 for run in scheduled)
@@ -51,7 +51,7 @@ jobs:
               chat = os.environ.get('ALERT_CHAT_ID', '')
               if not bot or not chat:
                   raise RuntimeError('Watchdog Telegram alert credentials missing')
-              text = '🚨 مراقب أمازون V14: لم يُسجل تشغيل مجدول ناجح خلال آخر 40 دقيقة. راجع GitHub Actions.'
+              text = '🚨 مراقب أمازون V14: لم يُسجل أي تشغيل ناجح خلال آخر 40 دقيقة. راجع GitHub Actions.'
               data = urllib.parse.urlencode({'chat_id': chat, 'text': text}).encode()
               with urllib.request.urlopen(urllib.request.Request(
                   f'https://api.telegram.org/bot{bot}/sendMessage', data=data
