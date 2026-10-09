@@ -1250,11 +1250,29 @@ async def capture(
         await page.close()
 
 
+def v14_excluded_product(job, obs=None):
+    """Exclude books, educational print, and sofa items at every delivery boundary."""
+    import re
+    obs = obs or {}
+    values = [job.get('title'), job.get('category'), obs.get('title'), obs.get('category')]
+    text = ' '.join(str(x or '') for x in values).casefold()
+    english = (r'\b(?:books?|textbooks?|workbooks?|paperbacks?|hardcovers?|'
+               r'novels?|notebooks?|book\s*covers?|book\s*sleeves?|'
+               r'exercise\s*books?|study\s*guides?|exam\s*(?:prep|preparation)|'
+               r'sofas?|couches?|loveseats?|sectional\s*sofas?|sofa\s*covers?|'
+               r'poems?|poetry|revision\s*guides?|school\s*books?)\b')
+    arabic = ('كتاب', 'كتب', 'مذكرة', 'مذكرات', 'رواية', 'روايات',
+              'كراسة', 'كشكول', 'تجليد', 'كنبة', 'كنب', 'أريكة',
+              'اريكة', 'انتريه', 'أنتريه', 'شعر', 'ملازم', 'ملزمة')
+    return bool(re.search(english, text)) or any(word in text for word in arabic)
+
 async def send_telegram(
     client: httpx.AsyncClient,
     job: dict,
     screenshot: bytes,
 ) -> None:
+    if v14_excluded_product(job):
+        raise RuntimeError("blocked_excluded_at_telegram_boundary")
     lane = str(
         job.get("lane") or "normal"
     )
@@ -3148,6 +3166,13 @@ async def main() -> None:
                     continue
 
                 try:
+                    if v14_excluded_product(job):
+                        await complete(
+                            client, job, "invalid_ultra" if job.get("lane") == "ultra" else "invalid_normal",
+                            reason="blocked_excluded_product_v14",
+                        )
+                        print("BLOCKED_EXCLUDED_PRODUCT", job.get("external_id"), flush=True)
+                        continue
                     delivery_proof = None
                     delivery_discount = 0.0
 

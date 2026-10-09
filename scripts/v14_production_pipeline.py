@@ -422,7 +422,25 @@ def capture_product_screenshot(page, path: Path) -> None:
     page.screenshot(path=str(path), type="jpeg", quality=85, clip={"x": 0, "y": int(top), "width": 1440, "height": height})
 
 
+def v14_excluded_product(job, obs=None):
+    """Exclude books, educational print, and sofa items at every delivery boundary."""
+    import re
+    obs = obs or {}
+    values = [job.get('title'), job.get('category'), obs.get('title'), obs.get('category')]
+    text = ' '.join(str(x or '') for x in values).casefold()
+    english = (r'\b(?:books?|textbooks?|workbooks?|paperbacks?|hardcovers?|'
+               r'novels?|notebooks?|book\s*covers?|book\s*sleeves?|'
+               r'exercise\s*books?|study\s*guides?|exam\s*(?:prep|preparation)|'
+               r'sofas?|couches?|loveseats?|sectional\s*sofas?|sofa\s*covers?|'
+               r'poems?|poetry|revision\s*guides?|school\s*books?)\b')
+    arabic = ('كتاب', 'كتب', 'مذكرة', 'مذكرات', 'رواية', 'روايات',
+              'كراسة', 'كشكول', 'تجليد', 'كنبة', 'كنب', 'أريكة',
+              'اريكة', 'انتريه', 'أنتريه', 'شعر', 'ملازم', 'ملزمة')
+    return bool(re.search(english, text)) or any(word in text for word in arabic)
+
 def send_review_photo(job: dict[str, Any], photo: Path, live_discount: float) -> dict[str, Any]:
+    if v14_excluded_product(job):
+        raise RuntimeError("blocked_excluded_at_telegram_boundary")
     if not (REVIEW_CHAT if str(job.get("lane") or "normal").lower() == "ultra" else NORMAL_REVIEW_CHAT):
         raise RuntimeError("telegram_review_chat_missing")
     short = str(job.get("deal_key") or "")[:16]
@@ -513,7 +531,7 @@ def deliver_one(page, lane: str, ultra_min: float) -> bool:
             str(job.get("external_id") or ""),
         )
 
-        if unwanted_product_v14(job, obs):
+        if v14_excluded_product(job, obs):
             api_post(
                 "/admin/screenshot/complete",
                 {
