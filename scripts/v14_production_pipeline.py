@@ -441,7 +441,9 @@ def v14_excluded_product(job, obs=None):
 def send_review_photo(job: dict[str, Any], photo: Path, live_discount: float) -> dict[str, Any]:
     if v14_excluded_product(job):
         raise RuntimeError("blocked_excluded_at_telegram_boundary")
-    if not (REVIEW_CHAT if str(job.get("lane") or "normal").lower() == "ultra" else NORMAL_REVIEW_CHAT):
+    if str(job.get("lane") or "normal").lower() != "normal":
+        raise RuntimeError("github_ultra_delivery_disabled")
+    if not NORMAL_REVIEW_CHAT:
         raise RuntimeError("telegram_review_chat_missing")
     short = str(job.get("deal_key") or "")[:16]
     url = str(job.get("url") or "")
@@ -462,7 +464,7 @@ def send_review_photo(job: dict[str, Any], photo: Path, live_discount: float) ->
         r = requests.post(
             f"https://api.telegram.org/bot{BOT_TOKEN}/sendPhoto",
             data={
-                "chat_id": (REVIEW_CHAT if str(job.get("lane") or "normal").lower() == "ultra" else NORMAL_REVIEW_CHAT),
+                "chat_id": NORMAL_REVIEW_CHAT,
                 "caption": build_caption(job, live_discount),
                 "parse_mode": "HTML",
                 "reply_markup": json.dumps(keyboard, ensure_ascii=False),
@@ -747,7 +749,8 @@ def main() -> int:
         remaining = max(0, args.max_deliver)
         while remaining > 0:
             progressed = False
-            for lane in ("ultra", "normal"):
+            # Role split: GitHub sends Normal only; Cloudflare sends Ultra.
+            for lane in ("normal",):
                 if remaining <= 0:
                     break
                 page = context.new_page()
