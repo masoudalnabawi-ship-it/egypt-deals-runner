@@ -1,0 +1,80 @@
+name: Noon Only Production
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: noon-only-production
+  cancel-in-progress: false
+
+jobs:
+  noon:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+
+    env:
+      TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+      REVIEW_CHAT_ID: ${{ secrets.REVIEW_CHAT_ID }}
+      AMAZON_NORMAL_REVIEW_CHAT_ID: ${{ secrets.AMAZON_NORMAL_REVIEW_CHAT_ID }}
+      AMAZON_REVIEW_GROUP_ID: ${{ secrets.AMAZON_REVIEW_GROUP_ID }}
+      AMAZON_CHANNEL_ID: ${{ secrets.AMAZON_CHANNEL_ID }}
+      TELEGRAM_CHANNEL_ID: ${{ secrets.AMAZON_CHANNEL_ID }}
+      NOON_CHANNEL_ID: ${{ secrets.NOON_CHANNEL_ID }}
+      NOON_NORMAL_REVIEW_CHAT_ID: ${{ secrets.NOON_NORMAL_REVIEW_CHAT_ID }}
+      NOON_ULTRA_REVIEW_CHAT_ID: ${{ secrets.NOON_ULTRA_REVIEW_CHAT_ID }}
+      NOON_REVIEW_BOT_TOKEN: ${{ secrets.NOON_REVIEW_BOT_TOKEN }}
+      NOON_REVIEW_BOT_CHAT_ID: ${{ secrets.NOON_REVIEW_BOT_CHAT_ID }}
+      CLOUD_API_URL: ${{ secrets.CLOUD_API_URL }}
+      CLOUD_API_KEY: ${{ secrets.CLOUD_API_KEY }}
+
+      V13_DB_PATH: .runtime_state/noon.db
+      V13_DISCOVERY_INTERVAL: "20"
+      V13_VERIFICATION_INTERVAL: "2"
+      V13_DELIVERY_INTERVAL: "2"
+      V13_HEALTH_INTERVAL: "60"
+      V13_VERIFY_WORKERS_PER_STORE: "2"
+      V13_SURFACE_BATCH_SIZE: "5"
+      V13_EXPLORATION_RATE: "0.22"
+      V13_NOON_PROXY_FIRST: "true"
+      V13_NOON_BROWSER_FALLBACK: "true"
+
+    steps:
+      - name: Checkout Noon-only branch
+        uses: actions/checkout@v4
+        with:
+          ref: noon-only
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Restore Noon state
+        uses: actions/cache/restore@v4
+        with:
+          path: .runtime_state/noon.db
+          key: noon-state-${{ github.run_id }}
+          restore-keys: |
+            noon-state-
+
+      - name: Install dependencies
+        run: |
+          python -m pip install -r requirements-v13.txt
+          python -m pip install "playwright>=1.55,<2"
+          python -m playwright install --with-deps chromium
+
+      - name: Run Noon production
+        run: |
+          mkdir -p .runtime_state
+          timeout --signal=TERM --kill-after=30s 3300s \
+            env PYTHONPATH=. python scripts/run_v13.py
+
+      - name: Save Noon state
+        if: always()
+        uses: actions/cache/save@v4
+        with:
+          path: .runtime_state/noon.db
+          key: noon-state-${{ github.run_id }}
