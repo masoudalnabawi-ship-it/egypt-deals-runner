@@ -1,0 +1,29 @@
+name: Test Amazon Publish Fix
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  typecheck:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout test branch
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Install dependencies
+        working-directory: cloudflare_amazon_v14
+        run: npm ci
+
+      - name: TypeScript check
+        working-directory: cloudflare_amazon_v14
+        run: npx tsc --noEmit
