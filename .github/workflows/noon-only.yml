@@ -85,7 +85,7 @@ jobs:
                   data = json.load(r)
               print("NOON_BOT_OK:", data.get("result", {}).get("username"))
           except Exception as e:
-              print("NOON_BOT_AUTH_FAILED:", type(e).__name__)
+              print("NOON_BOT_AUTH_FAILED:", type(e).__name__, getattr(e, "code", "unknown"))
               raise SystemExit(1)
           PYBOT
 
