@@ -1528,7 +1528,7 @@ async function verifyOne(env: V14Env, repo: D1Repository, settings: Settings): P
         await repo.markStrongRetry(
           row.deal_key,
           'amazon_75_needs_stronger_verification',
-          1800,
+          120,
           8,
         );
 
@@ -1545,7 +1545,7 @@ async function verifyOne(env: V14Env, repo: D1Repository, settings: Settings): P
         await repo.markStrongRetry(
           row.deal_key,
           'amazon_65_needs_stronger_verification',
-          1800,
+          120,
           8,
         );
 
