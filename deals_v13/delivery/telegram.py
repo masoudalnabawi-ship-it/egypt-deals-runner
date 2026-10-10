@@ -1027,12 +1027,11 @@ class TelegramDelivery:
 
     def _public_chat_id(self, store: str) -> str:
         if store == "noon":
-            chat = (
-                os.getenv("NOON_CHANNEL_ID", "").strip()
-                or os.getenv("AMAZON_CHANNEL_ID", "").strip()
-                or os.getenv("TELEGRAM_CHANNEL_ID", "").strip()
-                or self.settings.noon_ultra_chat_id
-            )
+            chat = os.getenv("AMAZON_CHANNEL_ID", "").strip()
+            if not chat:
+                raise RuntimeError(
+                    "AMAZON_CHANNEL_ID missing: publishing blocked"
+                )
         else:
             chat = (
                 os.getenv("AMAZON_CHANNEL_ID", "").strip()

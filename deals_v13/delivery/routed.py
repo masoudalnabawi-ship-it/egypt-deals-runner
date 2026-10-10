@@ -61,6 +61,7 @@ class RoutedTelegramDelivery:
             telegram_token=token,
             normal_chat_id=chat_id,
             noon_normal_chat_id=chat_id,
+            noon_ultra_chat_id=chat_id,
         )
 
         self.secondary = TelegramDelivery(
@@ -75,15 +76,9 @@ class RoutedTelegramDelivery:
         self,
         row: dict,
     ) -> TelegramDelivery:
-
-        if (
-            row.get("store") == "noon"
-            and str(row.get("lane") or "")
-            == Lane.NORMAL.value
-        ):
-            return self.secondary
-
-        return self.primary
+        if row.get("store") != "noon":
+            raise RuntimeError("Noon-only router rejected non-Noon deal")
+        return self.secondary
 
     async def send(self, row: dict) -> dict:
         delivery = self._delivery_for_row(row)
@@ -94,9 +89,11 @@ class RoutedTelegramDelivery:
         row: dict,
         urgent: bool = False,
     ) -> dict:
-        # Manual publication remains on the established
-        # primary/public Telegram path.
-        return await self.primary.send_public(
+        if row.get("store") != "noon":
+            raise RuntimeError(
+                "Noon-only publisher rejected non-Noon deal"
+            )
+        return await self.secondary.send_public(
             row,
             urgent=urgent,
         )
@@ -106,79 +103,27 @@ class RoutedTelegramDelivery:
         await self.primary.aclose()
 
     async def delete_webhook(self) -> None:
-        await asyncio.gather(
-            self.primary.delete_webhook(),
-            self.secondary.delete_webhook(),
-        )
+        await self.secondary.delete_webhook()
 
     async def get_updates(
         self,
         offset: int | None,
         timeout: int = 20,
     ) -> list[dict]:
-
-        # Each bot has a different Telegram update_id sequence.
-        # Keep a separate offset for each bot.
-        results = await asyncio.gather(
-            self.primary.get_updates(
-                self._primary_offset,
-                timeout=timeout,
-            ),
-            self.secondary.get_updates(
-                self._secondary_offset,
-                timeout=timeout,
-            ),
-            return_exceptions=True,
+        updates = await self.secondary.get_updates(
+            self._secondary_offset,
+            timeout=timeout,
         )
-
-        combined = []
-
-        sources = (
-            self.primary,
-            self.secondary,
-        )
-
-        for index, result in enumerate(results):
-            if isinstance(result, BaseException):
-                continue
-
-            delivery = sources[index]
-
-            for update in result or []:
-                try:
-                    next_offset = (
-                        int(update["update_id"]) + 1
-                    )
-
-                    if index == 0:
-                        self._primary_offset = (
-                            next_offset
-                        )
-                    else:
-                        self._secondary_offset = (
-                            next_offset
-                        )
-
-                except Exception:
-                    pass
-
-                callback = (
-                    update.get("callback_query")
-                    or {}
-                )
-
-                callback_id = str(
-                    callback.get("id") or ""
-                )
-
-                if callback_id:
-                    self._callback_sources[
-                        callback_id
-                    ] = delivery
-
-                combined.append(update)
-
-        return combined
+        for update in updates or []:
+            try:
+                self._secondary_offset = int(update["update_id"]) + 1
+            except (KeyError, TypeError, ValueError):
+                pass
+            callback = update.get("callback_query") or {}
+            callback_id = str(callback.get("id") or "")
+            if callback_id:
+                self._callback_sources[callback_id] = self.secondary
+        return updates or []
 
     async def answer_callback(
         self,
@@ -203,17 +148,11 @@ class RoutedTelegramDelivery:
         chat_id,
         message_id: int,
     ) -> None:
-
-        if str(chat_id) == str(
-            self.noon_review_bot_chat_id
-        ):
-            await self.secondary.clear_buttons(
-                chat_id,
-                message_id,
+        if str(chat_id) != str(self.noon_review_bot_chat_id):
+            raise RuntimeError(
+                "Noon-only rejected foreign review chat"
             )
-            return
-
-        await self.primary.clear_buttons(
+        await self.secondary.clear_buttons(
             chat_id,
             message_id,
         )
