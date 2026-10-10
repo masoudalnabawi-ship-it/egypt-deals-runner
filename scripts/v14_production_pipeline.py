@@ -749,8 +749,9 @@ def main() -> int:
         remaining = max(0, args.max_deliver)
         while remaining > 0:
             progressed = False
-            # Role split: GitHub sends Normal only; Cloudflare sends Ultra.
-            for lane in ("normal",):
+            # GitHub handles both Normal and Ultra review delivery.
+            # Ultra retains its live-price and >=65% discount checks.
+            for lane in ("ultra", "normal"):
                 if remaining <= 0:
                     break
                 page = context.new_page()
