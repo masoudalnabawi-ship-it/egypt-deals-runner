@@ -517,49 +517,17 @@ class V13Pipeline:
                 )
                 return
 
-            incoming = self.db.row_to_candidate(row)
-            try:
-                fresh, _ = await self.verifier.verify(incoming)
-            except VerificationRejected:
+            # Manual approval publishes the reviewed Noon deal
+            # immediately, without fetching or verifying it again.
+            if row.get("store") != "noon":
                 await self.delivery.answer_callback(
                     cb_id,
-                    "العرض لم يعد يحقق شروط التحقق",
-                    True,
-                )
-                return
-            except Exception as exc:
-                log.warning(
-                    "CALLBACK recheck failed key=%s | %s",
-                    row["deal_key"][:10],
-                    exc,
-                )
-                await self.delivery.answer_callback(
-                    cb_id,
-                    "تعذر إعادة التحقق الآن، جرّب مرة أخرى",
-                    True,
-                )
-                return
-
-            reviewed_price = float(row.get("current_price") or 0)
-            fresh_price = float(fresh.current_price or 0)
-            if reviewed_price > 0 and fresh_price > reviewed_price * 1.02:
-                await self.delivery.answer_callback(
-                    cb_id,
-                    "السعر ارتفع منذ المراجعة؛ لم يتم النشر",
+                    "هذا النظام مخصص لعروض نون فقط",
                     True,
                 )
                 return
 
             public_row = dict(row)
-            public_row["title"] = fresh.title or row["title"]
-            public_row["url"] = fresh.url or row["url"]
-            public_row["image_url"] = (
-                fresh.image_url or row.get("image_url") or ""
-            )
-            public_row["current_price"] = fresh_price or reviewed_price
-            public_row["old_price"] = (
-                fresh.old_price or row.get("old_price")
-            )
 
             await self.delivery.send_public(
                 public_row,
