@@ -89,6 +89,39 @@ jobs:
               raise SystemExit(1)
           PYBOT
 
+      - name: Diagnose Noon Cloudflare proxy
+        run: |
+          python - <<'PYCHECK'
+          import os
+          import urllib.request
+          import urllib.error
+
+          base = os.getenv("CLOUD_API_URL", "").rstrip("/")
+          key = os.getenv("CLOUD_API_KEY", "")
+
+          if not base or not key:
+              print("NOON_PROXY_CONFIG_MISSING")
+          else:
+              if base.endswith("/api/deals"):
+                  base = base[:-len("/api/deals")]
+
+              endpoint = base + "/api/store-proxy"
+
+              req = urllib.request.Request(
+                  endpoint,
+                  headers={"x-api-key": key},
+                  method="GET"
+              )
+
+              try:
+                  with urllib.request.urlopen(req, timeout=15) as response:
+                      print("NOON_PROXY_HTTP:", response.status)
+              except urllib.error.HTTPError as e:
+                  print("NOON_PROXY_HTTP:", e.code)
+              except Exception as e:
+                  print("NOON_PROXY_ERROR:", type(e).__name__)
+          PYCHECK
+
       - name: Run Noon production
         run: |
           mkdir -p .runtime_state
