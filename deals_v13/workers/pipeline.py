@@ -627,7 +627,7 @@ class V13Pipeline:
 
     async def run(self):
         tasks = [
-            asyncio.create_task(self.discovery_loop("amazon"), name="discover-amazon"),
+            # Amazon discovery disabled in Noon-only mode
             asyncio.create_task(self.discovery_loop("noon"), name="discover-noon"),
             asyncio.create_task(self.delivery_loop(Lane.ULTRA), name="deliver-ultra"),
             asyncio.create_task(self.delivery_loop(Lane.NORMAL), name="deliver-normal"),
@@ -635,7 +635,7 @@ class V13Pipeline:
             asyncio.create_task(self.health_loop(), name="health"),
         ]
 
-        for store in ("amazon", "noon"):
+        for store in ("noon",):
             for lane in (Lane.ULTRA, Lane.NORMAL):
                 for i in range(self.settings.verification_workers_per_store):
                     tasks.append(
@@ -646,7 +646,7 @@ class V13Pipeline:
                     )
 
         log.warning(
-            "V13 START | stores=amazon,noon | STRICT50 | callbacks=v13 | discovery=%ss | workers/store/lane=%s",
+            "NOON ONLY START | stores=noon | STRICT50 | callbacks=v13 | discovery=%ss | workers/store/lane=%s",
             self.settings.discovery_interval,
             self.settings.verification_workers_per_store,
         )
