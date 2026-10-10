@@ -1940,12 +1940,8 @@ export async function handleTelegramUpdate(env: V14Env, route: 'main'|'noon', up
   } else if (action === 'p' || action === 'u') {
     if (await repo.hasEvent(row.deal_key, 'manual_publish')) { await answerCallback(token, cbId, 'تم نشر العرض بالفعل'); return new Response('ok'); }
     try {
-      const settings = (await import('./config')).getSettings(env);
-      const { deal: fresh } = await verifyRow(env, repo, settings, row);
-      const reviewed = Number(row.current_price || 0), freshPrice = Number(fresh.current_price || 0);
-      if (reviewed > 0 && freshPrice > reviewed * 1.02) { await answerCallback(token, cbId, 'السعر ارتفع منذ المراجعة؛ لم يتم النشر', true); return new Response('ok'); }
-      const publicRow: DealRow = { ...row, title: fresh.title || row.title, url: fresh.url || row.url, image_url: fresh.image_url || row.image_url,
-        current_price: freshPrice || reviewed, old_price: fresh.old_price ?? row.old_price };
+      // Publish the already-reviewed deal without re-verification.
+      const publicRow: DealRow = { ...row };
       const photoList = Array.isArray(message.photo) ? message.photo : [];
       const reviewScreenshotFileId = String(photoList[photoList.length - 1]?.file_id || "");
       await sendPublic(env, publicRow, action === 'u', repo, reviewScreenshotFileId);
