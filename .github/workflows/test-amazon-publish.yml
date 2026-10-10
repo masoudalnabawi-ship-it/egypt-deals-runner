@@ -29,4 +29,6 @@ jobs:
 
       - name: TypeScript check
         working-directory: cloudflare_amazon_v14
-        run: npm run check
+        run: |
+          npm run typecheck
+          npx wrangler deploy --dry-run
