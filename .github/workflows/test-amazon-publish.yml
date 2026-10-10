@@ -2,6 +2,9 @@ name: Test Amazon Publish Fix
 
 on:
   workflow_dispatch:
+  push:
+    branches:
+      - fix-amazon-instant-publish
 
 permissions:
   contents: read
@@ -26,4 +29,4 @@ jobs:
 
       - name: TypeScript check
         working-directory: cloudflare_amazon_v14
-        run: npx tsc --noEmit
+        run: npm run check
