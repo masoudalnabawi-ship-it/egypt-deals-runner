@@ -1,0 +1,46 @@
+name: Test Ultra Fast Retry
+
+on:
+  workflow_dispatch:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout Ultra fix
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Install dependencies
+        working-directory: cloudflare_amazon_v14
+        run: npm ci
+
+      - name: TypeScript check
+        working-directory: cloudflare_amazon_v14
+        run: npm run typecheck
+
+      - name: Cloudflare dry run
+        working-directory: cloudflare_amazon_v14
+        run: npx wrangler deploy --dry-run
+
+      - name: Verify Ultra retry settings
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+
+          s = Path("cloudflare_amazon_v14/src/engine.ts").read_text()
+
+          for reason in (
+              "amazon_65_needs_stronger_verification",
+              "amazon_75_needs_stronger_verification",
+          ):
+              assert f"'{reason}',\n          120,\n          8," in s, reason
+
+          print("ULTRA_FAST_RETRY_OK")
+          PY
