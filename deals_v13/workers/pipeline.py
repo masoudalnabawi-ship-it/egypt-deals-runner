@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import os
+
 import asyncio
 import json
 import logging
@@ -470,6 +472,7 @@ class V13Pipeline:
             str(self.settings.ultra_chat_id or ""),
             str(self.settings.noon_normal_chat_id or ""),
             str(self.settings.noon_ultra_chat_id or ""),
+            str(os.getenv("NOON_REVIEW_BOT_CHAT_ID", "") or ""),
         }
         return bool(chat_id and chat_id in allowed)
 
