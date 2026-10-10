@@ -66,6 +66,29 @@ jobs:
           python -m pip install "playwright>=1.55,<2"
           python -m playwright install --with-deps chromium
 
+      - name: Verify Noon Telegram bot
+        env:
+          NOON_TOKEN: ${{ secrets.NOON_REVIEW_BOT_TOKEN }}
+        run: |
+          python - <<'PYBOT'
+          import os
+          import urllib.request
+          import json
+
+          token = os.environ.get("NOON_TOKEN", "")
+          if not token:
+              raise SystemExit("NOON_BOT_TOKEN_MISSING")
+
+          try:
+              url = "https://api.telegram.org/bot" + token + "/getMe"
+              with urllib.request.urlopen(url, timeout=15) as r:
+                  data = json.load(r)
+              print("NOON_BOT_OK:", data.get("result", {}).get("username"))
+          except Exception as e:
+              print("NOON_BOT_AUTH_FAILED:", type(e).__name__)
+              raise SystemExit(1)
+          PYBOT
+
       - name: Run Noon production
         run: |
           mkdir -p .runtime_state
