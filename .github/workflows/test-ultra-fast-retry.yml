@@ -2,6 +2,9 @@ name: Test Ultra Fast Retry
 
 on:
   workflow_dispatch:
+  push:
+    branches:
+      - fix-ultra-fast-retry
 
 jobs:
   test:
