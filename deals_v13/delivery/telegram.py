@@ -1046,58 +1046,21 @@ class TelegramDelivery:
         token = self.settings.telegram_token
         chat_id = self._public_chat_id(row["store"])
         caption = self._caption(row)
-        prefix = "🚀 <b>نشر عاجل</b>\n\n" if urgent else "✅ <b>عرض معتمد</b>\n\n"
+        prefix = "🚀 <b>نشر عاجل</b>\\n\\n" if urgent else "✅ <b>عرض معتمد</b>\\n\\n"
         caption = prefix + caption
         keyboard = {
             "inline_keyboard": [
                 [{"text": "🔗 فتح المنتج", "url": row["url"]}]
             ]
         }
-        photo_api = f"https://api.telegram.org/bot{token}/sendPhoto"
 
-        async with httpx.AsyncClient(timeout=30, follow_redirects=True) as client:
-            screenshot = None
-            try:
-                screenshot = await asyncio.wait_for(
-                    self._capture_product_screenshot(row),
-                    timeout=60 if row["store"] == "noon" else 24,
-                )
-            except Exception as exc:
-                if row["store"] == "noon":
-                    raise RuntimeError(
-                        "noon_live_screenshot_failed:"
-                        + str(exc)
-                    ) from exc
-                screenshot = None
-
-            if screenshot:
-                try:
-                    r = await client.post(
-                        photo_api,
-                        data={
-                            "chat_id": chat_id,
-                            "caption": caption[:1024],
-                            "parse_mode": "HTML",
-                            "reply_markup": json.dumps(keyboard, ensure_ascii=False),
-                        },
-                        files={"photo": ("product-hero.png", screenshot, "image/png")},
-                    )
-                    data = r.json()
-                    if data.get("ok"):
-                        return data["result"]
-                except Exception:
-                    pass
-
-            if row["store"] == "noon":
-                raise RuntimeError(
-                    "noon_real_product_screenshot_required"
-                )
-
+        async with httpx.AsyncClient(timeout=20, follow_redirects=True) as client:
             image = (row.get("image_url") or "").strip()
+
             if image:
                 try:
-                    r = await client.post(
-                        photo_api,
+                    response = await client.post(
+                        f"https://api.telegram.org/bot{token}/sendPhoto",
                         json={
                             "chat_id": chat_id,
                             "photo": image,
@@ -1106,25 +1069,27 @@ class TelegramDelivery:
                             "reply_markup": keyboard,
                         },
                     )
-                    data = r.json()
+                    data = response.json()
                     if data.get("ok"):
                         return data["result"]
-                except Exception:
-                    pass
+                    log.warning(
+                        "NOON PUBLIC PHOTO FAILED | %s",
+                        data.get("description") or data,
+                    )
+                except Exception as exc:
+                    log.warning("NOON PUBLIC PHOTO ERROR | %s", exc)
 
-            text_api = f"https://api.telegram.org/bot{token}/sendMessage"
-            text = caption + "\n\n🔗 " + html.escape(str(row["url"]))
-            r = await client.post(
-                text_api,
+            response = await client.post(
+                f"https://api.telegram.org/bot{token}/sendMessage",
                 json={
                     "chat_id": chat_id,
-                    "text": text,
+                    "text": caption + "\\n\\n🔗 " + html.escape(str(row["url"])),
                     "parse_mode": "HTML",
                     "disable_web_page_preview": False,
                     "reply_markup": keyboard,
                 },
             )
-            data = r.json()
+            data = response.json()
             if not data.get("ok"):
                 raise RuntimeError(
                     "telegram_public_send_failed:"
