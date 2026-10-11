@@ -42,3 +42,17 @@ Amazon Egypt only. Noon remains independent and unchanged.
 - Preserve existing sent history.
 - Deploy only after integration tests pass.
 - Maintain a rollback path.
+
+## Amazon Review Routing — Mandatory
+
+- Verified real discount < 50%:
+  Route to NORMAL_REVIEW_CHAT.
+- Verified real discount >= 50% and <= 100%:
+  Route to REVIEW_CHAT (Ultra).
+- Unverified or invalid discount:
+  Do not publish until verification succeeds.
+- A deal must never be delivered to both review destinations.
+- Routing must use the verified live discount, not the advertised discount.
+- Normal review deals must not be rejected merely for being below 50%.
+- Existing quality and safety requirements still apply.
+- Noon routing and delivery remain completely unchanged.
