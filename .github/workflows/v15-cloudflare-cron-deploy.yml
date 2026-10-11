@@ -39,6 +39,18 @@ jobs:
           GH_DISPATCH_TOKEN: ${{ secrets.V15_GITHUB_DISPATCH_TOKEN }}
         run: printf '%s' "$GH_DISPATCH_TOKEN" | npx --yes wrangler@4.149.0 secret put V15_GITHUB_DISPATCH_TOKEN
 
+
+      - name: Verify GitHub token permissions
+        env:
+          GH_DISPATCH_TOKEN: ${{ secrets.V15_GITHUB_DISPATCH_TOKEN }}
+        run: |
+          curl -sS -o /tmp/v15-gh-response.json -w 'V15_GITHUB_HTTP_STATUS=%{http_code}\n' \
+            -H "Authorization: Bearer $GH_DISPATCH_TOKEN" \
+            -H "Accept: application/vnd.github+json" \
+            -H "X-GitHub-Api-Version: 2022-11-28" \
+            https://api.github.com/repos/masoudalnabawi-ship-it/egypt-deals-runner
+          python3 -c 'import json; d=json.load(open("/tmp/v15-gh-response.json")); print("V15_GITHUB_MESSAGE:",d.get("message","OK"))'
+
       - name: Verify real V15 scheduled dispatch
         working-directory: cloudflare/v15-cron
         env:
