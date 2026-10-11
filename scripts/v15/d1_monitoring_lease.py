@@ -39,8 +39,13 @@ def query(sql):
     )
 
     if result.returncode:
+        diagnostic = (result.stderr.strip() or result.stdout.strip())[-1500:]
+        token = os.environ.get("CLOUDFLARE_API_TOKEN", "")
+        if token:
+            diagnostic = diagnostic.replace(token, "[REDACTED]")
         raise RuntimeError(
-            "V15_D1_QUERY_FAILED: " + result.stderr[-1500:]
+            f"V15_D1_QUERY_FAILED exit={result.returncode}: "
+            f"{diagnostic or 'no diagnostic output'}"
         )
 
     decoder = json.JSONDecoder()
