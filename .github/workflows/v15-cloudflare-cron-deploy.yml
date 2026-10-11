@@ -38,6 +38,65 @@ jobs:
           CLOUDFLARE_API_TOKEN: ${{ secrets.V15_CLOUDFLARE_API_TOKEN }}
           GH_DISPATCH_TOKEN: ${{ secrets.V15_GITHUB_DISPATCH_TOKEN }}
         run: printf '%s' "$GH_DISPATCH_TOKEN" | npx --yes wrangler@4.149.0 secret put V15_GITHUB_DISPATCH_TOKEN
+
+      - name: Verify real V15 scheduled dispatch
+        working-directory: cloudflare/v15-cron
+        env:
+          GH_DISPATCH_TOKEN: ${{ secrets.V15_GITHUB_DISPATCH_TOKEN }}
+        run: |
+          set -euo pipefail
+          python3 - <<'PYSECRET'
+          import os
+          from pathlib import Path
+          token = os.environ["GH_DISPATCH_TOKEN"]
+          assert token, "Missing GitHub dispatch token"
+          p = Path(".dev.vars")
+          p.write_text("V15_GITHUB_DISPATCH_TOKEN=" + repr(token) + "\n")
+          p.chmod(0o600)
+          PYSECRET
+
+          cleanup() {
+            kill "${SERVER_PID:-}" 2>/dev/null || true
+            rm -f .dev.vars
+          }
+          trap cleanup EXIT
+
+          npx --yes wrangler@4.149.0 dev --local --test-scheduled --ip 127.0.0.1 --port 8787 > /tmp/v15-cron-test.log 2>&1 &
+          SERVER_PID=$!
+
+          READY=0
+          for i in $(seq 1 40); do
+            if curl -fsS --max-time 1 http://127.0.0.1:8787/ >/dev/null 2>&1; then
+              READY=1
+              break
+            fi
+            sleep 2
+          done
+
+          if [ "$READY" != 1 ]; then
+            echo "V15_TEST_SERVER_FAILED"
+            tail -30 /tmp/v15-cron-test.log
+            exit 1
+          fi
+
+          curl -fsS --max-time 30 'http://127.0.0.1:8787/__scheduled?cron=%2A%2F5%20%2A%20%2A%20%2A%20%2A' >/dev/null
+
+          for i in $(seq 1 20); do
+            if grep -q 'V15_DISPATCH_ACCEPTED' /tmp/v15-cron-test.log; then
+              echo "V15_REAL_DISPATCH_TEST_OK"
+              exit 0
+            fi
+            if grep -q 'V15_DISPATCH_FAILED' /tmp/v15-cron-test.log; then
+              grep 'V15_DISPATCH_FAILED' /tmp/v15-cron-test.log | tail -2
+              exit 1
+            fi
+            sleep 2
+          done
+
+          echo "V15_DISPATCH_RESULT_MISSING"
+          tail -25 /tmp/v15-cron-test.log
+          exit 1
+
       - name: V15 cron deployed
         run: echo 'V15_CLOUDFLARE_CRON_DEPLOYED'
 
