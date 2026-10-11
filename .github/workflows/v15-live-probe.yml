@@ -37,7 +37,15 @@ jobs:
       - name: Run V15 unit tests
         run: python -m unittest discover -s tests/v15 -q
 
+      - name: V15 monitoring lease
+        id: lease
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.V15_CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: b015795e3322f02ca29cf8d8f1982212
+        run: python scripts/v15/monitoring_cycle.py claim
+
       - name: Capture real Amazon evidence
+        if: steps.lease.outputs.claimed == 'true'
         run: python scripts/v15/live_probe.py
 
       - name: Setup Node for Cloudflare
@@ -46,12 +54,14 @@ jobs:
           node-version: '24'
 
       - name: Prepare validated price observation
+        if: steps.lease.outputs.claimed == 'true'
         run: |
           python scripts/v15/d1_price_observation.py \
             v15-live-evidence/verification.json \
             v15-live-evidence/price-observation.sql
 
       - name: Save price to V15 Cloudflare D1
+        if: steps.lease.outputs.claimed == 'true'
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.V15_CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: b015795e3322f02ca29cf8d8f1982212
@@ -76,6 +86,15 @@ jobs:
             --command "SELECT asin, price, observed_at, source FROM price_observations ORDER BY observed_at DESC LIMIT 5;"
 
           echo "V15_D1_HISTORY_READ_OK"
+
+      - name: Complete V15 monitoring after D1 save
+        if: steps.lease.outputs.claimed == 'true'
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.V15_CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: b015795e3322f02ca29cf8d8f1982212
+          V15_LEASE_OWNER: ${{ steps.lease.outputs.owner }}
+          V15_LEASE_PRIORITY: ${{ steps.lease.outputs.priority }}
+        run: python scripts/v15/monitoring_cycle.py complete
 
       - name: Upload screenshot and verification evidence
         if: always()
