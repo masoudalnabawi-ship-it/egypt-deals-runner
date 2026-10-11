@@ -1065,7 +1065,7 @@ async function claimScreenshotJob(
   if (
     row.lane === "ultra" &&
     (
-      Number(row.real_discount || 0) < 65 ||
+      Number(row.real_discount || 0) < 50 ||
       Number(row.confidence || 0) < 0.76
     )
   ) {
@@ -1207,7 +1207,7 @@ async function completeScreenshotJob(
     (
       status === "sent" &&
       row.lane === "ultra" &&
-      !(liveDiscount >= 65)
+      !(liveDiscount >= 50)
     )
   ) {
     const blockReason =
@@ -1582,7 +1582,7 @@ export default {
         intelligence:'deal-intelligence-v2',
         ranking:'ranking-v3',
         policy:{
-          amazon_ultra_min:65,
+          amazon_ultra_min:50,
           amazon_hot_min:75,
           noon_ultra:false,
           near_duplicate_guard:true,

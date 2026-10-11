@@ -441,9 +441,13 @@ def v14_excluded_product(job, obs=None):
 def send_review_photo(job: dict[str, Any], photo: Path, live_discount: float) -> dict[str, Any]:
     if v14_excluded_product(job):
         raise RuntimeError("blocked_excluded_at_telegram_boundary")
-    if str(job.get("lane") or "normal").lower() != "normal":
-        raise RuntimeError("github_ultra_delivery_disabled")
-    if not NORMAL_REVIEW_CHAT:
+    lane = str(job.get("lane") or "normal").lower()
+    if lane not in ("normal", "ultra"):
+        raise RuntimeError("invalid_review_lane")
+    if lane == "ultra" and live_discount < 50:
+        raise RuntimeError("github_ultra_below_65")
+    target_chat = REVIEW_CHAT if lane == "ultra" else NORMAL_REVIEW_CHAT
+    if not target_chat:
         raise RuntimeError("telegram_review_chat_missing")
     short = str(job.get("deal_key") or "")[:16]
     url = str(job.get("url") or "")
@@ -464,7 +468,7 @@ def send_review_photo(job: dict[str, Any], photo: Path, live_discount: float) ->
         r = requests.post(
             f"https://api.telegram.org/bot{BOT_TOKEN}/sendPhoto",
             data={
-                "chat_id": NORMAL_REVIEW_CHAT,
+                "chat_id": target_chat,
                 "caption": build_caption(job, live_discount),
                 "parse_mode": "HTML",
                 "reply_markup": json.dumps(keyboard, ensure_ascii=False),
@@ -685,7 +689,7 @@ def main() -> int:
         die("AMAZON_REVIEW_GROUP_ID missing")
 
     policy = worker_policy()
-    ultra_min = float(policy.get("amazon_ultra_min") or policy.get("ultra_min_discount") or 65)
+    ultra_min = max(50.0, float(policy.get("amazon_ultra_min") or policy.get("ultra_min_discount") or 65))
 
     print(
         f"V14_PIPELINE_START ultra_min={ultra_min} "
