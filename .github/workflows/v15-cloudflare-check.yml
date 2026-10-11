@@ -111,6 +111,11 @@ jobs:
             --file cloudflare_amazon_v15/migrations/0003_seed_monitoring.sql
           echo "V15_FIRST_PRODUCT_REGISTERED"
 
+      - name: Validate V15 production leasing module
+        run: |
+          python -m py_compile scripts/v15/d1_monitoring_lease.py
+          python scripts/v15/d1_monitoring_lease.py
+
       - name: Test V15 monitoring dispatcher
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.V15_CLOUDFLARE_API_TOKEN }}
