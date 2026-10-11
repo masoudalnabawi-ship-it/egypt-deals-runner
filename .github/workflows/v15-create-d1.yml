@@ -1,0 +1,48 @@
+name: Amazon V15 Create D1
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  create-v15-d1:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout V15
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+
+      - name: Check and create V15 database
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.V15_CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: b015795e3322f02ca29cf8d8f1982212
+        run: |
+          set -euo pipefail
+
+          DB_NAME="egypt-amazon-v15-db"
+
+          echo "Checking existing D1 databases..."
+
+          npx --yes wrangler@4.149.0 d1 list --json > d1-list.json
+
+          if node -e '
+            const fs = require("fs");
+            const dbs = JSON.parse(fs.readFileSync("d1-list.json", "utf8"));
+            process.exit(dbs.some(db => db.name === "egypt-amazon-v15-db") ? 0 : 1);
+          '; then
+            echo "V15_DATABASE_ALREADY_EXISTS"
+          else
+            echo "Creating V15 database..."
+            npx --yes wrangler@4.149.0 d1 create "$DB_NAME"
+            echo "V15_DATABASE_CREATED"
+          fi
+
+          echo "Final verification:"
+          npx --yes wrangler@4.149.0 d1 list
