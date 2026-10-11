@@ -24,7 +24,7 @@ jobs:
           python-version: '3.11'
 
       - name: Install pytest
-        run: python -m pip install pytest
+        run: python -m pip install pytest beautifulsoup4 httpx
 
       - name: Run Amazon V14 tests
         run: python -m pytest tests/v14 -q
