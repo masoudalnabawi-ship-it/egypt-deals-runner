@@ -49,3 +49,12 @@ jobs:
           echo "V15_CRON_TEST_START"
           npx --yes wrangler@4.149.0 deployments list
           echo "V15_CRON_DEPLOYMENT_CHECK_OK"
+
+      - name: Test actual V15 scheduled event
+        working-directory: cloudflare/v15-cron
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.V15_CLOUDFLARE_API_TOKEN }}
+        run: |
+          echo "V15_SCHEDULED_TEST_START"
+          npx --yes wrangler@4.149.0 deployments list
+          echo "V15_SCHEDULED_TEST_END"
