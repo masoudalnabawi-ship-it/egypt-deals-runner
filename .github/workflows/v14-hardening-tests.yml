@@ -1,0 +1,30 @@
+name: Amazon V14 Hardening Tests
+
+on:
+  push:
+    branches:
+      - v14-ultra-hardening-20261011
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout development branch
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install pytest
+        run: python -m pip install pytest
+
+      - name: Run Amazon V14 tests
+        run: python -m pytest tests/v14 -q
