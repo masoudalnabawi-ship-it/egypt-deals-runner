@@ -38,6 +38,14 @@ jobs:
             exit 1
           fi
 
+          echo "V15_SCHEMA_APPLYING"
+          npx --yes wrangler@4.149.0 d1 execute egypt-amazon-v15-db --remote --file cloudflare_amazon_v15/migrations/0001_initial.sql
+          echo "V15_SCHEMA_APPLIED"
+
+          echo "V15_SCHEMA_VERIFYING"
+          npx --yes wrangler@4.149.0 d1 execute egypt-amazon-v15-db --remote --command "SELECT name FROM sqlite_master WHERE type='table' AND name IN ('price_observations','delivery_state','competitor_signals') ORDER BY name;"
+          echo "V15_SCHEMA_VERIFIED"
+
           npx --yes wrangler@4.149.0 d1 list --json > /tmp/v15-d1-list.json
 
           if node -e '
