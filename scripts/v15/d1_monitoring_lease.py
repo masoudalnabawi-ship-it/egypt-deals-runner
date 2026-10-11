@@ -68,6 +68,39 @@ def query(sql):
     raise RuntimeError("V15_D1_INVALID_RESPONSE")
 
 
+def claim_next_due(lease_minutes=30):
+    """Atomically claim the oldest due, unleased product across all ASINs."""
+    if not 1 <= lease_minutes <= 60:
+        raise ValueError("Invalid lease duration")
+    now = utc_now()
+    owner = "v15-" + uuid.uuid4().hex
+    expires = now + timedelta(minutes=lease_minutes)
+    sql = f"""
+    UPDATE product_monitoring
+    SET lease_owner={quote(owner)},
+        lease_until={quote(timestamp(expires))},
+        updated_at={quote(timestamp(now))}
+    WHERE asin = (
+        SELECT asin FROM product_monitoring
+        WHERE next_check_at <= {quote(timestamp(now))}
+          AND (lease_until IS NULL OR lease_until <= {quote(timestamp(now))})
+        ORDER BY next_check_at ASC,
+          CASE priority WHEN 'HOT' THEN 0 WHEN 'ACTIVE' THEN 1
+            WHEN 'STABLE' THEN 2 ELSE 3 END,
+          asin ASC
+        LIMIT 1
+    )
+      AND (lease_until IS NULL OR lease_until <= {quote(timestamp(now))})
+    RETURNING asin, priority, consecutive_errors, lease_owner;
+    """
+    rows = query(sql)
+    if not rows:
+        return None
+    if len(rows) != 1 or rows[0]['lease_owner'] != owner:
+        raise RuntimeError('V15_GLOBAL_LEASE_INVARIANT_FAILED')
+    return rows[0]
+
+
 def claim(asin, lease_minutes=15):
     if not 1 <= lease_minutes <= 60:
         raise ValueError("Invalid lease duration")

@@ -7,21 +7,21 @@ import json
 import os
 from pathlib import Path
 
-from d1_monitoring_lease import claim, release_after_success, release_after_failure
+from d1_monitoring_lease import claim, claim_next_due, release_after_success, release_after_failure
 from d1_price_observation import prepare_observation
 
 
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('action', choices=['claim', 'complete', 'fail'])
-    parser.add_argument('--asin', default=os.environ.get('V15_TEST_ASIN', 'B0DK4Z4GPJ'))
+    parser.add_argument('--asin', default=os.environ.get('V15_TEST_ASIN'))
     args = parser.parse_args()
-    asin = args.asin.strip().upper()
-    if len(asin) != 10 or not asin.isalnum():
+    asin = args.asin.strip().upper() if args.asin else None
+    if asin is not None and (len(asin) != 10 or not asin.isalnum()):
         raise ValueError('Invalid ASIN')
 
     if args.action == 'claim':
-        lease = claim(asin, lease_minutes=30)
+        lease = claim(asin, lease_minutes=30) if asin else claim_next_due(lease_minutes=30)
         output = os.environ.get('GITHUB_OUTPUT')
         if lease is None:
             print('V15_NO_DUE_PRODUCT')
@@ -31,13 +31,21 @@ def main():
             return
         if not output:
             raise RuntimeError('GITHUB_OUTPUT required to securely pass lease owner')
+        asin = lease['asin']
         with open(output, 'a', encoding='utf-8') as file:
             file.write('claimed=true\n')
+            file.write('asin=' + asin + '\n')
             file.write('owner=' + lease['lease_owner'] + '\n')
             file.write('priority=' + lease['priority'] + '\n')
+        github_env = os.environ.get('GITHUB_ENV')
+        if github_env:
+            with open(github_env, 'a', encoding='utf-8') as file:
+                file.write('V15_TEST_ASIN=' + asin + '\n')
         print('V15_MONITORING_CLAIM_OK', asin)
         return
 
+    if asin is None:
+        raise RuntimeError('V15_ASIN_MISSING_FOR_FINALIZATION')
     owner = os.environ.get('V15_LEASE_OWNER', '')
     priority = os.environ.get('V15_LEASE_PRIORITY', '')
     if not owner.startswith('v15-') or priority not in ('HOT', 'ACTIVE', 'STABLE', 'LOW'):
