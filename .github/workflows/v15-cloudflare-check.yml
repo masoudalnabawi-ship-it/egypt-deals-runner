@@ -116,6 +116,12 @@ jobs:
           python -m py_compile scripts/v15/d1_monitoring_lease.py
           python scripts/v15/d1_monitoring_lease.py
 
+      - name: Test production lease against V15 D1
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.V15_CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: b015795e3322f02ca29cf8d8f1982212
+        run: python scripts/v15/test_production_lease.py
+
       - name: Test V15 monitoring dispatcher
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.V15_CLOUDFLARE_API_TOKEN }}
