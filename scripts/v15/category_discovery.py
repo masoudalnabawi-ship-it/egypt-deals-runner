@@ -64,7 +64,7 @@ def main():
     print('V15_DISCOVERY_SEEDED',len(asins),flush=True)
     # Read-only counters to distinguish no catalog from not-yet-due.
     try:
-        rows=query('SELECT COUNT(*) AS total, SUM(CASE WHEN next_check_at <= strftime('%Y-%m-%dT%H:%M:%S+00:00','now') THEN 1 ELSE 0 END) AS due FROM product_monitoring;')
+        rows=query("SELECT COUNT(*) AS total, SUM(CASE WHEN next_check_at <= strftime('%Y-%m-%dT%H:%M:%S+00:00','now') THEN 1 ELSE 0 END) AS due FROM product_monitoring;")
         print('V15_MONITORING_TOTAL',rows[0]['total'] if rows else 'unknown',flush=True)
     except Exception as exc:
         print('V15_DIAGNOSTIC_UNAVAILABLE',type(exc).__name__,flush=True)
