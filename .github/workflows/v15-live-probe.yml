@@ -1,6 +1,12 @@
 name: Amazon V15 Real Screenshot Probe
 
 on:
+  push:
+    branches:
+      - amazon-v15-rebuild
+    paths:
+      - 'scripts/v15/**'
+      - '.github/workflows/v15-live-probe.yml'
   workflow_dispatch:
 
 permissions:
