@@ -1,0 +1,8 @@
+name = "egypt-amazon-v15-cron"
+main = "src.js"
+account_id = "b015795e3322f02ca29cf8d8f1982212"
+compatibility_date = "2026-10-11"
+workers_dev = false
+
+[triggers]
+crons = ["*/5 * * * *"]

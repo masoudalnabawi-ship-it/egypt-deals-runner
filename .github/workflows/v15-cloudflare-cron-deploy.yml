@@ -1,0 +1,42 @@
+name: Amazon V15 Cloudflare Cron Deploy
+on:
+  push:
+    branches: [amazon-v15-rebuild]
+    paths:
+      - 'cloudflare/v15-cron/**'
+      - '.github/workflows/v15-cloudflare-cron-deploy.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  deploy-v15-cron:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout V15
+        uses: actions/checkout@v4
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Validate secrets
+        env:
+          CF_TOKEN: ${{ secrets.V15_CLOUDFLARE_API_TOKEN }}
+          GH_DISPATCH_TOKEN: ${{ secrets.V15_GITHUB_DISPATCH_TOKEN }}
+        run: |
+          test -n "$CF_TOKEN" || { echo 'V15_CLOUDFLARE_API_TOKEN missing'; exit 1; }
+          test -n "$GH_DISPATCH_TOKEN" || { echo 'V15_GITHUB_DISPATCH_TOKEN missing'; exit 1; }
+      - name: Deploy dedicated V15 Cron Worker
+        working-directory: cloudflare/v15-cron
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.V15_CLOUDFLARE_API_TOKEN }}
+        run: npx --yes wrangler@4.149.0 deploy
+      - name: Install GitHub dispatch token in Cloudflare Worker
+        working-directory: cloudflare/v15-cron
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.V15_CLOUDFLARE_API_TOKEN }}
+          GH_DISPATCH_TOKEN: ${{ secrets.V15_GITHUB_DISPATCH_TOKEN }}
+        run: printf '%s' "$GH_DISPATCH_TOKEN" | npx --yes wrangler@4.149.0 secret put V15_GITHUB_DISPATCH_TOKEN
+      - name: V15 cron deployed
+        run: echo 'V15_CLOUDFLARE_CRON_DEPLOYED'
