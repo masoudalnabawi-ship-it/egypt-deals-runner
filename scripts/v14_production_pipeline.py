@@ -444,7 +444,7 @@ def send_review_photo(job: dict[str, Any], photo: Path, live_discount: float) ->
     lane = str(job.get("lane") or "normal").lower()
     if lane not in ("normal", "ultra"):
         raise RuntimeError("invalid_review_lane")
-    if lane == "ultra" and live_discount < 65:
+    if lane == "ultra" and live_discount < 50:
         raise RuntimeError("github_ultra_below_65")
     target_chat = REVIEW_CHAT if lane == "ultra" else NORMAL_REVIEW_CHAT
     if not target_chat:
@@ -689,7 +689,7 @@ def main() -> int:
         die("AMAZON_REVIEW_GROUP_ID missing")
 
     policy = worker_policy()
-    ultra_min = max(65.0, float(policy.get("amazon_ultra_min") or policy.get("ultra_min_discount") or 65))
+    ultra_min = max(50.0, float(policy.get("amazon_ultra_min") or policy.get("ultra_min_discount") or 65))
 
     print(
         f"V14_PIPELINE_START ultra_min={ultra_min} "
