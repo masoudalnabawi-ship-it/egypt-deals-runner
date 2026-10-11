@@ -137,3 +137,35 @@ def release_after_success(asin, owner, priority):
 
 if __name__ == "__main__":
     print("V15_PRODUCTION_LEASING_MODULE_READY")
+
+
+def release_after_failure(asin, owner):
+    """Reschedule a failed probe without claiming a successful observation.
+
+    The conditional UPDATE prevents a stale worker from releasing another lease.
+    """
+    from smart_scheduler import INTERVALS, MAX_BACKOFF_MINUTES
+
+    now = utc_now()
+    # Calculate backoff inside D1 using the current error count, so a stale
+    # worker cannot overwrite a newer count. Priority is read from the row.
+    intervals = "CASE priority WHEN 'HOT' THEN 3 WHEN 'ACTIVE' THEN 10 WHEN 'STABLE' THEN 30 WHEN 'LOW' THEN 60 ELSE 60 END"
+    # Clamp exponential backoff at 6 hours. SQLite supports POWER().
+    minutes = f"MIN({MAX_BACKOFF_MINUTES}, ({intervals}) * POWER(2, MIN(consecutive_errors + 1, 10)))"
+    sql = f"""
+    UPDATE product_monitoring
+    SET consecutive_errors = consecutive_errors + 1,
+        next_check_at = strftime('%Y-%m-%dT%H:%M:%S',
+          julianday({quote(timestamp(now))}) + ({minutes}) / 1440.0) || '+00:00',
+        lease_owner = NULL,
+        lease_until = NULL,
+        updated_at = {quote(timestamp(now))}
+    WHERE asin = {quote(asin)}
+      AND lease_owner = {quote(owner)}
+      AND lease_until > {quote(timestamp(now))}
+    RETURNING asin, consecutive_errors, next_check_at;
+    """
+    result = query(sql)
+    if len(result) != 1:
+        raise RuntimeError('V15_FAILURE_LEASE_LOST')
+    return result[0]

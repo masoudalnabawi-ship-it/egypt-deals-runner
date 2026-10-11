@@ -7,13 +7,13 @@ import json
 import os
 from pathlib import Path
 
-from d1_monitoring_lease import claim, release_after_success
+from d1_monitoring_lease import claim, release_after_success, release_after_failure
 from d1_price_observation import prepare_observation
 
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument('action', choices=['claim', 'complete'])
+    parser.add_argument('action', choices=['claim', 'complete', 'fail'])
     parser.add_argument('--asin', default=os.environ.get('V15_TEST_ASIN', 'B0DK4Z4GPJ'))
     args = parser.parse_args()
     asin = args.asin.strip().upper()
@@ -42,6 +42,10 @@ def main():
     priority = os.environ.get('V15_LEASE_PRIORITY', '')
     if not owner.startswith('v15-') or priority not in ('HOT', 'ACTIVE', 'STABLE', 'LOW'):
         raise RuntimeError('Missing or invalid lease metadata')
+    if args.action == 'fail':
+        result = release_after_failure(asin, owner)
+        print('V15_FAILURE_RESCHEDULED', asin, result['consecutive_errors'], result['next_check_at'])
+        return
     evidence_dir = Path('v15-live-evidence')
     report_path = evidence_dir / 'verification.json'
     report = json.loads(report_path.read_text(encoding='utf-8'))

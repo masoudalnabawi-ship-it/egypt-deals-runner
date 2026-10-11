@@ -96,6 +96,15 @@ jobs:
           V15_LEASE_PRIORITY: ${{ steps.lease.outputs.priority }}
         run: python scripts/v15/monitoring_cycle.py complete
 
+      - name: Reschedule V15 after probe failure
+        if: ${{ failure() && steps.lease.outputs.claimed == 'true' }}
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.V15_CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: b015795e3322f02ca29cf8d8f1982212
+          V15_LEASE_OWNER: ${{ steps.lease.outputs.owner }}
+          V15_LEASE_PRIORITY: ${{ steps.lease.outputs.priority }}
+        run: python scripts/v15/monitoring_cycle.py fail
+
       - name: Upload screenshot and verification evidence
         if: always()
         uses: actions/upload-artifact@v4
