@@ -53,11 +53,37 @@ def main():
 
             page = context.new_page()
 
-            observation = v14.inspect_amazon(
-                page,
-                url,
-                asin,
-            )
+            try:
+                observation = v14.inspect_amazon(
+                    page,
+                    url,
+                    asin,
+                )
+            except Exception:
+                diagnostic = output / "amazon-failed-page.jpg"
+                html = output / "amazon-failed-page.html"
+
+                try:
+                    page.screenshot(
+                        path=str(diagnostic),
+                        full_page=True,
+                        type="jpeg",
+                        quality=75,
+                    )
+                    html.write_text(
+                        page.content(),
+                        encoding="utf-8",
+                    )
+                    print("V15_FAILURE_EVIDENCE_SAVED")
+                    print("PAGE_TITLE:", page.title())
+                    print("PAGE_URL:", page.url)
+                except Exception as diagnostic_error:
+                    print(
+                        "V15_DIAGNOSTIC_ERROR:",
+                        str(diagnostic_error),
+                    )
+
+                raise
 
             screenshot = output / "amazon-real-screenshot.jpg"
 
