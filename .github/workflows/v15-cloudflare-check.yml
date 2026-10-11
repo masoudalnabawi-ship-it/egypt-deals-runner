@@ -94,7 +94,12 @@ jobs:
             egypt-amazon-v15-db \
             --remote \
             --file cloudflare_amazon_v15/tests/lease_integration.sql \
-            --json > /tmp/v15-lease-results.json
+            --json > /tmp/v15-lease-results.json || {
+            echo "V15_D1_LEASE_EXECUTION_FAILED"
+            echo "=== WRANGLER RESPONSE ==="
+            cat /tmp/v15-lease-results.json
+            exit 1
+          }
 
           python - <<'VERIFY'
           import json
