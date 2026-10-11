@@ -38,4 +38,18 @@ jobs:
             exit 1
           fi
 
+          npx --yes wrangler@4.149.0 d1 list --json > /tmp/v15-d1-list.json
+
+          if node -e '
+            const fs = require("fs");
+            const dbs = JSON.parse(fs.readFileSync("/tmp/v15-d1-list.json", "utf8"));
+            process.exit(dbs.some(db => db.name === "egypt-amazon-v15-db") ? 0 : 1);
+          '; then
+            echo "V15_DATABASE_ALREADY_EXISTS"
+          else
+            echo "V15_DATABASE_CREATING"
+            npx --yes wrangler@4.149.0 d1 create egypt-amazon-v15-db
+            echo "V15_DATABASE_CREATED"
+          fi
+
           npx --yes wrangler@4.149.0 d1 list
