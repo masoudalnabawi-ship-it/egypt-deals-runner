@@ -64,6 +64,8 @@ jobs:
           CLOUDFLARE_API_TOKEN: ${{ secrets.V15_CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: b015795e3322f02ca29cf8d8f1982212
           V15_BATCH_SIZE: '5'
+          V15_TELEGRAM_BOT_TOKEN: ${{ secrets.V15_TELEGRAM_BOT_TOKEN }}
+          V15_TELEGRAM_REVIEW_CHAT_ID: ${{ secrets.V15_TELEGRAM_REVIEW_CHAT_ID }}
         run: python scripts/v15/batch_monitor.py
 
       - name: Upload screenshot and verification evidence

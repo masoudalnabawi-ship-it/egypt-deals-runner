@@ -11,6 +11,7 @@ from d1_monitoring_lease import claim_next_due, release_after_failure, release_a
 from book_filter import classify, from_report
 from d1_price_observation import prepare_observation
 from flash_candidate import stage as stage_flash_candidate
+from flash_private_alert import send as send_flash_alert
 
 ROOT = Path(__file__).resolve().parents[2]
 PROBE = ROOT / 'scripts/v15/live_probe.py'
@@ -62,6 +63,11 @@ def process(lease):
             candidate_path = stage_flash_candidate(report, ROOT / 'v15-flash-candidates')
             if candidate_path:
                 print('V15_FLASH_CANDIDATE', asin, 'UNVERIFIED', flush=True)
+                try:
+                    delivered = send_flash_alert(json.loads(candidate_path.read_text(encoding='utf-8')))
+                    print('V15_FLASH_PRIVATE_ALERT', asin, 'SENT' if delivered else 'NOT_CONFIGURED', flush=True)
+                except Exception as alert_exc:
+                    print('V15_FLASH_PRIVATE_ALERT_FAILED', asin, type(alert_exc).__name__, flush=True)
         except Exception as flash_exc:
             print('V15_FLASH_STAGING_FAILED', asin, type(flash_exc).__name__, flush=True)
         run([sys.executable, str(EVIDENCE), str(verification)], work, timeout=30)
