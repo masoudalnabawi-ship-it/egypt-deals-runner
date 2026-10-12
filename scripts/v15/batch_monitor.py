@@ -1,5 +1,6 @@
 """Isolated sequential V15 batch: atomic leases, validated prices, per-ASIN recovery."""
 import hashlib
+import shutil
 import json
 import os
 import subprocess
@@ -62,6 +63,30 @@ def process(lease):
             raise RuntimeError('V15_BATCH_SCREENSHOT_MISSING')
         if hashlib.sha256(screenshot.read_bytes()).hexdigest() != report.get('screenshot_sha256'):
             raise RuntimeError('V15_BATCH_SCREENSHOT_HASH_MISMATCH')
+        # Preserve genuine, SHA-256-verified evidence outside the temporary workspace.
+        evidence_dir = ROOT / "v15-live-evidence" / asin
+        evidence_dir.mkdir(parents=True, exist_ok=True)
+
+        capture_id = report["captured_at"].replace(":", "-").replace("+", "_")
+        saved_screenshot = evidence_dir / (capture_id + ".jpg")
+        saved_verification = evidence_dir / (capture_id + ".json")
+
+        shutil.copy2(screenshot, saved_screenshot)
+
+        if hashlib.sha256(saved_screenshot.read_bytes()).hexdigest() != report["screenshot_sha256"]:
+            saved_screenshot.unlink(missing_ok=True)
+            raise RuntimeError("V15_PERSISTED_SCREENSHOT_HASH_MISMATCH")
+
+        saved_report = dict(report)
+        saved_report["screenshot"] = saved_screenshot.name
+
+        saved_verification.write_text(
+            json.dumps(saved_report, ensure_ascii=False, indent=2),
+            encoding="utf-8"
+        )
+
+        print("V15_SCREENSHOT_PRESERVED", asin, saved_screenshot.name, flush=True)
+
         # Stage potential flash deal BEFORE D1 price persistence; never block monitoring.
         try:
             candidate_path = stage_flash_candidate(report, ROOT / 'v15-flash-candidates')
