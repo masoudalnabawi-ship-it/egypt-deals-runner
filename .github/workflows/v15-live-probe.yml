@@ -66,6 +66,36 @@ jobs:
         with:
           node-version: '24'
 
+      - name: Inspect V15 Cloudflare Worker read-only
+        if: ${{ github.event_name == 'workflow_dispatch' && inputs.v15_webhook_preflight == true }}
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.V15_CLOUDFLARE_API_TOKEN }}
+        run: |
+          python3 - <<'CHECK'
+          import json, os, urllib.request, urllib.error
+          account = "b015795e3322f02ca29cf8d8f1982212"
+          worker = "egypt-amazon-v15-telegram-webhook"
+          base = f"https://api.cloudflare.com/client/v4/accounts/{account}/workers/scripts/{worker}"
+          headers = {"Authorization": "Bearer " + os.environ["CLOUDFLARE_API_TOKEN"]}
+          for label, url in [
+              ("WORKER", base),
+              ("SECRETS", base + "/secrets"),
+          ]:
+              try:
+                  req = urllib.request.Request(url, headers=headers)
+                  with urllib.request.urlopen(req, timeout=25) as r:
+                      data = json.load(r)
+                  if label == "SECRETS":
+                      names = [x.get("name") for x in data.get("result", [])]
+                      print("V15_WORKER_SECRET_NAMES:", names)
+                  else:
+                      print("V15_WORKER_EXISTS:", data.get("success"))
+              except urllib.error.HTTPError as e:
+                  print(f"V15_{label}_HTTP_STATUS:", e.code)
+              except Exception as e:
+                  print(f"V15_{label}_CHECK_ERROR:", type(e).__name__)
+          CHECK
+
       - name: Deploy V15 private Telegram Worker
         if: ${{ github.event_name == 'workflow_dispatch' && inputs.v15_webhook_deploy == true }}
         working-directory: cloudflare/v15-telegram-webhook
