@@ -91,6 +91,23 @@ def main():
                         raise RuntimeError("V15_GITHUB_OUTPUT_REQUIRED") from probe_error
                     with open(github_output, "a", encoding="utf-8") as stream:
                         stream.write("price_unavailable=true\n")
+                    try:
+                        title = page.title().lower()
+                        body = page.locator("body").inner_text(timeout=5000).lower()
+                        current_url = page.url.lower()
+                        if any(x in title + body for x in ("captcha", "robot check", "enter the characters you see")):
+                            reason = "ACCESS_CHALLENGE"
+                        elif "signin" in current_url:
+                            reason = "LOGIN_REDIRECT"
+                        elif any(x in body for x in ("currently unavailable", "temporarily out of stock", "غير متوفر حالياً", "غير متوفر حاليًا")):
+                            reason = "OUT_OF_STOCK"
+                        elif not page.locator("#productTitle").count():
+                            reason = "PRODUCT_PAGE_NOT_LOADED"
+                        else:
+                            reason = "PRICE_NOT_EXTRACTED"
+                        print("V15_PRICE_FAILURE_REASON", asin, reason, flush=True)
+                    except Exception as diagnosis_error:
+                        print("V15_PRICE_FAILURE_REASON", asin, "DIAGNOSTIC_UNAVAILABLE", type(diagnosis_error).__name__, flush=True)
                     print("V15_PRICE_UNAVAILABLE", asin, flush=True)
                     return
                 raise
