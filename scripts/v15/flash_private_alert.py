@@ -14,43 +14,40 @@ def payload(candidate):
     if not ASIN_RE.fullmatch(asin):
         raise ValueError("INVALID_ASIN")
 
-    price = Decimal(str(candidate["current_price"]))
-    if not price.is_finite() or price <= 0:
-        raise ValueError("INVALID_PRICE")
+    discount = Decimal(str(candidate.get("displayed_discount_pct", 0)))
+    if not discount.is_finite() or not 5 <= discount <= 100:
+        raise ValueError("INVALID_DISCOUNT")
+
+    category = candidate.get("category", "SUPER_ULTRA")
+    labels = {
+        "NORMAL": "🟢 عرض عادي",
+        "ULTRA": "🔥 عرض ألترا",
+        "SUPER_ULTRA": "🚨🔥 سوبر ألترا",
+    }
+    label = labels.get(category, "🚨 عرض أمازون")
 
     name = str(candidate.get("title") or candidate.get("name") or "منتج على أمازون مصر")
     name = re.sub(r"[\\x00-\\x1f\\x7f]", " ", name).strip()[:180]
 
-    if candidate.get("review_type") == "PRICE_ONLY":
-        text = (
-            f"🛍️ منتج يستحق المراجعة | أمازون مصر 🇪🇬\n\n"
-            f"📦 {name}\n\n"
-            f"💰 السعر المرصود: {price:,.2f} جنيه\n\n"
-            "🔎 لا يوجد خصم تاريخي مؤكد.\n"
-            "⚠️ راجع السعر والتوافر قبل اتخاذ القرار.\n\n"
-            "🔒 مراجعة خاصة فقط — النشر العام معطّل."
-        )
-    else:
-        reference = Decimal(str(candidate["displayed_reference"]))
-        discount = Decimal(str(candidate["displayed_discount_pct"]))
-        if not (
-            reference.is_finite()
-            and discount.is_finite()
-            and 0 < price < reference
-            and 70 <= discount < 100
-        ):
-            raise ValueError("INVALID_FLASH_PRICE")
+    price = candidate.get("current_price")
+    price_line = ""
+    if price is not None:
+        amount = Decimal(str(price))
+        if amount.is_finite() and amount > 0:
+            price_line = f"💰 السعر الحالي: {amount:,.2f} جنيه\\n"
 
-        text = (
-            f"🔥 عرض مميز على أمازون مصر! 🇪🇬\n\n"
-            f"🛍️ {name}\n\n"
-            f"💰 السعر المرصود: {price:,.2f} جنيه\n"
-            f"🏷️ السعر المرجعي المعروض: {reference:,.2f} جنيه\n"
-            f"🔥 الخصم الظاهر: {discount}%\n\n"
-            "⚠️ السعر المرجعي ليس تاريخ سعر موثقًا.\n"
-            "🔎 العرض قيد المراجعة والتحقق.\n"
-            "🔒 لا يوجد نشر عام."
-        )
+    url = "https://www.amazon.eg/dp/" + asin
+
+    text = (
+        f"{label} | أمازون مصر 🇪🇬\\n\\n"
+        f"📦 {name}\\n"
+        f"📉 الخصم المعلن: {discount}%\\n"
+        f"{price_line}"
+        f"🛒 {url}\\n\\n"
+        "⚡ تنبيه بناءً على الخصم الظاهر على أمازون.\\n"
+        "⚠️ لم تتم مقارنة الخصم بتاريخ الأسعار.\\n"
+        "🔒 تنبيه خاص — النشر العام معطّل."
+    )
 
     return {
         "text": text,
@@ -59,7 +56,6 @@ def payload(candidate):
             ensure_ascii=False,
         ),
     }
-
 
 def send(candidate, *, token=None, chat_id=None, opener=None):
     """Send a private Telegram alert with verified screenshot when available."""

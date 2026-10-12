@@ -35,7 +35,14 @@ def claim(candidate):
     asin = candidate['asin']
     if not isinstance(asin, str) or len(asin) != 10 or not asin.isalnum() or asin != asin.upper():
         raise ValueError('INVALID_ASIN')
-    price = cents(candidate['current_price'])
+    raw_price = candidate.get('current_price')
+    if raw_price is None:
+        discount = Decimal(str(candidate.get('displayed_discount_pct', 0)))
+        if not discount.is_finite() or not 5 <= discount <= 100:
+            raise ValueError('INVALID_DISPLAYED_DISCOUNT')
+        price = 0
+    else:
+        price = cents(raw_price)
     owner = uuid.uuid4().hex
     # Claim only when: new ASIN, price improves >=10% from last alert,
     # or a sending lease expires. No repeat after a successful send.
@@ -44,7 +51,7 @@ def claim(candidate):
     ON CONFLICT(asin) DO UPDATE SET
       price_cents=excluded.price_cents, state='sending', owner=excluded.owner,
       updated_at=CURRENT_TIMESTAMP
-    WHERE ({TABLE}.state='sent' AND excluded.price_cents*10 <= {TABLE}.price_cents*9)
+    WHERE ({TABLE}.state='sent' AND excluded.price_cents>0 AND {TABLE}.price_cents>0 AND excluded.price_cents*10 <= {TABLE}.price_cents*9)
        OR ({TABLE}.state='sending' AND {TABLE}.updated_at <= datetime('now','-10 minutes'))
     RETURNING owner'''
     rows = query(sql)

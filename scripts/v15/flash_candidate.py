@@ -4,23 +4,46 @@ import json
 from pathlib import Path
 from book_filter import from_report
 
-def candidate(report, threshold=Decimal('70')):
-    if from_report(report):return None
-    obs=report.get('observation') or {}
-    if not isinstance(obs,dict) or obs.get('page_asin')!=report.get('asin'):return None
+def candidate(report, threshold=Decimal("5")):
+    if from_report(report):
+        return None
+
+    obs = report.get("observation") or {}
+    if not isinstance(obs, dict) or obs.get("page_asin") != report.get("asin"):
+        return None
+
     try:
-        current=Decimal(str(obs.get('current_price')))
-        old=Decimal(str(obs.get('old_price')))
-    except (InvalidOperation, ValueError, TypeError):return None
-    if not all(v.is_finite() and v>0 for v in (current,old)) or old<=current:return None
-    pct=(old-current)*100/old
-    if pct<threshold:return None
-    return {'asin':report['asin'],'url':report.get('url'),
-            'current_price':str(current),'displayed_reference':str(old),
-            'displayed_discount_pct':str(pct.quantize(Decimal('0.01'))),
-            'captured_at':report.get('captured_at'),
-            'status':'UNVERIFIED_REFERENCE','publication_allowed':False,
-            'note':'Displayed reference price is not verified historical price'}
+        pct = Decimal(str(obs.get("savings_percent") or 0))
+    except (InvalidOperation, ValueError, TypeError):
+        return None
+
+    if not pct.is_finite() or not threshold <= pct <= 100:
+        return None
+
+    if pct >= 70:
+        category = "SUPER_ULTRA"
+    elif pct >= 30:
+        category = "ULTRA"
+    else:
+        category = "NORMAL"
+
+    try:
+        current = Decimal(str(obs.get("current_price")))
+        price = str(current) if current.is_finite() and current > 0 else None
+    except (InvalidOperation, ValueError, TypeError):
+        price = None
+
+    return {
+        "asin": report["asin"],
+        "url": report.get("url"),
+        "current_price": price,
+        "displayed_discount_pct": str(pct),
+        "category": category,
+        "captured_at": report.get("captured_at"),
+        "status": "AMAZON_DISPLAYED_DISCOUNT",
+        "publication_allowed": False,
+        "note": "Discount displayed on Amazon; not historically verified",
+    }
 
 def stage(report, output_dir):
     item=candidate(report)
