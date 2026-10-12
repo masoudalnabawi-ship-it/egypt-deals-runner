@@ -207,7 +207,7 @@ jobs:
           python3 - <<'TEST'
           import json, os, urllib.parse, urllib.request
 
-          asin = 'B000000001'
+          asin = 'B000000002'
           token = os.environ['V15_TELEGRAM_BOT_TOKEN']
           chat = os.environ['V15_TELEGRAM_REVIEW_CHAT_ID']
 
