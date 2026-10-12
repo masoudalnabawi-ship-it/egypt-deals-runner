@@ -1,0 +1,56 @@
+name: V15 Webhook Safe Operations
+on:
+  workflow_dispatch:
+    inputs:
+      operation:
+        description: 'preflight (read-only) or migrate (schema-only); NEVER deploys or activates Telegram'
+        type: choice
+        required: true
+        options: [preflight, migrate]
+        default: preflight
+permissions:
+  contents: read
+concurrency:
+  group: v15-webhook-db-operations
+  cancel-in-progress: false
+jobs:
+  webhook-ops:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: amazon-v15-rebuild
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - name: Verify JS tests
+        run: node --test tests/webhook.test.mjs
+      - name: Check Cloudflare D1 schema and secrets readiness
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.V15_CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: b015795e3322f02ca29cf8d8f1982212
+          V15_TELEGRAM_BOT_TOKEN: ${{ secrets.V15_TELEGRAM_BOT_TOKEN }}
+          V15_TELEGRAM_REVIEW_CHAT_ID: ${{ secrets.V15_TELEGRAM_REVIEW_CHAT_ID }}
+          V15_TELEGRAM_OWNER_USER_ID: ${{ secrets.V15_TELEGRAM_OWNER_USER_ID }}
+          V15_TELEGRAM_WEBHOOK_SECRET: ${{ secrets.V15_TELEGRAM_WEBHOOK_SECRET }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "$CLOUDFLARE_API_TOKEN" || { echo 'MISSING_CLOUDFLARE_TOKEN'; exit 1; }
+          npx --yes wrangler@4.149.0 d1 execute egypt-amazon-v15-db --remote --command "SELECT name FROM sqlite_master WHERE type='table' AND name LIKE 'v15_review_%' ORDER BY name;"
+          for k in V15_TELEGRAM_BOT_TOKEN V15_TELEGRAM_REVIEW_CHAT_ID V15_TELEGRAM_OWNER_USER_ID V15_TELEGRAM_WEBHOOK_SECRET; do
+            if [ -z "${!k:-}" ]; then echo "MISSING_SECRET:$k"; else echo "SECRET_PRESENT:$k"; fi
+          done
+          echo 'PREFLIGHT_COMPLETE_NO_CHANGES'
+      - name: Apply idempotent V15 review schema only
+        if: ${{ inputs.operation == 'migrate' }}
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.V15_CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: b015795e3322f02ca29cf8d8f1982212
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 scripts/v15/webhook_schema_plan.py
+          npx --yes wrangler@4.149.0 d1 execute egypt-amazon-v15-db --remote --file /tmp/v15-webhook-schema-migration.sql
+          echo 'V15_SCHEMA_MIGRATION_COMPLETE_NO_WORKER_DEPLOYMENT'
