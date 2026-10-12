@@ -46,17 +46,35 @@ def main():
     offset=(int(now.timestamp())//300*2)%len(CATEGORIES)
     selected=[CATEGORIES[(offset+i)%len(CATEGORIES)] for i in range(2)]
     discovered=set()
+    # V15_DISCOVERY_V3: on successive visits, rotate through a category's
+    # ASINs instead of repeatedly sampling its first 12 entries.
+    slot=int(now.timestamp())//300
+    visit=slot//(len(CATEGORIES)//2)
     for name,url in selected:
         try:
             body=fetch(url)
             asins=extract_asins(body)
             print('V15_DISCOVERY_CATEGORY',name,'found',len(asins),flush=True)
-            discovered.update(asins[:12])
+            if asins:
+                take=min(20,len(asins))
+                start=(visit*take)%len(asins)
+                rotated=(asins+asins)[start:start+take]
+                discovered.update(rotated)
         except (urllib.error.URLError, TimeoutError, OSError) as exc:
             print('V15_DISCOVERY_UNAVAILABLE',name,type(exc).__name__,flush=True)
         time.sleep(2)
     # Batch INSERT OR IGNORE: never overwrite existing priorities, leases or schedules.
-    asins=sorted(discovered)[:20]
+    # Look up existing products in one bounded D1 query; only seed new ASINs.
+    # Never modify an existing product's priority, lease or schedule.
+    candidates=sorted(discovered)
+    known=set()
+    if candidates:
+        rows=query('SELECT asin FROM product_monitoring WHERE asin IN (' +
+                   ','.join(quote(asin) for asin in candidates) + ');')
+        known={str(row['asin']).upper() for row in rows}
+    asins=[asin for asin in candidates if asin not in known][:20]
+    print('V15_DISCOVERY_CANDIDATES',len(candidates),flush=True)
+    print('V15_DISCOVERY_ALREADY_KNOWN',len(known),flush=True)
     before_rows=query('SELECT COUNT(*) AS total FROM product_monitoring;')
     before=int(before_rows[0]['total']) if before_rows else 0
     if asins:
