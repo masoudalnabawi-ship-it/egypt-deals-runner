@@ -58,6 +58,35 @@ jobs:
           V15_BATCH_SIZE: '5'
         run: python scripts/v15/batch_monitor.py
 
+      - name: V15 private Telegram connection test
+        if: github.event_name == 'workflow_dispatch'
+        env:
+          BOT_TOKEN: ${{ secrets.V15_TELEGRAM_BOT_TOKEN }}
+          CHAT_ID: ${{ secrets.V15_TELEGRAM_REVIEW_CHAT_ID }}
+        run: |
+          python3 - <<'TELEGRAM_PY'
+          import json, os, urllib.parse, urllib.request
+          token = os.environ["BOT_TOKEN"]
+          chat_id = os.environ["CHAT_ID"]
+          data = urllib.parse.urlencode({
+              "chat_id": chat_id,
+              "text": "⚡ Egypt Deal Hunter V15\\n✅ الاتصال ناجح!\\n🔒 النشر العام غير مفعّل."
+          }).encode()
+          req = urllib.request.Request(
+              f"https://api.telegram.org/bot{token}/sendMessage",
+              data=data, method="POST"
+          )
+          try:
+              with urllib.request.urlopen(req, timeout=20) as response:
+                  result = json.load(response)
+              if not result.get("ok"):
+                  raise RuntimeError("Telegram rejected message")
+              print("V15_TELEGRAM_PRIVATE_TEST_SUCCESS")
+          except Exception:
+              print("V15_TELEGRAM_PRIVATE_TEST_FAILED")
+              raise SystemExit(1)
+          TELEGRAM_PY
+
       - name: Upload screenshot and verification evidence
         if: always()
         uses: actions/upload-artifact@v4
