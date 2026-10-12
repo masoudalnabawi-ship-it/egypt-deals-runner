@@ -96,6 +96,29 @@ jobs:
                   print(f"V15_{label}_CHECK_ERROR:", type(e).__name__)
           CHECK
 
+      - name: Inspect V15 Telegram webhook read-only
+        if: ${{ github.event_name == 'workflow_dispatch' && inputs.v15_webhook_preflight == true }}
+        env:
+          V15_TELEGRAM_BOT_TOKEN: ${{ secrets.V15_TELEGRAM_BOT_TOKEN }}
+        run: |
+          python3 - <<'CHECK'
+          import json, os, urllib.request
+          token = os.environ["V15_TELEGRAM_BOT_TOKEN"]
+          req = urllib.request.Request(
+              "https://api.telegram.org/bot" + token + "/getWebhookInfo",
+              method="POST"
+          )
+          try:
+              with urllib.request.urlopen(req, timeout=20) as response:
+                  result = json.load(response)
+              info = result.get("result", {})
+              print("V15_TELEGRAM_WEBHOOK_CONFIGURED:", bool(info.get("url")))
+              print("V15_TELEGRAM_WEBHOOK_URL:", info.get("url") or "NONE")
+              print("V15_TELEGRAM_PENDING_UPDATES:", info.get("pending_update_count", 0))
+          except Exception:
+              print("V15_TELEGRAM_WEBHOOK_CHECK_FAILED")
+          CHECK
+
       - name: Deploy V15 private Telegram Worker
         if: ${{ github.event_name == 'workflow_dispatch' && inputs.v15_webhook_deploy == true }}
         working-directory: cloudflare/v15-telegram-webhook
