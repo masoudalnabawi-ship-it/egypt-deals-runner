@@ -33,7 +33,7 @@ const isBot = (env, from) => from?.is_bot===true && String(from?.id)===env.BOT_U
 function callbackValid(env, cb, action, asin) {
   const msg = cb.message;
   return isOwner(env, cb.from, msg?.chat) && isBot(env, msg?.from) &&
-    Number.isSafeInteger(msg?.message_id) && String(msg?.text||'').includes(asin) &&
+    Number.isSafeInteger(msg?.message_id) && msg?.reply_markup?.inline_keyboard?.some(row => row.some(button => button.url===product(asin))) &&
     msg?.reply_markup?.inline_keyboard?.some(row => row.some(button => button.callback_data===`v15:${action}:${asin}`));
 }
 async function status(env, asin) {
@@ -87,7 +87,7 @@ async function handleCallback(env, cb) {
     await answer(env,cb.id,changed?(next==='publish_requested'?'تم تسجيل طلب تجريبي فقط':next==='ignored'?'تم التجاهل':'بانتظار التحقق'):'الزر قديم أو تم تنفيذ الإجراء');
     if (changed && next==='publish_requested') {
       try {
-        await send(env,`✅ تم اعتماد العرض ${asin} بنجاح.\n📋 تم تسجيل طلب النشر التجريبي في قاعدة البيانات.\n🔒 لم يتم النشر للعامة.`);
+        await send(env,`✅ تم اعتماد العرض بنجاح.\n📋 تم تسجيل طلب النشر التجريبي في قاعدة البيانات.\n🔒 لم يتم النشر للعامة.`);
       } catch (e) {
         console.error('V15_PRIVATE_APPROVAL_CONFIRMATION_FAILED');
       }
@@ -116,7 +116,7 @@ async function handleMessage(env,msg) {
     .bind(String(msg.chat.id),msg.message_id,asin).run();
   // Telegram send can succeed while acknowledgement fails; duplicates are bounded by state.
   let preview;
-  try {preview=await send(env,`🔎 معاينة خاصة — ${asin}\n\n${message.trim()}\n\n📦 ${product(asin)}\n⚠️ السعر والخصم غير مؤكدين؛ راجع صفحة أمازون.\n🔒 لا يوجد نشر عام.`,{
+  try {preview=await send(env,`🔎 معاينة خاصة للعرض\n\n${message.trim()}\n\n⚠️ السعر والخصم غير مؤكدين؛ راجع صفحة أمازون.\n🔒 لا يوجد نشر عام.`,{
     reply_markup:{inline_keyboard:[
       [{text:'✅ اعتماد وطلب نشر تجريبي',callback_data:`v15:approve:${asin}`}],
       [{text:'🔄 تعديل مرة أخرى',callback_data:`v15:revise:${asin}`}],

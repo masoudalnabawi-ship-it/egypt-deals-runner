@@ -19,14 +19,21 @@ def payload(candidate):
     if not (price.is_finite() and reference.is_finite() and discount.is_finite() and 0 < price < reference and 70 <= discount < 100):
         raise ValueError('INVALID_FLASH_PRICE')
     url = 'https://www.amazon.eg/dp/' + asin
-    text = (f'🚨 عرض استثنائي محتمل — V15\n'
-            f'💰 السعر المرصود: {price:,.2f} جنيه\n'
-            f'🏷 السعر المرجعي المعروض: {reference:,.2f} جنيه\n'
-            f'📉 الخصم الظاهر: {discount}%\n'
-            f'📦 ASIN: {asin}\n'
-            f'🕒 وقت الرصد: {str(candidate.get("captured_at") or "غير متاح")[:50]}\n'
-            '⚠️ غير مؤكد: السعر المرجعي ليس تاريخ سعر موثقًا. تحقق من صفحة المنتج.\n'
-            '🔒 رسالة خاصة فقط؛ لا نشر عام تلقائي.')
+    name = str(candidate.get('title') or candidate.get('name') or '').strip()
+    name = re.sub(r'[\x00-\x1f\x7f]', ' ', name)[:180]
+    if not name:
+        name = 'منتج على أمازون مصر'
+    text = (
+        f'🔥 عرض مميز على أمازون مصر! 🇪🇬\n\n'
+        f'🛍️ {name}\n\n'
+        f'💰 السعر المرصود: {price:,.2f} جنيه\n'
+        f'🏷️ السعر المرجعي المعروض: {reference:,.2f} جنيه\n'
+        f'🔥 الخصم الظاهر: {discount}%\n\n'
+        '🔎 عرض قيد المراجعة والتحقق.\n'
+        '⚠️ السعر المرجعي ليس تاريخ سعر موثقًا.\n'
+        '⏳ الأسعار والعروض قابلة للتغيير.\n\n'
+        '🔒 مراجعة خاصة — لا يوجد نشر عام.'
+    )
     return {'text': text, 'reply_markup': json.dumps(keyboard(candidate, interactive=interactive_enabled()), ensure_ascii=False)}
 
 def send(candidate, *, token=None, chat_id=None, opener=None):
