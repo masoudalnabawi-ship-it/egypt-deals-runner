@@ -66,7 +66,8 @@ def main():
     # Batch INSERT OR IGNORE: never overwrite existing priorities, leases or schedules.
     # Look up existing products in one bounded D1 query; only seed new ASINs.
     # Never modify an existing product's priority, lease or schedule.
-    candidates=sorted(discovered)
+    from book_filter import classify
+    candidates=sorted(asin for asin in discovered if not classify(asin=asin))
     known=set()
     if candidates:
         rows=query('SELECT asin FROM product_monitoring WHERE asin IN (' +

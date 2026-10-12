@@ -8,6 +8,7 @@ import tempfile
 from pathlib import Path
 
 from d1_monitoring_lease import claim_next_due, release_after_failure, release_after_success
+from book_filter import classify, from_report
 from d1_price_observation import prepare_observation
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -22,6 +23,10 @@ def run(command, cwd, env=None, timeout=120):
 
 def process(lease):
     asin, owner, priority = lease['asin'], lease['lease_owner'], lease['priority']
+    reason = classify(asin=asin)
+    if reason:
+        print('V15_BOOK_FILTER_BLOCKED', asin, reason, flush=True)
+        return 'blocked'
     # One isolated workspace per product prevents stale verification.json reuse.
     with tempfile.TemporaryDirectory(prefix='v15-batch-') as work:
         work = Path(work)
@@ -41,6 +46,10 @@ def process(lease):
         report = json.loads(verification.read_text(encoding='utf-8'))
         if report.get('asin') != asin:
             raise RuntimeError('V15_BATCH_REPORT_ASIN_MISMATCH')
+        reason = from_report(report)
+        if reason:
+            print('V15_BOOK_FILTER_BLOCKED', asin, reason, flush=True)
+            return 'blocked'
         screenshot_name = report.get('screenshot', '')
         screenshot = verification.parent / screenshot_name
         if not screenshot_name or Path(screenshot_name).name != screenshot_name or not screenshot.is_file():
@@ -80,9 +89,15 @@ def main():
         try:
             outcome = process(lease)
             persisted = outcome == 'saved'
-            if outcome == 'saved':
+            if outcome in ('saved', 'blocked'):
                 release_after_success(asin, owner, priority)
-                saved += 1
+                if outcome == 'saved':
+                    saved += 1
+                else:
+                    print('V15_BATCH_BOOK_SKIPPED', asin, flush=True)
+                if outcome == 'blocked':
+                    from d1_monitoring_lease import query, quote
+                    query("UPDATE product_monitoring SET next_check_at=strftime('%Y-%m-%dT%H:%M:%S','now','+365 days') || '+00:00' WHERE asin=" + quote(asin) + " AND lease_owner IS NULL;")
                 print('V15_BATCH_COMPLETE', asin, flush=True)
             else:
                 release_after_failure(asin, owner)
