@@ -5,6 +5,7 @@ import re
 import urllib.parse
 import urllib.request
 from decimal import Decimal
+from flash_review import keyboard, interactive_enabled
 
 ASIN_RE = re.compile(r"^[A-Z0-9]{10}$")
 
@@ -26,7 +27,7 @@ def payload(candidate):
             f'🕒 وقت الرصد: {str(candidate.get("captured_at") or "غير متاح")[:50]}\n'
             '⚠️ غير مؤكد: السعر المرجعي ليس تاريخ سعر موثقًا. تحقق من صفحة المنتج.\n'
             '🔒 رسالة خاصة فقط؛ لا نشر عام تلقائي.')
-    return {'text': text, 'reply_markup': json.dumps({'inline_keyboard': [[{'text': '🛒 فتح المنتج الآن', 'url': url}]]}, ensure_ascii=False)}
+    return {'text': text, 'reply_markup': json.dumps(keyboard(candidate, interactive=interactive_enabled()), ensure_ascii=False)}
 
 def send(candidate, *, token=None, chat_id=None, opener=None):
     token = token if token is not None else os.environ.get('V15_TELEGRAM_BOT_TOKEN', '')
