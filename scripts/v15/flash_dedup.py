@@ -12,7 +12,7 @@ TABLE = 'v15_flash_alert_dedup'
 
 
 def initialize():
-    query('''CREATE TABLE IF NOT EXISTS v15_flash_alert_dedup (
+    query(f'''CREATE TABLE IF NOT EXISTS {TABLE} (
         asin TEXT PRIMARY KEY,
         price_cents INTEGER NOT NULL,
         state TEXT NOT NULL CHECK(state IN ('sending','sent')),
