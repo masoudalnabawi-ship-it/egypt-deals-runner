@@ -16,6 +16,11 @@ on:
         required: false
         type: boolean
         default: false
+      v15_webhook_migrate:
+        description: 'Create V15 review tables only; no Worker deployment'
+        required: false
+        type: boolean
+        default: false
       v15_webhook_preflight:
         description: 'Read-only D1 review schema and Telegram secrets presence; no product scan'
         required: false
@@ -55,6 +60,16 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: '24'
+
+      - name: V15 webhook schema migration
+        if: ${{ github.event_name == 'workflow_dispatch' && inputs.v15_webhook_migrate == true }}
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.V15_CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: b015795e3322f02ca29cf8d8f1982212
+        run: |
+          set -euo pipefail
+          npx --yes wrangler@4.149.0 d1 execute egypt-amazon-v15-db --remote --file cloudflare/v15-telegram-webhook/schema.sql
+          echo 'V15_REVIEW_SCHEMA_CREATED'
 
       - name: V15 webhook read-only preflight
         if: ${{ inputs.v15_webhook_preflight == true }}
