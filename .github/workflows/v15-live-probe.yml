@@ -21,6 +21,11 @@ on:
         required: false
         type: boolean
         default: false
+      v15_webhook_activate:
+        description: 'Activate private V15 Telegram webhook only'
+        required: false
+        type: boolean
+        default: false
       v15_webhook_deploy:
         description: 'Deploy private V15 Worker only; never activate Telegram webhook'
         required: false
@@ -118,6 +123,43 @@ jobs:
           except Exception:
               print("V15_TELEGRAM_WEBHOOK_CHECK_FAILED")
           CHECK
+
+      - name: Activate V15 private Telegram webhook
+        if: ${{ github.event_name == 'workflow_dispatch' && inputs.v15_webhook_activate == true }}
+        env:
+          V15_TELEGRAM_BOT_TOKEN: ${{ secrets.V15_TELEGRAM_BOT_TOKEN }}
+          V15_TELEGRAM_WEBHOOK_SECRET: ${{ secrets.V15_TELEGRAM_WEBHOOK_SECRET }}
+        run: |
+          python3 - <<'ACTIVATE'
+          import json, os, urllib.parse, urllib.request
+          token = os.environ["V15_TELEGRAM_BOT_TOKEN"]
+          secret = os.environ["V15_TELEGRAM_WEBHOOK_SECRET"]
+          target = "https://egypt-amazon-v15-telegram-webhook.masoud-amazon-eg.workers.dev/"
+          base = "https://api.telegram.org/bot" + token + "/"
+
+          def call(method, data=None):
+              body = urllib.parse.urlencode(data).encode() if data else None
+              req = urllib.request.Request(base + method, data=body)
+              with urllib.request.urlopen(req, timeout=25) as response:
+                  return json.load(response)
+
+          current = call("getWebhookInfo")["result"].get("url", "")
+          if current and current != target:
+              raise SystemExit("V15_WEBHOOK_ACTIVATION_BLOCKED_EXISTING_URL")
+
+          result = call("setWebhook", {
+              "url": target,
+              "secret_token": secret,
+              "drop_pending_updates": "false",
+              "allowed_updates": json.dumps(["message", "callback_query"])
+          })
+          assert result.get("ok"), "V15_WEBHOOK_ACTIVATION_FAILED"
+
+          verified = call("getWebhookInfo")["result"]
+          assert verified.get("url") == target, "V15_WEBHOOK_URL_MISMATCH"
+          print("V15_PRIVATE_TELEGRAM_WEBHOOK_ACTIVATED")
+          print("V15_PUBLIC_POSTING_NOT_ENABLED")
+          ACTIVATE
 
       - name: Deploy V15 private Telegram Worker
         if: ${{ github.event_name == 'workflow_dispatch' && inputs.v15_webhook_deploy == true }}
