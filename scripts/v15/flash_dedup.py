@@ -38,7 +38,7 @@ def claim(candidate):
     raw_price = candidate.get('current_price')
     if raw_price is None:
         discount = Decimal(str(candidate.get('displayed_discount_pct', 0)))
-        if not discount.is_finite() or not 5 <= discount <= 100:
+        if not discount.is_finite() or not 1 <= discount <= 100:
             raise ValueError('INVALID_DISPLAYED_DISCOUNT')
         price = 0
     else:

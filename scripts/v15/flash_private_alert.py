@@ -15,13 +15,14 @@ def payload(candidate):
         raise ValueError("INVALID_ASIN")
 
     discount = Decimal(str(candidate.get("displayed_discount_pct", 0)))
-    if not discount.is_finite() or not 5 <= discount <= 100:
+    if not discount.is_finite() or not 1 <= discount <= 100:
         raise ValueError("INVALID_DISCOUNT")
 
     category = candidate.get("category", "SUPER_ULTRA")
     labels = {
         "NORMAL": "🟢 عرض عادي",
         "ULTRA": "🔥 عرض ألترا",
+        "STRONG": "🟠 عرض قوي",
         "SUPER_ULTRA": "🚨🔥 سوبر ألترا",
     }
     label = labels.get(category, "🚨 عرض أمازون")
