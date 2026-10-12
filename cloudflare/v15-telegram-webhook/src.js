@@ -85,6 +85,13 @@ async function handleCallback(env, cb) {
     const allowed = action==='approve'?['preview']:action==='publish'?['waiting','new']:['waiting','new','editing','preview'];
     const changed = await transition(env,asin,next,allowed);
     await answer(env,cb.id,changed?(next==='publish_requested'?'تم تسجيل طلب تجريبي فقط':next==='ignored'?'تم التجاهل':'بانتظار التحقق'):'الزر قديم أو تم تنفيذ الإجراء');
+    if (changed && next==='publish_requested') {
+      try {
+        await send(env,`✅ تم اعتماد العرض ${asin} بنجاح.\n📋 تم تسجيل طلب النشر التجريبي في قاعدة البيانات.\n🔒 لم يتم النشر للعامة.`);
+      } catch (e) {
+        console.error('V15_PRIVATE_APPROVAL_CONFIRMATION_FAILED');
+      }
+    }
     // No public destination, no public Telegram send method, no channel IDs.
   }
   return json({ok:true});
