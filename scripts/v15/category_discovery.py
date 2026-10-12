@@ -89,8 +89,20 @@ def main():
     for name,url in selected:
         try:
             source_url=discovery_source(name,url,visit)
-            body=fetch(source_url)
-            asins=extract_asins(body)
+            try:
+                body=fetch(source_url)
+                asins=extract_asins(body)
+            except (urllib.error.URLError, TimeoutError, OSError) as exc:
+                print('V15_DISCOVERY_PRIMARY_FAILED',name,type(exc).__name__,flush=True)
+                asins=[]
+
+            if not asins and source_url != url:
+                try:
+                    asins=extract_asins(fetch(url))
+                    print('V15_DISCOVERY_FALLBACK',name,len(asins),flush=True)
+                except (urllib.error.URLError, TimeoutError, OSError) as exc:
+                    print('V15_DISCOVERY_FALLBACK_FAILED',name,type(exc).__name__,flush=True)
+                    asins=[]
             print('V15_DISCOVERY_CATEGORY',name,'found',len(asins),'source',source_url.split('?')[0],flush=True)
             if asins:
                 take=min(20,len(asins))
