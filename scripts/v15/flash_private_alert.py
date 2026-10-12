@@ -10,31 +10,56 @@ from flash_review import keyboard, interactive_enabled
 ASIN_RE = re.compile(r"^[A-Z0-9]{10}$")
 
 def payload(candidate):
-    asin = str(candidate.get('asin', ''))
+    asin = str(candidate.get("asin", ""))
     if not ASIN_RE.fullmatch(asin):
-        raise ValueError('INVALID_ASIN')
-    price = Decimal(str(candidate['current_price']))
-    reference = Decimal(str(candidate['displayed_reference']))
-    discount = Decimal(str(candidate['displayed_discount_pct']))
-    if not (price.is_finite() and reference.is_finite() and discount.is_finite() and 0 < price < reference and 70 <= discount < 100):
-        raise ValueError('INVALID_FLASH_PRICE')
-    url = 'https://www.amazon.eg/dp/' + asin
-    name = str(candidate.get('title') or candidate.get('name') or '').strip()
-    name = re.sub(r'[\x00-\x1f\x7f]', ' ', name)[:180]
-    if not name:
-        name = 'منتج على أمازون مصر'
-    text = (
-        f'🔥 عرض مميز على أمازون مصر! 🇪🇬\n\n'
-        f'🛍️ {name}\n\n'
-        f'💰 السعر المرصود: {price:,.2f} جنيه\n'
-        f'🏷️ السعر المرجعي المعروض: {reference:,.2f} جنيه\n'
-        f'🔥 الخصم الظاهر: {discount}%\n\n'
-        '🔎 عرض قيد المراجعة والتحقق.\n'
-        '⚠️ السعر المرجعي ليس تاريخ سعر موثقًا.\n'
-        '⏳ الأسعار والعروض قابلة للتغيير.\n\n'
-        '🔒 مراجعة خاصة — لا يوجد نشر عام.'
-    )
-    return {'text': text, 'reply_markup': json.dumps(keyboard(candidate, interactive=interactive_enabled()), ensure_ascii=False)}
+        raise ValueError("INVALID_ASIN")
+
+    price = Decimal(str(candidate["current_price"]))
+    if not price.is_finite() or price <= 0:
+        raise ValueError("INVALID_PRICE")
+
+    name = str(candidate.get("title") or candidate.get("name") or "منتج على أمازون مصر")
+    name = re.sub(r"[\\x00-\\x1f\\x7f]", " ", name).strip()[:180]
+
+    if candidate.get("review_type") == "PRICE_ONLY":
+        text = (
+            f"🛍️ منتج يستحق المراجعة | أمازون مصر 🇪🇬\\n\\n"
+            f"📦 {name}\\n\\n"
+            f"💰 السعر المرصود: {price:,.2f} جنيه\\n\\n"
+            "🔎 لا يوجد خصم تاريخي مؤكد.\\n"
+            "⚠️ راجع السعر والتوافر قبل اتخاذ القرار.\\n\\n"
+            "🔒 مراجعة خاصة فقط — النشر العام معطّل."
+        )
+    else:
+        reference = Decimal(str(candidate["displayed_reference"]))
+        discount = Decimal(str(candidate["displayed_discount_pct"]))
+        if not (
+            reference.is_finite()
+            and discount.is_finite()
+            and 0 < price < reference
+            and 70 <= discount < 100
+        ):
+            raise ValueError("INVALID_FLASH_PRICE")
+
+        text = (
+            f"🔥 عرض مميز على أمازون مصر! 🇪🇬\\n\\n"
+            f"🛍️ {name}\\n\\n"
+            f"💰 السعر المرصود: {price:,.2f} جنيه\\n"
+            f"🏷️ السعر المرجعي المعروض: {reference:,.2f} جنيه\\n"
+            f"🔥 الخصم الظاهر: {discount}%\\n\\n"
+            "⚠️ السعر المرجعي ليس تاريخ سعر موثقًا.\\n"
+            "🔎 العرض قيد المراجعة والتحقق.\\n"
+            "🔒 لا يوجد نشر عام."
+        )
+
+    return {
+        "text": text,
+        "reply_markup": json.dumps(
+            keyboard(candidate, interactive=interactive_enabled()),
+            ensure_ascii=False,
+        ),
+    }
+
 
 def send(candidate, *, token=None, chat_id=None, opener=None):
     token = token if token is not None else os.environ.get('V15_TELEGRAM_BOT_TOKEN', '')

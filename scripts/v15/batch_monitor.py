@@ -13,6 +13,7 @@ from d1_price_observation import prepare_observation
 from flash_candidate import stage as stage_flash_candidate
 from flash_private_alert import send as send_flash_alert
 from flash_dedup import initialize as initialize_flash_dedup, send_once as send_flash_once
+from private_price_review import review as review_price
 
 ROOT = Path(__file__).resolve().parents[2]
 PROBE = ROOT / 'scripts/v15/live_probe.py'
@@ -85,6 +86,12 @@ def process(lease):
         run(['npx', '--yes', 'wrangler@4.149.0', 'd1', 'execute', DATABASE,
              '--remote', '--file', str(sql)], ROOT, timeout=90)
         print('V15_BATCH_PRICE_SAVED', asin, flush=True)
+        try:
+            status = review_price(report)
+            print("V15_PRIVATE_PRICE_REVIEW", asin, status, flush=True)
+        except Exception as exc:
+            print("V15_PRIVATE_PRICE_REVIEW_FAILED", asin, type(exc).__name__, flush=True)
+
         return 'saved'
 
 
