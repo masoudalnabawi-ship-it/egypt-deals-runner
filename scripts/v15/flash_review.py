@@ -10,13 +10,15 @@ def keyboard(candidate, *, interactive=False):
     asin = str(candidate.get('asin', ''))
     if not ASIN.fullmatch(asin):
         raise ValueError('INVALID_ASIN')
-    rows = [[{'text': '🛒 فتح المنتج', 'url': 'https://www.amazon.eg/dp/' + asin}]]
+    rows = [[
+        {'text': '🛒 فتح المنتج على أمازون', 'url': 'https://www.amazon.eg/dp/' + asin},
+        {'text': '🔎 البحث عن المنتج', 'url': 'https://www.amazon.eg/s?k=' + asin},
+    ]]
     if interactive:
         rows += [
             [{'text': '🚀 طلب نشر (تجريبي)', 'callback_data': 'v15:publish:' + asin},
              {'text': '✏️ تعديل / رسالة مخصصة', 'callback_data': 'v15:edit:' + asin}],
-            [{'text': '🔍 انتظار التحقق', 'callback_data': 'v15:wait:' + asin},
-             {'text': '❌ تجاهل', 'callback_data': 'v15:ignore:' + asin}],
+            [{'text': '❌ تجاهل', 'callback_data': 'v15:ignore:' + asin}],
         ]
     return {'inline_keyboard': rows}
 
