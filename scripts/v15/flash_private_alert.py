@@ -62,14 +62,72 @@ def payload(candidate):
 
 
 def send(candidate, *, token=None, chat_id=None, opener=None):
-    token = token if token is not None else os.environ.get('V15_TELEGRAM_BOT_TOKEN', '')
-    chat_id = chat_id if chat_id is not None else os.environ.get('V15_TELEGRAM_REVIEW_CHAT_ID', '')
-    if not token or not re.fullmatch(r'-?\d+', str(chat_id).strip()):
+    """Send a private Telegram alert with verified screenshot when available."""
+    import hashlib
+    import mimetypes
+    import uuid
+    from pathlib import Path
+
+    token = token if token is not None else os.environ.get("V15_TELEGRAM_BOT_TOKEN", "")
+    chat_id = chat_id if chat_id is not None else os.environ.get("V15_TELEGRAM_REVIEW_CHAT_ID", "")
+
+    if not token or not re.fullmatch(r"-?\\d+", str(chat_id).strip()):
         return False
+
     data = payload(candidate)
-    data['chat_id'] = str(chat_id).strip()
-    req = urllib.request.Request('https://api.telegram.org/bot' + token + '/sendMessage', data=urllib.parse.urlencode(data).encode(), method='POST')
+    data["chat_id"] = str(chat_id).strip()
+
+    screenshot_path = candidate.get("screenshot_path")
+    screenshot_hash = candidate.get("screenshot_sha256")
+
+    if screenshot_path and screenshot_hash:
+        screenshot = Path(screenshot_path)
+
+        if screenshot.is_file():
+            image_bytes = screenshot.read_bytes()
+            actual_hash = hashlib.sha256(image_bytes).hexdigest()
+
+            if actual_hash != screenshot_hash:
+                raise RuntimeError("V15_TELEGRAM_SCREENSHOT_HASH_MISMATCH")
+
+            boundary = "V15-" + uuid.uuid4().hex
+            fields = dict(data)
+            fields["caption"] = fields.pop("text")[:1024]
+
+            body = bytearray()
+
+            for key, value in fields.items():
+                body.extend(("--" + boundary + "\\r\\n").encode())
+                body.extend(
+                    ('Content-Disposition: form-data; name="' + key + '"\\r\\n\\r\\n').encode()
+                )
+                body.extend(str(value).encode("utf-8"))
+                body.extend(b"\\r\\n")
+
+            body.extend(("--" + boundary + "\\r\\n").encode())
+            body.extend(
+                b'Content-Disposition: form-data; name="photo"; filename="amazon-product.jpg"\\r\\n'
+            )
+            body.extend(b"Content-Type: image/jpeg\\r\\n\\r\\n")
+            body.extend(image_bytes)
+            body.extend(b"\\r\\n")
+            body.extend(("--" + boundary + "--\\r\\n").encode())
+
+            req = urllib.request.Request(
+                "https://api.telegram.org/bot" + token + "/sendPhoto",
+                data=bytes(body),
+                headers={"Content-Type": "multipart/form-data; boundary=" + boundary},
+                method="POST",
+            )
+            op = opener or urllib.request.urlopen
+            with op(req, timeout=20) as response:
+                return json.load(response).get("ok") is True
+
+    req = urllib.request.Request(
+        "https://api.telegram.org/bot" + token + "/sendMessage",
+        data=urllib.parse.urlencode(data).encode(),
+        method="POST",
+    )
     op = opener or urllib.request.urlopen
     with op(req, timeout=12) as response:
-        result = json.load(response)
-    return result.get('ok') is True
+        return json.load(response).get("ok") is True

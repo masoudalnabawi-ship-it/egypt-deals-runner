@@ -94,7 +94,14 @@ def process(lease):
                 print('V15_FLASH_CANDIDATE', asin, 'UNVERIFIED', flush=True)
                 try:
                     initialize_flash_dedup()
-                    status = send_flash_once(json.loads(candidate_path.read_text(encoding='utf-8')), send_flash_alert)
+                    status = send_flash_once(
+                        dict(
+                            json.loads(candidate_path.read_text(encoding='utf-8')),
+                            screenshot_path=str(saved_screenshot),
+                            screenshot_sha256=report["screenshot_sha256"],
+                        ),
+                        send_flash_alert
+                    )
                     print('V15_FLASH_PRIVATE_ALERT', asin, status, flush=True)
                 except Exception as alert_exc:
                     print('V15_FLASH_PRIVATE_ALERT_FAILED', asin, type(alert_exc).__name__, flush=True)
@@ -114,7 +121,12 @@ def process(lease):
              '--remote', '--file', str(sql)], ROOT, timeout=90)
         print('V15_BATCH_PRICE_SAVED', asin, flush=True)
         try:
-            status = review_price(report)
+            status = review_price(
+                dict(
+                    report,
+                    screenshot_path=str(saved_screenshot),
+                )
+            )
             print("V15_PRIVATE_PRICE_REVIEW", asin, status, flush=True)
         except Exception as exc:
             print("V15_PRIVATE_PRICE_REVIEW_FAILED", asin, type(exc).__name__, flush=True)

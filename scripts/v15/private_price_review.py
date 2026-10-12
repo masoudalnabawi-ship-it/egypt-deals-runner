@@ -50,6 +50,8 @@ def review(report):
         "title": obs.get("title") or "منتج على أمازون مصر",
         "review_type": "PRICE_ONLY",
         "publication_allowed": False,
+        "screenshot_path": report.get("screenshot_path"),
+        "screenshot_sha256": report.get("screenshot_sha256"),
     }
 
     initialize()
