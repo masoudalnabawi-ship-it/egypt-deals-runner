@@ -21,3 +21,8 @@ cloudflare_v14/node_modules/
 cloudflare_v14/.wrangler/
 
 *.bak-smoke
+
+# V15 local security backups
+*.js.backup
+*.sql.backup
+*.before-security-patch
