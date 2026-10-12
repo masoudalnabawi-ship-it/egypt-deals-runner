@@ -123,9 +123,9 @@ jobs:
             "REVIEW_CHAT_ID":os.environ["V15_TELEGRAM_REVIEW_CHAT_ID"],
             "BOT_USER_ID":os.environ["BOT_USER_ID"]
           }))' > /tmp/v15-worker-secrets.json
+          npx --yes wrangler@4.149.0 deploy
           npx --yes wrangler@4.149.0 secret bulk /tmp/v15-worker-secrets.json
           rm -f /tmp/v15-worker-secrets.json
-          npx --yes wrangler@4.149.0 deploy
           echo 'V15_WORKER_DEPLOYED_NO_TELEGRAM_WEBHOOK_ACTIVATION'
 
       - name: V15 webhook schema migration
