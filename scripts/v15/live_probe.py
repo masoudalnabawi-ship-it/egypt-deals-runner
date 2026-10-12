@@ -59,7 +59,7 @@ def main():
                     url,
                     asin,
                 )
-            except Exception:
+            except Exception as probe_error:
                 diagnostic = output / "amazon-failed-page.jpg"
                 html = output / "amazon-failed-page.html"
 
@@ -83,6 +83,16 @@ def main():
                         str(diagnostic_error),
                     )
 
+                if isinstance(probe_error, RuntimeError) and str(probe_error) == "no_live_price":
+                    # Missing price is not evidence of a discount. Preserve diagnostics,
+                    # release the lease with failure backoff, and continue next run.
+                    github_output = os.environ.get("GITHUB_OUTPUT")
+                    if not github_output:
+                        raise RuntimeError("V15_GITHUB_OUTPUT_REQUIRED") from probe_error
+                    with open(github_output, "a", encoding="utf-8") as stream:
+                        stream.write("price_unavailable=true\n")
+                    print("V15_PRICE_UNAVAILABLE", asin, flush=True)
+                    return
                 raise
 
             screenshot = output / "amazon-real-screenshot.jpg"

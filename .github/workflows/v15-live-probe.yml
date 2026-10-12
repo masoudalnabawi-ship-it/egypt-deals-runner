@@ -59,6 +59,7 @@ jobs:
         run: python scripts/v15/monitoring_cycle.py claim
 
       - name: Capture real Amazon evidence
+        id: probe
         if: steps.lease.outputs.claimed == 'true'
         run: python scripts/v15/live_probe.py
 
@@ -68,14 +69,14 @@ jobs:
           python scripts/v15/evidence_pipeline.py v15-live-evidence/verification.json
 
       - name: Prepare validated price observation
-        if: steps.lease.outputs.claimed == 'true'
+        if: steps.lease.outputs.claimed == 'true' && steps.probe.outputs.price_unavailable != 'true'
         run: |
           python scripts/v15/d1_price_observation.py \
             v15-live-evidence/verification.json \
             v15-live-evidence/price-observation.sql
 
       - name: Save price to V15 Cloudflare D1
-        if: steps.lease.outputs.claimed == 'true'
+        if: steps.lease.outputs.claimed == 'true' && steps.probe.outputs.price_unavailable != 'true'
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.V15_CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: b015795e3322f02ca29cf8d8f1982212
@@ -102,7 +103,7 @@ jobs:
           echo "V15_D1_HISTORY_READ_OK"
 
       - name: Complete V15 monitoring after D1 save
-        if: steps.lease.outputs.claimed == 'true'
+        if: steps.lease.outputs.claimed == 'true' && steps.probe.outputs.price_unavailable != 'true'
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.V15_CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: b015795e3322f02ca29cf8d8f1982212
@@ -111,7 +112,7 @@ jobs:
         run: python scripts/v15/monitoring_cycle.py complete
 
       - name: Reschedule V15 after probe failure
-        if: ${{ failure() && steps.lease.outputs.claimed == 'true' }}
+        if: ${{ (failure() || steps.probe.outputs.price_unavailable == 'true') && steps.lease.outputs.claimed == 'true' }}
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.V15_CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: b015795e3322f02ca29cf8d8f1982212
