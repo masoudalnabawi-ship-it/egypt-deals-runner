@@ -64,7 +64,7 @@ jobs:
         run: python scripts/v15/live_probe.py
 
       - name: Diagnose evidence (non-sensitive summary)
-        if: steps.lease.outputs.claimed == 'true'
+        if: steps.lease.outputs.claimed == 'true' && steps.probe.outputs.price_unavailable != 'true'
         run: |
           python scripts/v15/evidence_pipeline.py v15-live-evidence/verification.json
 
