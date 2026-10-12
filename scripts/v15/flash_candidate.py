@@ -37,6 +37,7 @@ def candidate(report, threshold=Decimal("5")):
         "asin": report["asin"],
         "url": report.get("url"),
         "current_price": price,
+        "title": str(obs.get("title") or "").strip()[:180],
         "displayed_discount_pct": str(pct),
         "category": category,
         "captured_at": report.get("captured_at"),

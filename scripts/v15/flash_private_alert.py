@@ -27,25 +27,25 @@ def payload(candidate):
     label = labels.get(category, "🚨 عرض أمازون")
 
     name = str(candidate.get("title") or candidate.get("name") or "منتج على أمازون مصر")
-    name = re.sub(r"[\\x00-\\x1f\\x7f]", " ", name).strip()[:180]
+    name = re.sub(r"[\x00-\x1f\x7f]", " ", name).strip()[:180]
 
     price = candidate.get("current_price")
     price_line = ""
     if price is not None:
         amount = Decimal(str(price))
         if amount.is_finite() and amount > 0:
-            price_line = f"💰 السعر الحالي: {amount:,.2f} جنيه\\n"
+            price_line = f"💰 السعر الحالي: {amount:,.2f} جنيه\n"
 
     url = "https://www.amazon.eg/dp/" + asin
 
     text = (
-        f"{label} | أمازون مصر 🇪🇬\\n\\n"
-        f"📦 {name}\\n"
-        f"📉 الخصم المعلن: {discount}%\\n"
+        f"{label} | أمازون مصر 🇪🇬\n\n"
+        f"📦 {name}\n"
+        f"📉 الخصم المعلن: {discount}%\n"
         f"{price_line}"
-        f"🛒 {url}\\n\\n"
-        "⚡ تنبيه بناءً على الخصم الظاهر على أمازون.\\n"
-        "⚠️ لم تتم مقارنة الخصم بتاريخ الأسعار.\\n"
+        f"🛒 {url}\n\n"
+        "⚡ تنبيه بناءً على الخصم الظاهر على أمازون.\n"
+        "⚠️ لم تتم مقارنة الخصم بتاريخ الأسعار.\n"
         "🔒 تنبيه خاص — النشر العام معطّل."
     )
 
@@ -67,7 +67,7 @@ def send(candidate, *, token=None, chat_id=None, opener=None):
     token = token if token is not None else os.environ.get("V15_TELEGRAM_BOT_TOKEN", "")
     chat_id = chat_id if chat_id is not None else os.environ.get("V15_TELEGRAM_REVIEW_CHAT_ID", "")
 
-    if not token or not re.fullmatch(r"-?\\d+", str(chat_id).strip()):
+    if not token or not re.fullmatch(r"-?\d+", str(chat_id).strip()):
         return False
 
     data = payload(candidate)
@@ -93,21 +93,21 @@ def send(candidate, *, token=None, chat_id=None, opener=None):
             body = bytearray()
 
             for key, value in fields.items():
-                body.extend(("--" + boundary + "\\r\\n").encode())
+                body.extend(("--" + boundary + "\r\n").encode())
                 body.extend(
-                    ('Content-Disposition: form-data; name="' + key + '"\\r\\n\\r\\n').encode()
+                    ('Content-Disposition: form-data; name="' + key + '"\r\n\r\n').encode()
                 )
                 body.extend(str(value).encode("utf-8"))
-                body.extend(b"\\r\\n")
+                body.extend(b"\r\n")
 
-            body.extend(("--" + boundary + "\\r\\n").encode())
+            body.extend(("--" + boundary + "\r\n").encode())
             body.extend(
-                b'Content-Disposition: form-data; name="photo"; filename="amazon-product.jpg"\\r\\n'
+                b'Content-Disposition: form-data; name="photo"; filename="amazon-product.jpg"\r\n'
             )
-            body.extend(b"Content-Type: image/jpeg\\r\\n\\r\\n")
+            body.extend(b"Content-Type: image/jpeg\r\n\r\n")
             body.extend(image_bytes)
-            body.extend(b"\\r\\n")
-            body.extend(("--" + boundary + "--\\r\\n").encode())
+            body.extend(b"\r\n")
+            body.extend(("--" + boundary + "--\r\n").encode())
 
             req = urllib.request.Request(
                 "https://api.telegram.org/bot" + token + "/sendPhoto",
