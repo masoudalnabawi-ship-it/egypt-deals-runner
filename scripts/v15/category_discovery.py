@@ -22,6 +22,42 @@ CATEGORIES = (
     ('toys', 'https://www.amazon.eg/-/en/gp/browse.html?node=18022591031'),
     ('sports', 'https://www.amazon.eg/-/en/gp/browse.html?node=18022589031'),
 )
+
+# V15_DISCOVERY_V4: rotate real source URLs, not only ASIN positions.
+# Public pages only; bounded requests; no CAPTCHA or access-control bypass.
+from urllib.parse import urlencode
+
+SEARCH_TERMS = {
+    "electronics": ("headphones", "smart tv", "bluetooth speaker", "camera"),
+    "computers": ("laptop", "monitor", "keyboard", "ssd"),
+    "home": ("kitchen", "vacuum cleaner", "air fryer", "coffee maker"),
+    "beauty": ("skincare", "shampoo", "perfume", "hair dryer"),
+    "fashion": ("shoes", "backpack", "watch", "jacket"),
+    "grocery": ("coffee", "chocolate", "detergent", "olive oil"),
+    "toys": ("lego", "puzzle", "remote control car", "board games"),
+    "sports": ("fitness", "football", "running shoes", "dumbbells"),
+}
+
+def discovery_source(name, landing_url, visit):
+    """Return a different public Amazon search URL on successive visits."""
+    terms = SEARCH_TERMS.get(name, ())
+    if not terms:
+        return landing_url
+
+    # Alternate landing pages with rotating search terms and result pages.
+    mode = visit % (len(terms) * 3 + 1)
+    if mode == 0:
+        return landing_url
+
+    index = mode - 1
+    term = terms[index % len(terms)]
+    page = 1 + ((index // len(terms)) % 3)
+
+    return "https://www.amazon.eg/-/en/s?" + urlencode({
+        "k": term,
+        "page": page,
+    })
+
 ASIN_RE = re.compile(r'(?:/dp/|/gp/product/)([A-Z0-9]{10})(?![A-Z0-9])', re.I)
 DATA_RE = re.compile(r'data-asin=["\']([A-Z0-9]{10})["\']', re.I)
 
@@ -52,9 +88,10 @@ def main():
     visit=slot//(len(CATEGORIES)//2)
     for name,url in selected:
         try:
-            body=fetch(url)
+            source_url=discovery_source(name,url,visit)
+            body=fetch(source_url)
             asins=extract_asins(body)
-            print('V15_DISCOVERY_CATEGORY',name,'found',len(asins),flush=True)
+            print('V15_DISCOVERY_CATEGORY',name,'found',len(asins),'source',source_url.split('?')[0],flush=True)
             if asins:
                 take=min(20,len(asins))
                 start=(visit*take)%len(asins)
