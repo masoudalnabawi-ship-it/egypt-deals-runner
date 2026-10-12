@@ -54,11 +54,34 @@ def main():
             page = context.new_page()
 
             try:
-                observation = v14.inspect_amazon(
-                    page,
-                    url,
-                    asin,
-                )
+                # V15 only: retry once for a transient missing-price page.
+                # Never retry an access challenge, login redirect or out-of-stock page.
+                for attempt in range(2):
+                    try:
+                        observation = v14.inspect_amazon(page, url, asin)
+                        break
+                    except RuntimeError as error:
+                        if str(error) != "no_live_price" or attempt == 1:
+                            raise
+                        try:
+                            title = page.title().lower()
+                            body = page.locator("body").inner_text(timeout=3000).lower()
+                            current_url = page.url.lower()
+                        except Exception:
+                            # Unknown page state: do not retry blindly.
+                            raise error
+                        blocked = any(marker in title + body for marker in (
+                            "captcha", "robot check", "enter the characters you see",
+                        ))
+                        unavailable = any(marker in body for marker in (
+                            "currently unavailable", "temporarily out of stock",
+                            "غير متوفر حالياً", "غير متوفر حاليًا",
+                        ))
+                        if blocked or "signin" in current_url or unavailable:
+                            raise
+                        print("V15_TRANSIENT_PRICE_RETRY", asin, flush=True)
+                        page.close()
+                        page = context.new_page()
             except Exception as probe_error:
                 diagnostic = output / "amazon-failed-page.jpg"
                 html = output / "amazon-failed-page.html"
