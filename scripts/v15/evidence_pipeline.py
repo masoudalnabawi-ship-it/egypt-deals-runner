@@ -49,30 +49,26 @@ def evaluate_evidence(report_path):
             if digest != report.get("screenshot_sha256"):
                 result["reasons"].append("screenshot_hash_mismatch")
 
+    # A first-listed product may have no struck-through reference price.
+    # Verify its *current* price independently; never invent a discount.
     try:
         current = Decimal(str(obs["current_price"]))
-        reference = Decimal(str(obs["old_price"]))
-
-        if (
-            not current.is_finite()
-            or not reference.is_finite()
-            or current <= 0
-            or reference <= current
-        ):
-            result["reasons"].append("invalid_prices")
-        else:
-            discount = (
-                (reference - current)
-                / reference
-                * Decimal("100")
-            )
-
-            result["displayed_discount"] = str(
-                discount.quantize(Decimal("0.01"))
-            )
-
+        if not current.is_finite() or current <= 0:
+            result["reasons"].append("invalid_current_price")
     except (KeyError, InvalidOperation, ValueError, TypeError):
-        result["reasons"].append("missing_or_invalid_prices")
+        result["reasons"].append("missing_or_invalid_current_price")
+
+    reference_raw = obs.get("old_price")
+    if reference_raw is not None and str(reference_raw).strip():
+        try:
+            reference = Decimal(str(reference_raw))
+            if reference.is_finite() and reference > current > 0:
+                discount = (reference - current) / reference * Decimal("100")
+                result["displayed_discount"] = str(discount.quantize(Decimal("0.01")))
+            else:
+                result.setdefault("warnings", []).append("unusable_displayed_reference")
+        except (InvalidOperation, ValueError, TypeError, UnboundLocalError):
+            result.setdefault("warnings", []).append("unusable_displayed_reference")
 
     if result["reasons"]:
         return result

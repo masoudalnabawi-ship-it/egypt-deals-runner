@@ -61,7 +61,8 @@ def main():
         stamp=timestamp(now)
         values=','.join('('+','.join(map(quote,(asin,'STABLE',stamp,stamp)))+')' for asin in asins)
         query('INSERT OR IGNORE INTO product_monitoring (asin,priority,next_check_at,updated_at) VALUES '+values+';')
-    print('V15_DISCOVERY_SEEDED',len(asins),flush=True)
+    print('V15_DISCOVERY_ATTEMPTED',len(asins),flush=True)
+    print('V15_DISCOVERY_SEEDED',len(asins),'attempted_not_new_count',flush=True)
     # Read-only counters to distinguish no catalog from not-yet-due.
     try:
         rows=query("SELECT COUNT(*) AS total, SUM(CASE WHEN next_check_at <= strftime('%Y-%m-%dT%H:%M:%S+00:00','now') THEN 1 ELSE 0 END) AS due FROM product_monitoring;")

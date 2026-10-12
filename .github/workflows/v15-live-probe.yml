@@ -62,6 +62,11 @@ jobs:
         if: steps.lease.outputs.claimed == 'true'
         run: python scripts/v15/live_probe.py
 
+      - name: Diagnose evidence (non-sensitive summary)
+        if: steps.lease.outputs.claimed == 'true'
+        run: |
+          python scripts/v15/evidence_pipeline.py v15-live-evidence/verification.json
+
       - name: Prepare validated price observation
         if: steps.lease.outputs.claimed == 'true'
         run: |
