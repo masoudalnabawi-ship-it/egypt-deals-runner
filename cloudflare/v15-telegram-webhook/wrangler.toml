@@ -1,0 +1,10 @@
+name = "egypt-amazon-v15-telegram-webhook"
+main = "src.js"
+account_id = "b015795e3322f02ca29cf8d8f1982212"
+compatibility_date = "2026-10-12"
+workers_dev = true
+# Fill database_id with the ID of egypt-amazon-v15-db before deploying.
+# [[d1_databases]]
+# binding = "DB"
+# database_name = "egypt-amazon-v15-db"
+# database_id = "REPLACE_WITH_ACTUAL_DATABASE_ID"
