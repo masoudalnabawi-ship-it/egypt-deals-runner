@@ -79,8 +79,8 @@ def main():
         raise RuntimeError('V15_CLOUDFLARE_TOKEN_MISSING')
     now=datetime.now(timezone.utc)
     # Rotate category pair every 5-minute slot; bounded to two pages per run.
-    offset=(int(now.timestamp())//300*2)%len(CATEGORIES)
-    selected=[CATEGORIES[(offset+i)%len(CATEGORIES)] for i in range(2)]
+    offset=(int(now.timestamp())//300*4)%len(CATEGORIES)
+    selected=[CATEGORIES[(offset+i)%len(CATEGORIES)] for i in range(4)]
     discovered=set()
     # V15_DISCOVERY_V3: on successive visits, rotate through a category's
     # ASINs instead of repeatedly sampling its first 12 entries.
@@ -105,7 +105,7 @@ def main():
                     asins=[]
             print('V15_DISCOVERY_CATEGORY',name,'found',len(asins),'source',source_url.split('?')[0],flush=True)
             if asins:
-                take=min(20,len(asins))
+                take=min(40,len(asins))
                 start=(visit*take)%len(asins)
                 rotated=(asins+asins)[start:start+take]
                 discovered.update(rotated)
@@ -122,7 +122,7 @@ def main():
         rows=query('SELECT asin FROM product_monitoring WHERE asin IN (' +
                    ','.join(quote(asin) for asin in candidates) + ');')
         known={str(row['asin']).upper() for row in rows}
-    asins=[asin for asin in candidates if asin not in known][:20]
+    asins=[asin for asin in candidates if asin not in known][:80]
     print('V15_DISCOVERY_CANDIDATES',len(candidates),flush=True)
     print('V15_DISCOVERY_ALREADY_KNOWN',len(known),flush=True)
     before_rows=query('SELECT COUNT(*) AS total FROM product_monitoring;')

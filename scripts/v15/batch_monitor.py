@@ -97,8 +97,8 @@ def process(lease):
 
 def main():
     count = int(os.environ.get('V15_BATCH_SIZE', '5'))
-    if not 1 <= count <= 5:
-        raise ValueError('V15_BATCH_SIZE must be 1..5')
+    if not 1 <= count <= 10:
+        raise ValueError('V15_BATCH_SIZE must be 1..10')
     saved = unavailable = failed = 0
     for _ in range(count):
         # An infrastructure failure during claiming is not silently treated as no work.
