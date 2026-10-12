@@ -123,6 +123,52 @@ async function handleMessage(env,msg) {
     .bind(preview.message_id,asin).run();
   return json({ok:true});
 }
+async function handleOwnerCommand(env, msg) {
+  if (!isOwner(env, msg.from, msg.chat)) return null;
+
+  const command = String(msg.text || '').trim().split(/\s+/)[0]
+    .split('@')[0].toLowerCase();
+
+  if (command === '/start') {
+    await send(env,
+      '🤖 أهلاً بيك في Egypt Deal Hunter V15!\n\n' +
+      '🔎 البوت جاهز لمراجعة عروض أمازون مصر.\n\n' +
+      '📊 /status — حالة النظام\n' +
+      '🛒 /deals — العروض المنتظرة للمراجعة\n\n' +
+      '🔒 النشر العام معطّل.');
+    return json({ok:true});
+  }
+
+  if (command === '/status') {
+    await send(env,
+      '✅ بوت V15 متصل ويستقبل الأوامر.\n' +
+      '🔐 المراجعة خاصة بالمالك.\n' +
+      '🔒 النشر العام معطّل.\n' +
+      'ℹ️ هذا لا يؤكد تشغيل اكتشاف العروض تلقائيًا.');
+    return json({ok:true});
+  }
+
+  if (command === '/deals') {
+    const result = await env.DB.prepare(
+      "SELECT asin,status FROM v15_review_drafts " +
+      "WHERE status NOT IN ('ignored','publish_requested') " +
+      "ORDER BY updated_at DESC LIMIT 10"
+    ).all();
+
+    const rows = result.results || [];
+
+    const text = rows.length
+      ? '🛒 عروض المراجعة:\n\n' +
+        rows.map(r => `${r.asin} — ${r.status}`).join('\n')
+      : '📭 لا توجد عروض مسجلة للمراجعة حاليًا.';
+
+    await send(env, text);
+    return json({ok:true});
+  }
+
+  return null;
+}
+
 async function limitedJson(request) {
   const reader=request.body?.getReader();
   if (!reader) throw Error('INVALID_JSON');
@@ -151,7 +197,11 @@ export default {async fetch(request,env) {
   try {update=await limitedJson(request);} catch(e) {return json({error:e.message==='TOO_LARGE'?'TOO_LARGE':'INVALID_JSON'},e.message==='TOO_LARGE'?413:400);}
   try {
     if (update.callback_query) return await handleCallback(env,update.callback_query);
-    if (update.message) return await handleMessage(env,update.message);
+    if (update.message) {
+      const commandResponse = await handleOwnerCommand(env, update.message);
+      if (commandResponse) return commandResponse;
+      return await handleMessage(env, update.message);
+    }
     return json({ok:true});
   } catch(e) {console.error('V15_WEBHOOK_FAILED',String(e?.message||e));return json({error:'RETRY'},500);}
 }};
