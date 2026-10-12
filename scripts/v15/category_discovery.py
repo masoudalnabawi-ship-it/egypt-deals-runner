@@ -42,8 +42,8 @@ def main():
     if not os.environ.get('CLOUDFLARE_API_TOKEN'):
         raise RuntimeError('V15_CLOUDFLARE_TOKEN_MISSING')
     now=datetime.now(timezone.utc)
-    # Alternate category pair each hour; no expensive full-catalog crawl.
-    offset=(int(now.timestamp())//3600*2)%len(CATEGORIES)
+    # Rotate category pair every 5-minute slot; bounded to two pages per run.
+    offset=(int(now.timestamp())//300*2)%len(CATEGORIES)
     selected=[CATEGORIES[(offset+i)%len(CATEGORIES)] for i in range(2)]
     discovered=set()
     for name,url in selected:
@@ -57,12 +57,17 @@ def main():
         time.sleep(2)
     # Batch INSERT OR IGNORE: never overwrite existing priorities, leases or schedules.
     asins=sorted(discovered)[:20]
+    before_rows=query('SELECT COUNT(*) AS total FROM product_monitoring;')
+    before=int(before_rows[0]['total']) if before_rows else 0
     if asins:
         stamp=timestamp(now)
         values=','.join('('+','.join(map(quote,(asin,'STABLE',stamp,stamp)))+')' for asin in asins)
         query('INSERT OR IGNORE INTO product_monitoring (asin,priority,next_check_at,updated_at) VALUES '+values+';')
+    after_rows=query('SELECT COUNT(*) AS total FROM product_monitoring;')
+    after=int(after_rows[0]['total']) if after_rows else before
+    print('V15_DISCOVERY_NEW',max(0,after-before),flush=True)
     print('V15_DISCOVERY_ATTEMPTED',len(asins),flush=True)
-    print('V15_DISCOVERY_SEEDED',len(asins),'attempted_not_new_count',flush=True)
+    print('V15_DISCOVERY_SEEDED',max(0,after-before),'actual_new_count',flush=True)
     # Read-only counters to distinguish no catalog from not-yet-due.
     try:
         rows=query("SELECT COUNT(*) AS total, SUM(CASE WHEN next_check_at <= strftime('%Y-%m-%dT%H:%M:%S+00:00','now') THEN 1 ELSE 0 END) AS due FROM product_monitoring;")
