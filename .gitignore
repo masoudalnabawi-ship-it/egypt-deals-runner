@@ -19,3 +19,5 @@ config.json
 *.bak_wide_v3
 cloudflare_v14/node_modules/
 cloudflare_v14/.wrangler/
+
+*.bak-smoke
