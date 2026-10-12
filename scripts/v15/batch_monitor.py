@@ -10,6 +10,7 @@ from pathlib import Path
 from d1_monitoring_lease import claim_next_due, release_after_failure, release_after_success
 from book_filter import classify, from_report
 from d1_price_observation import prepare_observation
+from flash_candidate import stage as stage_flash_candidate
 
 ROOT = Path(__file__).resolve().parents[2]
 PROBE = ROOT / 'scripts/v15/live_probe.py'
@@ -56,6 +57,13 @@ def process(lease):
             raise RuntimeError('V15_BATCH_SCREENSHOT_MISSING')
         if hashlib.sha256(screenshot.read_bytes()).hexdigest() != report.get('screenshot_sha256'):
             raise RuntimeError('V15_BATCH_SCREENSHOT_HASH_MISMATCH')
+        # Stage potential flash deal BEFORE D1 price persistence; never block monitoring.
+        try:
+            candidate_path = stage_flash_candidate(report, ROOT / 'v15-flash-candidates')
+            if candidate_path:
+                print('V15_FLASH_CANDIDATE', asin, 'UNVERIFIED', flush=True)
+        except Exception as flash_exc:
+            print('V15_FLASH_STAGING_FAILED', asin, type(flash_exc).__name__, flush=True)
         run([sys.executable, str(EVIDENCE), str(verification)], work, timeout=30)
         # prepare_observation validates the report and creates SQL without editing V14.
         observation = prepare_observation(verification)
