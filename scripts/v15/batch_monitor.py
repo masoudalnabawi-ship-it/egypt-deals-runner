@@ -6,6 +6,8 @@ import subprocess
 import sys
 import tempfile
 from pathlib import Path
+from concurrent.futures import ThreadPoolExecutor, as_completed
+import threading
 
 from d1_monitoring_lease import claim_next_due, release_after_failure, release_after_success
 from book_filter import classify, from_report
@@ -97,48 +99,76 @@ def process(lease):
 
 def main():
     count = int(os.environ.get('V15_BATCH_SIZE', '5'))
-    if not 1 <= count <= 10:
-        raise ValueError('V15_BATCH_SIZE must be 1..10')
-    saved = unavailable = failed = 0
+    if not 1 <= count <= 20:
+        raise ValueError('V15_BATCH_SIZE must be 1..20')
+
+    workers = int(os.environ.get("V15_BATCH_WORKERS", "4"))
+    if not 1 <= workers <= 4:
+        raise ValueError("V15_BATCH_WORKERS must be 1..4")
+
+    leases = []
     for _ in range(count):
-        # An infrastructure failure during claiming is not silently treated as no work.
         lease = claim_next_due(lease_minutes=15)
         if lease is None:
-            print('V15_BATCH_NO_MORE_DUE', flush=True)
+            print("V15_BATCH_NO_MORE_DUE", flush=True)
             break
-        asin, owner, priority = lease['asin'], lease['lease_owner'], lease['priority']
-        print('V15_BATCH_CLAIM', asin, flush=True)
+        leases.append(lease)
+        print("V15_BATCH_CLAIM", lease["asin"], flush=True)
+
+    def handle(lease):
+        asin = lease["asin"]
+        owner = lease["lease_owner"]
+        priority = lease["priority"]
         persisted = False
+
         try:
             outcome = process(lease)
-            persisted = outcome == 'saved'
-            if outcome in ('saved', 'blocked'):
+            persisted = outcome == "saved"
+
+            if outcome in ("saved", "blocked"):
                 release_after_success(asin, owner, priority)
-                if outcome == 'saved':
-                    saved += 1
-                else:
-                    print('V15_BATCH_BOOK_SKIPPED', asin, flush=True)
-                if outcome == 'blocked':
+                if outcome == "blocked":
                     from d1_monitoring_lease import query, quote
-                    query("UPDATE product_monitoring SET next_check_at=strftime('%Y-%m-%dT%H:%M:%S','now','+365 days') || '+00:00' WHERE asin=" + quote(asin) + " AND lease_owner IS NULL;")
-                print('V15_BATCH_COMPLETE', asin, flush=True)
-            else:
-                release_after_failure(asin, owner)
-                unavailable += 1
+                    query(
+                        "UPDATE product_monitoring SET "
+                        "next_check_at=strftime('%Y-%m-%dT%H:%M:%S','now','+365 days') || '+00:00' "
+                        "WHERE asin=" + quote(asin) + " AND lease_owner IS NULL;"
+                    )
+                    print("V15_BATCH_BOOK_SKIPPED", asin, flush=True)
+                print("V15_BATCH_COMPLETE", asin, flush=True)
+                return outcome
+
+            release_after_failure(asin, owner)
+            return "unavailable"
+
         except Exception as exc:
-            failed += 1
-            print('V15_BATCH_PRODUCT_FAILED', asin, type(exc).__name__, flush=True)
-            # If release fails, abort: an orphaned lease needs operator attention.
+            print("V15_BATCH_PRODUCT_FAILED", asin, type(exc).__name__, flush=True)
             if not persisted:
                 release_after_failure(asin, owner)
             else:
                 raise
-    print('V15_BATCH_SUMMARY', 'saved='+str(saved),
-          'unavailable='+str(unavailable), 'failed='+str(failed), flush=True)
-    # Product-level failures are isolated; an all-failed batch needs investigation.
-    if failed and not saved and not unavailable:
-        raise RuntimeError('V15_BATCH_ALL_PRODUCTS_FAILED')
+            return "failed"
 
+    results = []
+    with ThreadPoolExecutor(max_workers=workers) as executor:
+        futures = [executor.submit(handle, lease) for lease in leases]
+        for future in as_completed(futures):
+            results.append(future.result())
+
+    saved = results.count("saved")
+    unavailable = results.count("unavailable")
+    failed = results.count("failed")
+
+    print(
+        "V15_BATCH_SUMMARY",
+        "saved=" + str(saved),
+        "unavailable=" + str(unavailable),
+        "failed=" + str(failed),
+        flush=True
+    )
+
+    if failed and not saved and not unavailable:
+        raise RuntimeError("V15_BATCH_ALL_PRODUCTS_FAILED")
 
 if __name__ == '__main__':
     main()
