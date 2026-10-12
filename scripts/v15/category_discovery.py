@@ -27,6 +27,22 @@ CATEGORIES = (
 # Public pages only; bounded requests; no CAPTCHA or access-control bypass.
 from urllib.parse import urlencode
 
+# V13-inspired Ultra radar: public Amazon search surfaces.
+# Search filters are discovery hints, NOT proof of a verified discount.
+ULTRA_SEARCH_TERMS = (
+    "electronics", "television", "laptop", "headphones",
+    "home appliances", "beauty", "fashion", "toys",
+)
+
+def ultra_discovery_source(term, page=1):
+    """Generate a public search URL with a 50%+ discount filter."""
+    from urllib.parse import urlencode
+    return "https://www.amazon.eg/-/en/s?" + urlencode({
+        "k": term,
+        "rh": "p_n_pct-off-with-tax:270",
+        "page": page,
+    })
+
 SEARCH_TERMS = {
     "electronics": ("headphones", "smart tv", "bluetooth speaker", "camera"),
     "computers": ("laptop", "monitor", "keyboard", "ssd"),
@@ -112,6 +128,40 @@ def main():
         except (urllib.error.URLError, TimeoutError, OSError) as exc:
             print('V15_DISCOVERY_UNAVAILABLE',name,type(exc).__name__,flush=True)
         time.sleep(2)
+    # V13-inspired Ultra discovery: candidate collection only.
+    # Never treat a search filter as verified discount evidence.
+    ultra_slot = int(now.timestamp()) // 300
+    ultra_terms = [
+        ULTRA_SEARCH_TERMS[(ultra_slot * 2 + i) % len(ULTRA_SEARCH_TERMS)]
+        for i in range(2)
+    ]
+    ultra_found = set()
+
+    for term in ultra_terms:
+        page = 1 + (ultra_slot % 3)
+        url = ultra_discovery_source(term, page)
+        try:
+            asins = extract_asins(fetch(url))
+            if not asins:
+                from urllib.parse import urlencode
+                fallback = "https://www.amazon.eg/-/en/s?" + urlencode({
+                    "k": term, "page": page
+                })
+                asins = extract_asins(fetch(fallback))
+            ultra_found.update(asins[:40])
+            print("V15_ULTRA_RADAR_SCAN", term, len(asins), flush=True)
+        except (urllib.error.URLError, TimeoutError, OSError) as exc:
+            print("V15_ULTRA_RADAR_FAILED", term, type(exc).__name__, flush=True)
+        time.sleep(2)
+
+    discovered.update(ultra_found)
+    print("V15_ULTRA_RADAR_FOUND", len(ultra_found), flush=True)
+
+    # Ultra candidate ASINs are discovery hints, not verified deals.
+    # Keep them separate so the scheduler can prioritize them safely.
+    ultra_candidate_asins = set(ultra_found)
+    print("V15_ULTRA_PRIORITY_CANDIDATES", len(ultra_candidate_asins), flush=True)
+
     # Batch INSERT OR IGNORE: never overwrite existing priorities, leases or schedules.
     # Look up existing products in one bounded D1 query; only seed new ASINs.
     # Never modify an existing product's priority, lease or schedule.
@@ -122,14 +172,28 @@ def main():
         rows=query('SELECT asin FROM product_monitoring WHERE asin IN (' +
                    ','.join(quote(asin) for asin in candidates) + ');')
         known={str(row['asin']).upper() for row in rows}
-    asins=[asin for asin in candidates if asin not in known][:80]
+    # Give new Ultra radar candidates first access to the bounded seed batch.
+    # Search results are unverified; HOT means urgent verification only.
+    fresh = [asin for asin in candidates if asin not in known]
+    asins = sorted(
+        fresh,
+        key=lambda asin: (asin not in ultra_candidate_asins, asin)
+    )[:80]
     print('V15_DISCOVERY_CANDIDATES',len(candidates),flush=True)
     print('V15_DISCOVERY_ALREADY_KNOWN',len(known),flush=True)
     before_rows=query('SELECT COUNT(*) AS total FROM product_monitoring;')
     before=int(before_rows[0]['total']) if before_rows else 0
     if asins:
         stamp=timestamp(now)
-        values=','.join('('+','.join(map(quote,(asin,'STABLE',stamp,stamp)))+')' for asin in asins)
+        values=','.join(
+            '('+','.join(map(quote,(
+                asin,
+                'HOT' if asin in ultra_candidate_asins else 'STABLE',
+                stamp,
+                stamp
+            )))+')'
+            for asin in asins
+        )
         query('INSERT OR IGNORE INTO product_monitoring (asin,priority,next_check_at,updated_at) VALUES '+values+';')
     after_rows=query('SELECT COUNT(*) AS total FROM product_monitoring;')
     after=int(after_rows[0]['total']) if after_rows else before

@@ -84,9 +84,14 @@ def claim_next_due(lease_minutes=30):
         SELECT asin FROM product_monitoring
         WHERE next_check_at <= {quote(timestamp(now))}
           AND (lease_until IS NULL OR lease_until <= {quote(timestamp(now))})
-        ORDER BY next_check_at ASC,
+        ORDER BY
+          CASE
+            WHEN julianday(next_check_at) <= julianday({quote(timestamp(now))}) - (60.0 / 1440.0)
+            THEN 0 ELSE 1
+          END,
           CASE priority WHEN 'HOT' THEN 0 WHEN 'ACTIVE' THEN 1
             WHEN 'STABLE' THEN 2 ELSE 3 END,
+          next_check_at ASC,
           asin ASC
         LIMIT 1
     )
