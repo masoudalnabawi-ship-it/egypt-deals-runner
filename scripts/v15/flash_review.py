@@ -13,7 +13,7 @@ def keyboard(candidate, *, interactive=False):
     rows = [[{'text': '🛒 فتح المنتج', 'url': 'https://www.amazon.eg/dp/' + asin}]]
     if interactive:
         rows += [
-            [{'text': '🚀 نشر فورًا', 'callback_data': 'v15:publish:' + asin},
+            [{'text': '🚀 طلب نشر (تجريبي)', 'callback_data': 'v15:publish:' + asin},
              {'text': '✏️ تعديل / رسالة مخصصة', 'callback_data': 'v15:edit:' + asin}],
             [{'text': '🔍 انتظار التحقق', 'callback_data': 'v15:wait:' + asin},
              {'text': '❌ تجاهل', 'callback_data': 'v15:ignore:' + asin}],
