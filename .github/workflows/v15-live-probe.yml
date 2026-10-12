@@ -21,6 +21,11 @@ on:
         required: false
         type: boolean
         default: false
+      v15_webhook_deploy:
+        description: 'Deploy private V15 Worker only; never activate Telegram webhook'
+        required: false
+        type: boolean
+        default: false
       v15_webhook_preflight:
         description: 'Read-only D1 review schema and Telegram secrets presence; no product scan'
         required: false
@@ -47,7 +52,7 @@ jobs:
           python-version: "3.12"
 
       - name: Install dependencies
-        if: ${{ inputs.v15_d1_smoke != true && inputs.v15_webhook_preflight != true }}
+        if: ${{ inputs.v15_d1_smoke != true && inputs.v15_webhook_preflight != true && inputs.v15_webhook_deploy != true }}
         run: |
           python -m pip install --upgrade pip
           pip install "playwright==1.56.0" requests
@@ -61,8 +66,40 @@ jobs:
         with:
           node-version: '24'
 
+      - name: Deploy V15 private Telegram Worker
+        if: ${{ github.event_name == 'workflow_dispatch' && inputs.v15_webhook_deploy == true }}
+        working-directory: cloudflare/v15-telegram-webhook
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.V15_CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: b015795e3322f02ca29cf8d8f1982212
+          V15_TELEGRAM_BOT_TOKEN: ${{ secrets.V15_TELEGRAM_BOT_TOKEN }}
+          V15_TELEGRAM_REVIEW_CHAT_ID: ${{ secrets.V15_TELEGRAM_REVIEW_CHAT_ID }}
+          V15_TELEGRAM_OWNER_USER_ID: ${{ secrets.V15_TELEGRAM_OWNER_USER_ID }}
+          V15_TELEGRAM_WEBHOOK_SECRET: ${{ secrets.V15_TELEGRAM_WEBHOOK_SECRET }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          umask 077
+          trap 'rm -f /tmp/v15-worker-secrets.json' EXIT
+          node --test ../../tests/webhook.test.mjs
+          for k in CLOUDFLARE_API_TOKEN V15_TELEGRAM_BOT_TOKEN V15_TELEGRAM_REVIEW_CHAT_ID V15_TELEGRAM_OWNER_USER_ID V15_TELEGRAM_WEBHOOK_SECRET; do
+            test -n "${!k:-}" || { echo "MISSING_SECRET:$k"; exit 1; }
+          done
+          export BOT_USER_ID=$(python3 -c 'import json,os,urllib.request; u="https://api.telegram.org/bot"+os.environ["V15_TELEGRAM_BOT_TOKEN"]+"/getMe"; d=json.load(urllib.request.urlopen(u,timeout=20)); assert d["ok"]; print(d["result"]["id"])')
+          python3 -c 'import json,os; print(json.dumps({
+            "TELEGRAM_BOT_TOKEN":os.environ["V15_TELEGRAM_BOT_TOKEN"],
+            "TELEGRAM_WEBHOOK_SECRET":os.environ["V15_TELEGRAM_WEBHOOK_SECRET"],
+            "OWNER_USER_ID":os.environ["V15_TELEGRAM_OWNER_USER_ID"],
+            "REVIEW_CHAT_ID":os.environ["V15_TELEGRAM_REVIEW_CHAT_ID"],
+            "BOT_USER_ID":os.environ["BOT_USER_ID"]
+          }))' > /tmp/v15-worker-secrets.json
+          npx --yes wrangler@4.149.0 secret bulk /tmp/v15-worker-secrets.json
+          rm -f /tmp/v15-worker-secrets.json
+          npx --yes wrangler@4.149.0 deploy
+          echo 'V15_WORKER_DEPLOYED_NO_TELEGRAM_WEBHOOK_ACTIVATION'
+
       - name: V15 webhook schema migration
-        if: ${{ github.event_name == 'workflow_dispatch' && inputs.v15_webhook_migrate == true }}
+        if: ${{ github.event_name == 'workflow_dispatch' && inputs.v15_webhook_migrate == true && inputs.v15_webhook_deploy != true }}
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.V15_CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: b015795e3322f02ca29cf8d8f1982212
@@ -98,7 +135,7 @@ jobs:
         run: python scripts/v15/d1_smoke.py
 
       - name: V15 private Telegram connection test
-        if: ${{ inputs.v15_d1_smoke != true && inputs.v15_webhook_preflight != true && github.event_name == 'workflow_dispatch' }}
+        if: ${{ inputs.v15_d1_smoke != true && inputs.v15_webhook_preflight != true && inputs.v15_webhook_deploy != true && github.event_name == 'workflow_dispatch' }}
         continue-on-error: true
         env:
           V15_TELEGRAM_BOT_TOKEN: ${{ secrets.V15_TELEGRAM_BOT_TOKEN }}
@@ -106,14 +143,14 @@ jobs:
         run: python scripts/v15/telegram_diagnostic.py
 
       - name: V15 D1 database ID discovery
-        if: github.event_name == 'workflow_dispatch' && inputs.v15_webhook_preflight != true
+        if: github.event_name == 'workflow_dispatch' && inputs.v15_webhook_preflight != true && inputs.v15_webhook_deploy != true
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.V15_CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: b015795e3322f02ca29cf8d8f1982212
         run: npx --yes wrangler@4.149.0 d1 list --json | python3 -c 'import json,sys; d=json.load(sys.stdin); print("V15_D1_DATABASE_ID", next(x["uuid"] for x in d if x["name"]=="egypt-amazon-v15-db"))'
 
       - name: V15 category discovery
-        if: ${{ inputs.v15_d1_smoke != true && inputs.v15_webhook_preflight != true }}
+        if: ${{ inputs.v15_d1_smoke != true && inputs.v15_webhook_preflight != true && inputs.v15_webhook_deploy != true }}
         continue-on-error: true
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.V15_CLOUDFLARE_API_TOKEN }}
@@ -121,7 +158,7 @@ jobs:
         run: python scripts/v15/category_discovery.py
 
       - name: V15 batch monitoring (up to 5 independent products)
-        if: ${{ inputs.v15_d1_smoke != true && inputs.v15_webhook_preflight != true }}
+        if: ${{ inputs.v15_d1_smoke != true && inputs.v15_webhook_preflight != true && inputs.v15_webhook_deploy != true }}
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.V15_CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: b015795e3322f02ca29cf8d8f1982212
@@ -131,7 +168,7 @@ jobs:
         run: python scripts/v15/batch_monitor.py
 
       - name: Upload screenshot and verification evidence
-        if: ${{ inputs.v15_d1_smoke != true && inputs.v15_webhook_preflight != true && always() }}
+        if: ${{ inputs.v15_d1_smoke != true && inputs.v15_webhook_preflight != true && inputs.v15_webhook_deploy != true && always() }}
         uses: actions/upload-artifact@v4
         with:
           name: amazon-v15-real-evidence
