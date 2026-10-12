@@ -66,6 +66,13 @@ jobs:
           V15_TELEGRAM_REVIEW_CHAT_ID: ${{ secrets.V15_TELEGRAM_REVIEW_CHAT_ID }}
         run: python scripts/v15/telegram_diagnostic.py
 
+      - name: V15 D1 database ID discovery
+        if: github.event_name == 'workflow_dispatch'
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.V15_CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: b015795e3322f02ca29cf8d8f1982212
+        run: npx --yes wrangler@4.149.0 d1 list --json | python3 -c 'import json,sys; d=json.load(sys.stdin); print("V15_D1_DATABASE_ID", next(x["uuid"] for x in d if x["name"]=="egypt-amazon-v15-db"))'
+
       - name: V15 category discovery
         if: ${{ inputs.v15_d1_smoke != true }}
         continue-on-error: true
