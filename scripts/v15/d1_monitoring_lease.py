@@ -189,7 +189,15 @@ def release_after_failure(asin, owner):
     # worker cannot overwrite a newer count. Priority is read from the row.
     intervals = "CASE priority WHEN 'HOT' THEN 3 WHEN 'ACTIVE' THEN 10 WHEN 'STABLE' THEN 30 WHEN 'LOW' THEN 60 ELSE 60 END"
     # Clamp exponential backoff at 6 hours. SQLite supports POWER().
-    minutes = f"MIN({MAX_BACKOFF_MINUTES}, ({intervals}) * POWER(2, MIN(consecutive_errors + 1, 10)))"
+    backoff = """CASE
+        WHEN consecutive_errors <= 0 THEN 2
+        WHEN consecutive_errors = 1 THEN 4
+        WHEN consecutive_errors = 2 THEN 8
+        WHEN consecutive_errors = 3 THEN 16
+        WHEN consecutive_errors = 4 THEN 32
+        ELSE 64
+    END"""
+    minutes = f"MIN({MAX_BACKOFF_MINUTES}, ({intervals}) * ({backoff}))"
     sql = f"""
     UPDATE product_monitoring
     SET consecutive_errors = consecutive_errors + 1,
