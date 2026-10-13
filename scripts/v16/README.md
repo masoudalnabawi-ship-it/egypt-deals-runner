@@ -20,3 +20,12 @@ and limits per-category concentration. It has no network calls and **does not
 actually discover Amazon listings or send Telegram alerts**. The next phase
 must connect it to an authorized source and the live alert pipeline, with
 end-to-end tests and quota measurements before production activation.
+
+## Phase 3 — Flash Hunter alert policy (isolated)
+
+`flash_hunter.prepare_private_alert` prepares private-only, clearly marked
+unverified advertised-discount alerts for 50% to less than 100%, without
+requiring historical prices. `LocalDeduplicator` is **in-memory only** and
+not suitable for production. This phase **does not send Telegram messages**,
+query Amazon, or change V15. Future integration must reuse V15's persistent
+Telegram deduplication and transport, with live integration tests.
