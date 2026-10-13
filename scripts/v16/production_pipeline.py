@@ -9,6 +9,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 from production_discovery import discover
 from live_pipeline import probe_one
 from screenshot_flash import send_flash
+from health import assess, save_health
 
 
 def run(send=False, max_candidates=5, discover_fn=discover, probe_fn=probe_one, alert_fn=send_flash):
@@ -52,9 +53,13 @@ def main():
     p.add_argument('--send', action='store_true')
     p.add_argument('--max-candidates', type=int, default=5)
     p.add_argument('--output', default='v16-pipeline-report.json')
+    p.add_argument('--health-output', default='v16-health.json')
     args = p.parse_args()
     report = run(send=args.send, max_candidates=args.max_candidates)
     Path(args.output).write_text(json.dumps(report, ensure_ascii=False, indent=2), encoding='utf-8')
+    health = assess(report)
+    save_health(args.health_output, health)
+    print('V16_HEALTH', json.dumps(health, ensure_ascii=False))
     print('V16_PIPELINE_SUMMARY', json.dumps(report, ensure_ascii=False))
 
 
