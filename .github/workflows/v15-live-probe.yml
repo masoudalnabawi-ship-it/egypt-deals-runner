@@ -8,7 +8,8 @@ on:
       - 'scripts/v15/**'
       - '.github/workflows/v15-live-probe.yml'
   schedule:
-    - cron: '*/5 * * * *'
+    - cron: '*/30 * * * *'
+    - cron: '0 */4 * * *'
   workflow_dispatch:
     inputs:
       v15_d1_smoke:
@@ -44,6 +45,10 @@ on:
 
 permissions:
   contents: read
+
+concurrency:
+  group: v15-live-probe
+  cancel-in-progress: false
 
 jobs:
   live-probe:
@@ -299,7 +304,7 @@ jobs:
         run: npx --yes wrangler@4.149.0 d1 list --json | python3 -c 'import json,sys; d=json.load(sys.stdin); print("V15_D1_DATABASE_ID", next(x["uuid"] for x in d if x["name"]=="egypt-amazon-v15-db"))'
 
       - name: V15 category discovery
-        if: ${{ inputs.v15_d1_smoke != true && inputs.v15_webhook_preflight != true && inputs.v15_webhook_deploy != true && inputs.v15_private_review_test != true }}
+        if: ${{ (github.event_name != 'schedule' || github.event.schedule == '0 */4 * * *') && inputs.v15_d1_smoke != true && inputs.v15_webhook_preflight != true && inputs.v15_webhook_deploy != true && inputs.v15_private_review_test != true }}
         continue-on-error: true
         env:
           V15_TELEGRAM_BOT_TOKEN: ${{ secrets.V15_TELEGRAM_BOT_TOKEN }}
@@ -313,11 +318,19 @@ jobs:
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.V15_CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: b015795e3322f02ca29cf8d8f1982212
-          V15_BATCH_SIZE: '20'
-          V15_BATCH_WORKERS: '4'
+          V15_BATCH_SIZE: '5'
+          V15_BATCH_WORKERS: '1'
           V15_TELEGRAM_BOT_TOKEN: ${{ secrets.V15_TELEGRAM_BOT_TOKEN }}
           V15_TELEGRAM_REVIEW_CHAT_ID: ${{ secrets.V15_TELEGRAM_REVIEW_CHAT_ID }}
-        run: python scripts/v15/batch_monitor.py
+        run: |
+          set -o pipefail
+          python scripts/v15/batch_monitor.py 2>&1 | tee /tmp/v15-batch.log || {
+            if grep -q 'exceeded D1.s free tier daily row read limit' /tmp/v15-batch.log; then
+              echo 'V15_D1_DAILY_QUOTA_EXHAUSTED: wait until 00:00 UTC; no retry storm'
+              exit 0
+            fi
+            exit 1
+          }
 
       - name: Upload screenshot and verification evidence
         if: ${{ inputs.v15_d1_smoke != true && inputs.v15_webhook_preflight != true && inputs.v15_webhook_deploy != true && inputs.v15_private_review_test != true && always() }}
