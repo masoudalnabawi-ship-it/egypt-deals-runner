@@ -27,7 +27,7 @@ jobs:
         env:
           V16_PRIVATE_TELEGRAM_ENABLED: '0'
         run: |
-          PYTHONPATH=scripts/v16:scripts/v15:scripts/v14 python scripts/v16/production_pipeline.py --max-candidates 5 --output v16-pipeline-results.json --health-output v16-health.json
+          PYTHONPATH=scripts/v16:scripts/v15:scripts/v14 python scripts/v16/production_pipeline.py --max-candidates 10 --output v16-pipeline-results.json --health-output v16-health.json
       - name: Summarize pipeline
         if: always()
         run: |
