@@ -39,7 +39,7 @@ class FakeD1:
             self.text[asin]['state'] = 'sent'
             return []
 
-        if sql.startswith('INSERT INTO v16_flash_screenshot_dedup'):
+        if sql.startswith('INSERT INTO v16_flash_screenshot_dedup_v2'):
             match = re.search(
                 r"VALUES\s*\(\s*'([^']+)'\s*,\s*([0-9]+)\s*,\s*'([^']+)'\s*,\s*'sending'\s*,\s*'([^']+)'",
                 sql
@@ -47,13 +47,13 @@ class FakeD1:
             if match is None:
                 raise AssertionError('Cannot parse screenshot INSERT SQL: ' + sql[:400])
             asin, price, digest, owner = match.groups()
-            key = (asin, int(price), digest)
+            key = (asin, int(price))
             if key in self.photos:
                 return []
             self.photos.add(key)
             return [{'owner': owner}]
 
-        if sql.startswith('UPDATE v16_flash_screenshot_dedup'):
+        if sql.startswith('UPDATE v16_flash_screenshot_dedup_v2'):
             return []
 
         raise AssertionError('Unexpected SQL: ' + sql[:100])
@@ -107,6 +107,14 @@ class V16D1Tests(unittest.TestCase):
             'SKIPPED_SCREENSHOT_DUPLICATE'
         )
 
+
+    def test_different_photo_same_offer_is_duplicate(self):
+        candidate = self.offer('100')
+        candidate['screenshot_sha256'] = 'a' * 64
+        sender = lambda c: True
+        self.assertEqual(dedup.send_screenshot_once(candidate, sender), 'SCREENSHOT_SENT')
+        candidate['screenshot_sha256'] = 'b' * 64
+        self.assertEqual(dedup.send_screenshot_once(candidate, sender), 'SKIPPED_SCREENSHOT_DUPLICATE')
 
     def test_failed_text_send_does_not_claim_success(self):
         candidate = self.offer('100')

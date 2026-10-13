@@ -60,7 +60,7 @@ def send_flash(observation, *, screenshot_path=None, screenshot_sha256=None,
         initialize = initialize or init
         send_once = send_once or once
         send_screenshot_once = send_screenshot_once or screenshot_once
-    initialize()
+    # D1 schema must be initialized once during deployment, never on the urgent send path.
     if screenshot_path and screenshot_sha256:
         path = Path(screenshot_path)
         if path.is_file() and hashlib.sha256(path.read_bytes()).hexdigest() == screenshot_sha256:

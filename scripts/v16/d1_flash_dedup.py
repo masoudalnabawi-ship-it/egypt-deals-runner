@@ -5,7 +5,7 @@ from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
 from d1_monitoring_lease import query, quote
 
 TEXT_TABLE = 'v16_flash_alert_dedup'
-PHOTO_TABLE = 'v16_flash_screenshot_dedup'
+PHOTO_TABLE = 'v16_flash_screenshot_dedup_v2'
 
 
 def cents(value):
@@ -40,7 +40,7 @@ def initialize():
         state TEXT NOT NULL CHECK(state IN ('sending','sent')),
         owner TEXT NOT NULL,
         updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
-        PRIMARY KEY (asin,price_cents,screenshot_sha256)
+        PRIMARY KEY (asin,price_cents)
     )""")
 
 
@@ -59,6 +59,7 @@ def send_once(candidate, sender):
         WHERE ({TEXT_TABLE}.state='sent'
                AND excluded.price_cents < {TEXT_TABLE}.price_cents)
            OR ({TEXT_TABLE}.state='sending'
+               AND excluded.price_cents < {TEXT_TABLE}.price_cents
                AND {TEXT_TABLE}.updated_at <= datetime('now','-10 minutes'))
         RETURNING owner""")
 
@@ -94,7 +95,7 @@ def send_screenshot_once(candidate, sender):
         (asin,price_cents,screenshot_sha256,state,owner,updated_at)
         VALUES ({quote(asin)},{price},{quote(digest)},'sending',
                 {quote(owner)},CURRENT_TIMESTAMP)
-        ON CONFLICT(asin,price_cents,screenshot_sha256) DO UPDATE SET
+        ON CONFLICT(asin,price_cents) DO UPDATE SET
             state='sending',
             owner=excluded.owner,
             updated_at=CURRENT_TIMESTAMP
@@ -117,8 +118,18 @@ def send_screenshot_once(candidate, sender):
             SET state='sent',updated_at=CURRENT_TIMESTAMP
             WHERE asin={quote(asin)}
               AND price_cents={price}
-              AND screenshot_sha256={quote(digest)}
               AND owner={quote(owner)}
               AND state='sending'""")
 
     return 'SCREENSHOT_SENT' if delivered else 'SCREENSHOT_RETRY_LATER'
+
+
+if __name__ == '__main__':
+    import argparse
+    parser = argparse.ArgumentParser(description='V16 D1 schema setup (explicit opt-in)')
+    parser.add_argument('--initialize', action='store_true', help='Create V16-only D1 tables')
+    args = parser.parse_args()
+    if not args.initialize:
+        parser.error('Pass --initialize explicitly; this operation writes schema to remote D1')
+    initialize()
+    print('V16_D1_SCHEMA_INITIALIZED')
