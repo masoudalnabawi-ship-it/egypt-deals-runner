@@ -16,6 +16,34 @@ if str(ROOT) not in sys.path:
 
 
 
+
+def inspect_with_recovery(page, url, asin, inspector, blocked):
+    """Retry once only for an incomplete, non-blocked page."""
+    try:
+        return inspector(page, url, asin)
+    except RuntimeError as exc:
+        if str(exc) != 'no_live_price':
+            raise
+
+        try:
+            body = page.locator('body').inner_text(timeout=2500)
+            incomplete = len(body.strip()) < 200
+            if not incomplete or blocked(page):
+                raise exc
+        except RuntimeError:
+            raise
+        except Exception:
+            raise exc
+
+        print(
+            'V16_SMART_RECOVERY',
+            {'asin': asin, 'action': 'retry_incomplete_page'},
+            flush=True,
+        )
+        return inspector(page, url, asin)
+
+
+
 def probe_fast(asin):
     import v14_production_pipeline as v14
     if not isinstance(asin, str) or len(asin) != 10 or not asin.isascii() or not asin.isalnum():
@@ -32,7 +60,7 @@ def probe_fast(asin):
                 user_agent=v14.UA, viewport={'width': 1440, 'height': 1800})
             page = context.new_page()
             try:
-                observation = v14.inspect_amazon(page, f'https://www.amazon.eg/dp/{asin}', asin)
+                observation = inspect_with_recovery(page, f'https://www.amazon.eg/dp/{asin}', asin, v14.inspect_amazon, v14.page_blocked)
             except RuntimeError as exc:
                 if str(exc) == 'no_live_price':
                     try:
