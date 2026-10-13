@@ -9,6 +9,7 @@ import uuid
 from d1_monitoring_lease import query, quote
 
 TABLE = 'v15_flash_alert_dedup'
+SCREENSHOT_TABLE = 'v15_flash_screenshot_dedup'
 
 
 def initialize():
@@ -70,6 +71,51 @@ def finish(asin, owner, sent):
         # Keep sending lease to avoid repeated alerts on intermittent failures.
         # Retry will be permitted after the lease expires.
         pass
+
+
+
+def send_screenshot_once(candidate, sender):
+    """One private screenshot update per ASIN, with retry on failure."""
+    if not candidate.get("screenshot_path") or not candidate.get("screenshot_sha256"):
+        return "SCREENSHOT_NOT_READY"
+
+    asin = candidate["asin"]
+    if not isinstance(asin, str) or len(asin) != 10 or not asin.isalnum() or asin != asin.upper():
+        raise ValueError("INVALID_ASIN")
+
+    query(f"""CREATE TABLE IF NOT EXISTS {SCREENSHOT_TABLE} (
+        asin TEXT PRIMARY KEY,
+        state TEXT NOT NULL CHECK(state IN ('sending','sent')),
+        owner TEXT NOT NULL,
+        updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+    )""")
+
+    owner = uuid.uuid4().hex
+    rows = query(f"""INSERT INTO {SCREENSHOT_TABLE}
+        (asin,state,owner,updated_at)
+        VALUES ({quote(asin)},'sending',{quote(owner)},CURRENT_TIMESTAMP)
+        ON CONFLICT(asin) DO UPDATE SET
+          state='sending',owner=excluded.owner,updated_at=CURRENT_TIMESTAMP
+        WHERE {SCREENSHOT_TABLE}.state='sending'
+          AND {SCREENSHOT_TABLE}.updated_at <= datetime('now','-10 minutes')
+        RETURNING owner""")
+
+    if not rows:
+        return "SKIPPED_SCREENSHOT_DUPLICATE"
+
+    if len(rows) != 1 or rows[0].get("owner") != owner:
+        raise RuntimeError("V15_SCREENSHOT_DEDUP_CLAIM_INVARIANT")
+
+    delivered = bool(sender(candidate))
+
+    if delivered:
+        query(f"""UPDATE {SCREENSHOT_TABLE}
+            SET state='sent',updated_at=CURRENT_TIMESTAMP
+            WHERE asin={quote(asin)}
+              AND owner={quote(owner)}
+              AND state='sending'""")
+
+    return "SCREENSHOT_SENT" if delivered else "SCREENSHOT_RETRY_LATER"
 
 
 def send_once(candidate, sender):

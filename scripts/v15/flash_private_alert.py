@@ -39,7 +39,18 @@ def payload(candidate):
 
     url = "https://www.amazon.eg/dp/" + asin
 
+    screenshot_ready = bool(
+        candidate.get("screenshot_path")
+        and candidate.get("screenshot_sha256")
+    )
+    heading = (
+        "📸 تحديث العرض — صورة حقيقية من أمازون\\n"
+        if screenshot_ready
+        else "🚨 تنبيه عاجل — قبل فحص صفحة المنتج\\n"
+    )
+
     text = (
+        heading +
         f"{label} | أمازون مصر 🇪🇬\n\n"
         f"📦 {name}\n"
         f"📉 الخصم المعلن: {discount}%\n"
@@ -72,6 +83,7 @@ def send(candidate, *, token=None, chat_id=None, opener=None):
         return False
 
     data = payload(candidate)
+    data["disable_web_page_preview"] = "true"
     data["chat_id"] = str(chat_id).strip()
 
     screenshot_path = candidate.get("screenshot_path")

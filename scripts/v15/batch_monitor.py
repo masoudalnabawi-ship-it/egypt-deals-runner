@@ -15,7 +15,7 @@ from book_filter import classify, from_report
 from d1_price_observation import prepare_observation
 from flash_candidate import stage as stage_flash_candidate
 from flash_private_alert import send as send_flash_alert
-from flash_dedup import initialize as initialize_flash_dedup, send_once as send_flash_once
+from flash_dedup import initialize as initialize_flash_dedup, send_once as send_flash_once, send_screenshot_once
 from private_price_review import review as review_price
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -94,7 +94,7 @@ def process(lease):
                 print('V15_FLASH_CANDIDATE', asin, 'UNVERIFIED', flush=True)
                 try:
                     initialize_flash_dedup()
-                    status = send_flash_once(
+                    status = send_screenshot_once(
                         dict(
                             json.loads(candidate_path.read_text(encoding='utf-8')),
                             screenshot_path=str(saved_screenshot),
