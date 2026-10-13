@@ -4,7 +4,7 @@ import json
 from pathlib import Path
 from book_filter import from_report
 
-def candidate(report, threshold=Decimal("1")):
+def candidate(report, threshold=Decimal("5")):
     if from_report(report):
         return None
 
@@ -20,12 +20,16 @@ def candidate(report, threshold=Decimal("1")):
     if not pct.is_finite() or not threshold <= pct < 100:
         return None
 
-    if pct >= 70:
+    if pct >= 90:
+        category = "FLASH"
+    elif pct >= 70:
         category = "SUPER_ULTRA"
     elif pct >= 50:
         category = "ULTRA"
     elif pct >= 30:
         category = "STRONG"
+    elif pct >= 10:
+        category = "GOOD"
     else:
         category = "NORMAL"
 

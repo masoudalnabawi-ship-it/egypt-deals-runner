@@ -310,7 +310,8 @@ def main():
                     "title": "منتج على أمازون مصر",
                     "displayed_discount_pct": str(discount),
                     "category": (
-                        "SUPER_ULTRA" if discount >= 70
+                        "FLASH" if discount >= 90
+                        else "SUPER_ULTRA" if discount >= 70
                         else "ULTRA"
                     ),
                     "current_price": None,

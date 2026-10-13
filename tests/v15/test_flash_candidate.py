@@ -27,14 +27,14 @@ class FlashTests(unittest.TestCase):
     def test_super_ultra(self):
         c = candidate(self.report(discount=91))
         self.assertIsNotNone(c)
-        self.assertEqual(c["category"], "SUPER_ULTRA")
+        self.assertEqual(c["category"], "FLASH")
         self.assertEqual(c["displayed_discount_pct"], "91")
         self.assertFalse(c["publication_allowed"])
 
     def test_without_old_price(self):
         c = candidate(self.report(old=None, discount=91))
         self.assertIsNotNone(c)
-        self.assertEqual(c["category"], "SUPER_ULTRA")
+        self.assertEqual(c["category"], "FLASH")
 
     def test_without_current_price(self):
         c = candidate(self.report(price=None, old=None, discount=91))
@@ -45,13 +45,25 @@ class FlashTests(unittest.TestCase):
         self.assertEqual(candidate(self.report(discount=40))["category"], "STRONG")
 
     def test_normal(self):
-        self.assertEqual(candidate(self.report(discount=10))["category"], "NORMAL")
+        self.assertEqual(candidate(self.report(discount=10))["category"], "GOOD")
 
     def test_discount_100_not_flash_candidate(self):
         self.assertIsNone(candidate(self.report(discount=100)))
 
     def test_discount_99_is_candidate(self):
-        self.assertEqual(candidate(self.report(discount=99))["category"], "SUPER_ULTRA")
+        self.assertEqual(candidate(self.report(discount=99))["category"], "FLASH")
+
+    def test_discount_boundaries_from_five(self):
+        cases = [(5, "NORMAL"), (9, "NORMAL"), (10, "GOOD"),
+                 (29, "GOOD"), (30, "STRONG"), (49, "STRONG"),
+                 (50, "ULTRA"), (69, "ULTRA"),
+                 (70, "SUPER_ULTRA"), (89, "SUPER_ULTRA"),
+                 (90, "FLASH"), (91, "FLASH"), (99, "FLASH")]
+        for discount, expected in cases:
+            with self.subTest(discount=discount):
+                self.assertEqual(candidate(self.report(discount=discount))["category"], expected)
+        self.assertIsNone(candidate(self.report(discount=4)))
+        self.assertIsNone(candidate(self.report(discount=100)))
 
     def test_below_threshold(self):
         self.assertIsNone(candidate(self.report(discount=0)))
