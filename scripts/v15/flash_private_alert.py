@@ -21,6 +21,8 @@ def payload(candidate):
     category = candidate.get("category", "SUPER_ULTRA")
     labels = {
         "NORMAL": "🟢 عرض عادي",
+        "GOOD": "🟡 عرض جيد",
+        "FLASH": "🚨⚡ فلاش 90–99%",
         "ULTRA": "🔥 عرض ألترا",
         "STRONG": "🟠 عرض قوي",
         "SUPER_ULTRA": "🚨🔥 سوبر ألترا",

@@ -77,112 +77,26 @@ def claim_next_due(lease_minutes=30):
     expires = now + timedelta(minutes=lease_minutes)
     current = quote(timestamp(now))
     hour_ago = quote(timestamp(now - timedelta(hours=1)))
+    # Preserve original age/priority precedence with eight indexed lookups.
+    # Avoid the eight-way UNION ALL compound SELECT on Cloudflare D1.
+    candidates = []
+    for lower, upper in ((None, hour_ago), (hour_ago, current)):
+        for priority in ("HOT", "ACTIVE", "STABLE", "LOW"):
+            age = (f"next_check_at <= {upper}" if lower is None
+                   else f"next_check_at > {lower} AND next_check_at <= {upper}")
+            candidates.append(
+                "(SELECT asin FROM product_monitoring INDEXED BY idx_v15_priority_due "
+                f"WHERE priority={quote(priority)} AND {age} "
+                f"AND (lease_until IS NULL OR lease_until <= {current}) "
+                "ORDER BY next_check_at, asin LIMIT 1)"
+            )
+    selected_asin = "COALESCE(" + ", ".join(candidates) + ")"
     sql = f"""
     UPDATE product_monitoring
     SET lease_owner={quote(owner)},
         lease_until={quote(timestamp(expires))},
         updated_at={current}
-    WHERE asin = (
-        SELECT asin FROM (
-
-        SELECT asin, 0 AS grp, 0 AS rank FROM (
-            SELECT asin
-            FROM product_monitoring INDEXED BY idx_v15_priority_due
-            WHERE priority = 'HOT'
-              AND next_check_at <= {hour_ago}
-              AND (lease_until IS NULL OR lease_until <= {current})
-            ORDER BY next_check_at, asin
-            LIMIT 1
-        )
-
-UNION ALL
-
-        SELECT asin, 0 AS grp, 1 AS rank FROM (
-            SELECT asin
-            FROM product_monitoring INDEXED BY idx_v15_priority_due
-            WHERE priority = 'ACTIVE'
-              AND next_check_at <= {hour_ago}
-              AND (lease_until IS NULL OR lease_until <= {current})
-            ORDER BY next_check_at, asin
-            LIMIT 1
-        )
-
-UNION ALL
-
-        SELECT asin, 0 AS grp, 2 AS rank FROM (
-            SELECT asin
-            FROM product_monitoring INDEXED BY idx_v15_priority_due
-            WHERE priority = 'STABLE'
-              AND next_check_at <= {hour_ago}
-              AND (lease_until IS NULL OR lease_until <= {current})
-            ORDER BY next_check_at, asin
-            LIMIT 1
-        )
-
-UNION ALL
-
-        SELECT asin, 0 AS grp, 3 AS rank FROM (
-            SELECT asin
-            FROM product_monitoring INDEXED BY idx_v15_priority_due
-            WHERE priority = 'LOW'
-              AND next_check_at <= {hour_ago}
-              AND (lease_until IS NULL OR lease_until <= {current})
-            ORDER BY next_check_at, asin
-            LIMIT 1
-        )
-
-UNION ALL
-
-        SELECT asin, 1 AS grp, 0 AS rank FROM (
-            SELECT asin
-            FROM product_monitoring INDEXED BY idx_v15_priority_due
-            WHERE priority = 'HOT'
-              AND next_check_at > {hour_ago} AND next_check_at <= {current}
-              AND (lease_until IS NULL OR lease_until <= {current})
-            ORDER BY next_check_at, asin
-            LIMIT 1
-        )
-
-UNION ALL
-
-        SELECT asin, 1 AS grp, 1 AS rank FROM (
-            SELECT asin
-            FROM product_monitoring INDEXED BY idx_v15_priority_due
-            WHERE priority = 'ACTIVE'
-              AND next_check_at > {hour_ago} AND next_check_at <= {current}
-              AND (lease_until IS NULL OR lease_until <= {current})
-            ORDER BY next_check_at, asin
-            LIMIT 1
-        )
-
-UNION ALL
-
-        SELECT asin, 1 AS grp, 2 AS rank FROM (
-            SELECT asin
-            FROM product_monitoring INDEXED BY idx_v15_priority_due
-            WHERE priority = 'STABLE'
-              AND next_check_at > {hour_ago} AND next_check_at <= {current}
-              AND (lease_until IS NULL OR lease_until <= {current})
-            ORDER BY next_check_at, asin
-            LIMIT 1
-        )
-
-UNION ALL
-
-        SELECT asin, 1 AS grp, 3 AS rank FROM (
-            SELECT asin
-            FROM product_monitoring INDEXED BY idx_v15_priority_due
-            WHERE priority = 'LOW'
-              AND next_check_at > {hour_ago} AND next_check_at <= {current}
-              AND (lease_until IS NULL OR lease_until <= {current})
-            ORDER BY next_check_at, asin
-            LIMIT 1
-        )
-
-        )
-        ORDER BY grp, rank
-        LIMIT 1
-    )
+    WHERE asin = {selected_asin}
       AND (lease_until IS NULL OR lease_until <= {current})
     RETURNING asin, priority, consecutive_errors, lease_owner;
     """
