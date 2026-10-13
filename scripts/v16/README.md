@@ -11,3 +11,12 @@ and unknown history must not block the 50–99% private-alert policy.
 
 Next stages (not yet implemented): candidate discovery, real-time private alert
 integration, historical price store, adaptive quota accounting, end-to-end tests.
+
+## Phase 2 — candidate prioritization (isolated)
+
+`candidate_discovery.prioritize` ranks **already supplied** candidate products
+by displayed discount, puts 50–99% first, deduplicates ASINs, bounds the batch,
+and limits per-category concentration. It has no network calls and **does not
+actually discover Amazon listings or send Telegram alerts**. The next phase
+must connect it to an authorized source and the live alert pipeline, with
+end-to-end tests and quota measurements before production activation.
