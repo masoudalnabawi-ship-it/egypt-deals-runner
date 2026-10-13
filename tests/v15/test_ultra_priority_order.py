@@ -26,6 +26,11 @@ class UltraPriorityOrderTests(unittest.TestCase):
             )
         """)
 
+        conn.execute("""
+            CREATE INDEX idx_v15_priority_due
+            ON product_monitoring(priority, next_check_at, asin)
+        """)
+
         def stamp(dt):
             return dt.isoformat(timespec="seconds")
 

@@ -22,14 +22,20 @@ class GlobalMonitoringTests(unittest.TestCase):
         with patch.object(d1, 'query', side_effect=fake_query):
             row = d1.claim_next_due()
         self.assertEqual(row['asin'], 'B000000001')
-        self.assertIn("CASE priority WHEN 'HOT' THEN 0", seen[0])
-        self.assertIn("next_check_at ASC", seen[0])
-        self.assertLess(
-            seen[0].index("CASE priority WHEN 'HOT' THEN 0"),
-            seen[0].index("next_check_at ASC")
-        )
-        self.assertIn("julianday(next_check_at)", seen[0])
-        self.assertIn("(60.0 / 1440.0)", seen[0])
+        sql = seen[0]
+        self.assertIn("UPDATE product_monitoring", sql)
+        self.assertIn("INDEXED BY idx_v15_priority_due", sql)
+        self.assertIn("ORDER BY grp, rank", sql)
+
+        for priority in ("HOT", "ACTIVE", "STABLE", "LOW"):
+            self.assertEqual(
+                sql.count("priority = '" + priority + "'"),
+                2
+            )
+
+        self.assertEqual(sql.count("UNION ALL"), 7)
+        self.assertIn("next_check_at <=", sql)
+        self.assertIn("next_check_at >", sql)
         self.assertIn('RETURNING asin, priority', seen[0])
         self.assertIn('lease_until <=', seen[0])
 

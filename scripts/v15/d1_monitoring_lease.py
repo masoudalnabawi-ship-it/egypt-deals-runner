@@ -75,27 +75,115 @@ def claim_next_due(lease_minutes=30):
     now = utc_now()
     owner = "v15-" + uuid.uuid4().hex
     expires = now + timedelta(minutes=lease_minutes)
+    current = quote(timestamp(now))
+    hour_ago = quote(timestamp(now - timedelta(hours=1)))
     sql = f"""
     UPDATE product_monitoring
     SET lease_owner={quote(owner)},
         lease_until={quote(timestamp(expires))},
-        updated_at={quote(timestamp(now))}
+        updated_at={current}
     WHERE asin = (
-        SELECT asin FROM product_monitoring
-        WHERE next_check_at <= {quote(timestamp(now))}
-          AND (lease_until IS NULL OR lease_until <= {quote(timestamp(now))})
-        ORDER BY
-          CASE
-            WHEN julianday(next_check_at) <= julianday({quote(timestamp(now))}) - (60.0 / 1440.0)
-            THEN 0 ELSE 1
-          END,
-          CASE priority WHEN 'HOT' THEN 0 WHEN 'ACTIVE' THEN 1
-            WHEN 'STABLE' THEN 2 ELSE 3 END,
-          next_check_at ASC,
-          asin ASC
+        SELECT asin FROM (
+
+        SELECT asin, 0 AS grp, 0 AS rank FROM (
+            SELECT asin
+            FROM product_monitoring INDEXED BY idx_v15_priority_due
+            WHERE priority = 'HOT'
+              AND next_check_at <= {hour_ago}
+              AND (lease_until IS NULL OR lease_until <= {current})
+            ORDER BY next_check_at, asin
+            LIMIT 1
+        )
+
+UNION ALL
+
+        SELECT asin, 0 AS grp, 1 AS rank FROM (
+            SELECT asin
+            FROM product_monitoring INDEXED BY idx_v15_priority_due
+            WHERE priority = 'ACTIVE'
+              AND next_check_at <= {hour_ago}
+              AND (lease_until IS NULL OR lease_until <= {current})
+            ORDER BY next_check_at, asin
+            LIMIT 1
+        )
+
+UNION ALL
+
+        SELECT asin, 0 AS grp, 2 AS rank FROM (
+            SELECT asin
+            FROM product_monitoring INDEXED BY idx_v15_priority_due
+            WHERE priority = 'STABLE'
+              AND next_check_at <= {hour_ago}
+              AND (lease_until IS NULL OR lease_until <= {current})
+            ORDER BY next_check_at, asin
+            LIMIT 1
+        )
+
+UNION ALL
+
+        SELECT asin, 0 AS grp, 3 AS rank FROM (
+            SELECT asin
+            FROM product_monitoring INDEXED BY idx_v15_priority_due
+            WHERE priority = 'LOW'
+              AND next_check_at <= {hour_ago}
+              AND (lease_until IS NULL OR lease_until <= {current})
+            ORDER BY next_check_at, asin
+            LIMIT 1
+        )
+
+UNION ALL
+
+        SELECT asin, 1 AS grp, 0 AS rank FROM (
+            SELECT asin
+            FROM product_monitoring INDEXED BY idx_v15_priority_due
+            WHERE priority = 'HOT'
+              AND next_check_at > {hour_ago} AND next_check_at <= {current}
+              AND (lease_until IS NULL OR lease_until <= {current})
+            ORDER BY next_check_at, asin
+            LIMIT 1
+        )
+
+UNION ALL
+
+        SELECT asin, 1 AS grp, 1 AS rank FROM (
+            SELECT asin
+            FROM product_monitoring INDEXED BY idx_v15_priority_due
+            WHERE priority = 'ACTIVE'
+              AND next_check_at > {hour_ago} AND next_check_at <= {current}
+              AND (lease_until IS NULL OR lease_until <= {current})
+            ORDER BY next_check_at, asin
+            LIMIT 1
+        )
+
+UNION ALL
+
+        SELECT asin, 1 AS grp, 2 AS rank FROM (
+            SELECT asin
+            FROM product_monitoring INDEXED BY idx_v15_priority_due
+            WHERE priority = 'STABLE'
+              AND next_check_at > {hour_ago} AND next_check_at <= {current}
+              AND (lease_until IS NULL OR lease_until <= {current})
+            ORDER BY next_check_at, asin
+            LIMIT 1
+        )
+
+UNION ALL
+
+        SELECT asin, 1 AS grp, 3 AS rank FROM (
+            SELECT asin
+            FROM product_monitoring INDEXED BY idx_v15_priority_due
+            WHERE priority = 'LOW'
+              AND next_check_at > {hour_ago} AND next_check_at <= {current}
+              AND (lease_until IS NULL OR lease_until <= {current})
+            ORDER BY next_check_at, asin
+            LIMIT 1
+        )
+
+        )
+        ORDER BY grp, rank
         LIMIT 1
     )
-      AND (lease_until IS NULL OR lease_until <= {quote(timestamp(now))})
+      AND (lease_until IS NULL OR lease_until <= {current})
     RETURNING asin, priority, consecutive_errors, lease_owner;
     """
     rows = query(sql)
