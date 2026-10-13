@@ -23,6 +23,24 @@ jobs:
         run: python -m pytest -q tests/v16
       - name: Live discovery (no Telegram sends)
         run: python scripts/v16/production_discovery.py --max-pages 4 --max-candidates 40 --output v16-discovery-candidates.json
+      - name: Live full pipeline (NO Telegram)
+        env:
+          V16_PRIVATE_TELEGRAM_ENABLED: '0'
+        run: |
+          PYTHONPATH=scripts/v16:scripts/v15:scripts/v14 python scripts/v16/production_pipeline.py --max-candidates 5 --output v16-pipeline-results.json --health-output v16-health.json
+      - name: Summarize pipeline
+        if: always()
+        run: |
+          python - <<'PYCODE'
+          import json
+          from pathlib import Path
+          p = Path('v16-pipeline-results.json')
+          if p.exists():
+              d = json.loads(p.read_text())
+              print('V16_PIPELINE_RESULT:', json.dumps(d, ensure_ascii=False))
+          else:
+              print('V16_PIPELINE_RESULT: missing')
+          PYCODE
       - name: Summarize
         run: |
           python - <<'PY'
@@ -38,5 +56,8 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: v16-upgrade-evidence
-          path: v16-discovery-candidates.json
+          path: |
+            v16-discovery-candidates.json
+            v16-pipeline-results.json
+            v16-health.json
           if-no-files-found: ignore
