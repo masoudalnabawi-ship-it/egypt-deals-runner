@@ -1,0 +1,50 @@
+name: V14 Error Capture
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  capture:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: v14-cloudflare
+
+      - name: Capture actual V14 exception
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUD_API_KEY }}
+          V14_KEY: ${{ secrets.AMAZON_V14_PIPELINE_KEY }}
+        run: |
+          set -u
+          cd cloudflare_amazon_v14
+          npm install --no-audit --no-fund --silent
+
+          echo "STARTING_V14_LOG_CAPTURE"
+          timeout 45s npx wrangler tail egypt-amazon-v14 --format json > /tmp/v14-tail.log 2>&1 &
+          TAIL_PID=$!
+
+          sleep 12
+
+          echo "TRIGGERING_V14_DISCOVERY"
+          curl -sS --max-time 25 \
+            -o /tmp/v14-response.txt \
+            -w 'DISCOVERY_HTTP=%{http_code}\n' \
+            -X POST \
+            -H "Authorization: Bearer ${V14_KEY}" \
+            https://egypt-amazon-v14.masoud-amazon-eg.workers.dev/admin/discover || true
+
+          wait "$TAIL_PID" || true
+
+          echo "========== CLOUDFLARE ERRORS =========="
+          grep -iE -A 12 -B 5 \
+            'exception|error|stack|1101|D1_ERROR|quota|limit|unauthorized' \
+            /tmp/v14-tail.log | tail -100 || true
+
+          echo "========== DISCOVERY RESPONSE =========="
+          head -c 1500 /tmp/v14-response.txt || true
+          echo
