@@ -1,0 +1,60 @@
+name: V16 Live Discovery Test
+
+on:
+  push:
+    branches:
+      - 'feature/v16-live-test-*'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  live-test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install browser
+        run: |
+          python -m pip install playwright==1.56.0 pytest
+          python -m playwright install --with-deps chromium
+
+      - name: Test V16 code
+        run: |
+          python -m pytest -q tests/v16
+
+      - name: Discover real Amazon Egypt candidates
+        run: |
+          python scripts/v16/live_discovery.py \
+            --max-pages 2 \
+            --max-candidates 10 \
+            --output v16-discovery-candidates.json
+
+      - name: Summarize results
+        run: |
+          python - <<'PY'
+          import json
+          with open("v16-discovery-candidates.json", encoding="utf-8") as f:
+              data = json.load(f)
+          items = data.get("candidates", [])
+          print("V16_REAL_CANDIDATES:", len(items))
+          for item in items[:10]:
+              print("ASIN:", item.get("asin"),
+                    "HINT:", item.get("listing_discount_hint"),
+                    "URL:", item.get("url"))
+          PY
+
+      - name: Save evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: v16-live-discovery-results
+          path: v16-discovery-candidates.json
+          if-no-files-found: ignore
