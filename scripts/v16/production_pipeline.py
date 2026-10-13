@@ -26,8 +26,10 @@ def run(send=False, max_candidates=5, discover_fn=discover, probe_fn=probe_one, 
             continue
         text_status = None
         eligible = False
+        probe = None
         try:
-            for observation, image, digest in probe_fn(asin):
+            probe = iter(probe_fn(asin))
+            for observation, image, digest in probe:
                 if image is None:
                     result['probed'] += 1
                     try:
@@ -37,10 +39,13 @@ def run(send=False, max_candidates=5, discover_fn=discover, probe_fn=probe_one, 
                         result['failures'].append({'asin': asin, 'reason': 'INVALID_OFFER'})
                         continue
                     if not eligible:
-                        continue
+                        break
                     result['eligible'] += 1
                     text_status = alert_fn(observation, enabled=send)
                     result['alerts'].append({'asin': asin, 'kind': 'text', 'status': text_status})
+                    # Screenshot only after a successfully delivered text alert.
+                    if not send or text_status not in ('SENT', 'SENT_NEW', 'SENT_UPDATED'):
+                        break
                 elif eligible and send and text_status in ('SENT', 'SENT_NEW', 'SENT_UPDATED'):
                     try:
                         photo_status = alert_fn(observation, screenshot_path=image,
@@ -50,6 +55,10 @@ def run(send=False, max_candidates=5, discover_fn=discover, probe_fn=probe_one, 
                         result['failures'].append({'asin': asin, 'reason': 'PHOTO_' + type(exc).__name__, 'detail': str(exc)[:300]})
         except Exception as exc:
             result['failures'].append({'asin': asin, 'reason': type(exc).__name__, 'detail': str(exc)[:300]})
+        finally:
+            close = getattr(probe, 'close', None)
+            if callable(close):
+                close()
     return result
 
 
