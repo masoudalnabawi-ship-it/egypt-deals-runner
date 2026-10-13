@@ -17,10 +17,15 @@ def run(send=False, max_candidates=5, discover_fn=discover, probe_fn=probe_one, 
         raise ValueError('max_candidates must be 1..10')
     if send and os.environ.get('V16_PRIVATE_TELEGRAM_ENABLED') != '1':
         raise RuntimeError('Telegram send requires V16_PRIVATE_TELEGRAM_ENABLED=1')
-    discovery = discover_fn(max_pages=4, max_candidates=max_candidates)
-    result = {'discovered': len(discovery['candidates']), 'probed': 0,
+    # Collect a larger pool; probe only the strongest candidates.
+    discovery = discover_fn(max_pages=4, max_candidates=100)
+    candidates = sorted(discovery['candidates'], key=lambda row: (
+        row.get('listing_discount_hint') is None,
+        -(row.get('listing_discount_hint') or 0),
+    ))
+    result = {'discovered': len(candidates), 'probed': 0,
               'eligible': 0, 'alerts': [], 'failures': [], 'discovery_errors': discovery['errors']}
-    for item in discovery['candidates'][:max_candidates]:
+    for item in candidates[:max_candidates]:
         asin = item.get('asin')
         if not isinstance(asin, str) or len(asin) != 10 or not asin.isascii() or not asin.isalnum():
             continue

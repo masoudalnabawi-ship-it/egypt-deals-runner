@@ -63,22 +63,22 @@ def discover(max_pages=4, max_candidates=80, pages=None, browser_factory=None):
                     if any(x in title for x in ('captcha', 'robot check', 'sign in')):
                         errors.append({'source': url, 'reason': 'ACCESS_CHALLENGE'})
                         continue
+                    # Scan a bounded pool from EVERY source before ranking.
                     for item in extract_cards(tab, limit=max_candidates):
-                        found.setdefault(item['asin'], item)
-                        if len(found) >= max_candidates:
-                            break
+                        asin = item['asin']
+                        prior = found.get(asin)
+                        if prior is None or (item.get('listing_discount_hint') or 0) > (prior.get('listing_discount_hint') or 0):
+                            found[asin] = item
                 except Exception as exc:
                     errors.append({'source': url, 'reason': type(exc).__name__})
                 finally:
                     tab.close()
-                if len(found) >= max_candidates:
-                    break
         finally:
             browser.close()
     return {'captured_at': datetime.now(timezone.utc).isoformat(),
             'status': 'UNVERIFIED_LISTING_CANDIDATES',
             'sources_checked': min(max_pages, len(pages)), 'errors': errors,
-            'candidates': sorted(found.values(), key=lambda row: (row['listing_discount_hint'] is None, -(row['listing_discount_hint'] or 0)))}
+            'candidates': sorted(found.values(), key=lambda row: (row.get('listing_discount_hint') is None, -(row.get('listing_discount_hint') or 0)))[:max_candidates]}
 
 
 def main():
