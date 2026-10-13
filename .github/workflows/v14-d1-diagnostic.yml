@@ -1,0 +1,80 @@
+name: V14 D1 Diagnostic
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check V14 D1
+        env:
+          CF_TOKEN: ${{ secrets.CLOUD_API_KEY }}
+          DB_ID: 5b5a3a0b-8101-4fd0-a956-738f792ec32e
+        run: |
+          python - <<'PY'
+          import json, os, urllib.request, urllib.error
+
+          token = os.environ.get("CF_TOKEN", "")
+          db_id = os.environ["DB_ID"]
+
+          if not token:
+              raise SystemExit("ERROR: CLOUD_API_KEY is missing")
+
+          req = urllib.request.Request(
+              "https://api.cloudflare.com/client/v4/accounts",
+              headers={"Authorization": f"Bearer {token}"}
+          )
+
+          try:
+              with urllib.request.urlopen(req, timeout=20) as response:
+                  accounts = json.load(response)
+          except urllib.error.HTTPError as exc:
+              print("ACCOUNT_LOOKUP_HTTP:", exc.code)
+              raise SystemExit(1)
+
+          if not accounts.get("success"):
+              print("ACCOUNT_LOOKUP_FAILED:", accounts.get("errors"))
+              raise SystemExit(1)
+
+          found = False
+
+          for account in accounts.get("result", []):
+              account_id = account["id"]
+
+              url = (
+                  "https://api.cloudflare.com/client/v4/accounts/"
+                  + account_id
+                  + "/d1/database/"
+                  + db_id
+                  + "/query"
+              )
+
+              body = json.dumps({"sql": "SELECT 1 AS test"}).encode()
+
+              request = urllib.request.Request(
+                  url,
+                  data=body,
+                  headers={
+                      "Authorization": f"Bearer {token}",
+                      "Content-Type": "application/json"
+                  },
+                  method="POST"
+              )
+
+              try:
+                  with urllib.request.urlopen(request, timeout=20) as response:
+                      result = json.load(response)
+                  print("D1_TEST_RESULT:", json.dumps(result))
+                  found = True
+                  break
+              except urllib.error.HTTPError as exc:
+                  response_body = exc.read().decode(errors="replace")
+                  print("D1_HTTP_ERROR:", exc.code, response_body[:1500])
+
+          if not found:
+              raise SystemExit("D1_TEST_NOT_SUCCESSFUL")
+          PY
