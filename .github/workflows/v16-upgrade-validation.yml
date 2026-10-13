@@ -17,7 +17,7 @@ jobs:
           python-version: '3.12'
       - name: Install dependencies
         run: |
-          python -m pip install pytest playwright==1.56.0
+          python -m pip install pytest requests playwright==1.56.0
           python -m playwright install --with-deps chromium
       - name: Run V16 tests
         run: python -m pytest -q tests/v16
@@ -38,6 +38,8 @@ jobs:
           if p.exists():
               d = json.loads(p.read_text())
               print('V16_PIPELINE_RESULT:', json.dumps(d, ensure_ascii=False))
+              if d.get('discovered', 0) > 0 and d.get('probed', 0) == 0:
+                  raise SystemExit('V16_FAILED: No products successfully probed')
           else:
               print('V16_PIPELINE_RESULT: missing')
           PYCODE
