@@ -26,6 +26,22 @@ def test_photo_failure_does_not_erase_text_success(monkeypatch):
         if kwargs.get('screenshot_path') is not None or 'screenshot_sha256' in kwargs:
             raise TimeoutError('photo upload failed')
         return 'SENT'
-    result = run(send=True, discover_fn=discover, probe_fn=probe, alert_fn=alert)
+    def probe_with_photo(asin):
+        observation = {
+            'asin': asin,
+            'title': 'test',
+            'current_price': '100',
+            'displayed_discount_pct': '91',
+        }
+        yield observation, None, None
+        yield observation, 'test-image.jpg', 'test-sha256'
+
+    result = run(
+        send=True,
+        discover_fn=discover,
+        probe_fn=probe_with_photo,
+        alert_fn=alert,
+    )
     assert result['alerts'][0]['status'] == 'SENT'
+    assert result['alerts'][0]['kind'] == 'text'
     assert result['failures'][0]['reason'] == 'PHOTO_TimeoutError'

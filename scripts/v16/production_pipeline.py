@@ -7,7 +7,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from production_discovery import discover
-from live_pipeline import probe_one
+from fast_probe import probe_fast as probe_one
 from screenshot_flash import send_flash
 from health import assess, save_health
 
@@ -22,24 +22,26 @@ def run(send=False, max_candidates=5, discover_fn=discover, probe_fn=probe_one, 
               'eligible': 0, 'alerts': [], 'failures': [], 'discovery_errors': discovery['errors']}
     for item in discovery['candidates'][:max_candidates]:
         asin = item.get('asin')
-        if not isinstance(asin, str) or len(asin) != 10 or not asin.isalnum():
+        if not isinstance(asin, str) or len(asin) != 10 or not asin.isascii() or not asin.isalnum():
             continue
+        text_status = None
+        eligible = False
         try:
             for observation, image, digest in probe_fn(asin):
-                result['probed'] += 1
-                try:
-                    from screenshot_flash import candidate_from_observation
-                    candidate = candidate_from_observation(observation)
-                except ValueError:
-                    result['failures'].append({'asin': asin, 'reason': 'INVALID_OFFER'})
-                    continue
-                if candidate is None:
-                    continue
-                result['eligible'] += 1
-                # No message is sent in default dry-run mode.
-                text_status = alert_fn(observation, enabled=send)
-                result['alerts'].append({'asin': asin, 'kind': 'text', 'status': text_status})
-                if send and text_status in ('SENT', 'SENT_NEW', 'SENT_UPDATED'):
+                if image is None:
+                    result['probed'] += 1
+                    try:
+                        from screenshot_flash import candidate_from_observation
+                        eligible = candidate_from_observation(observation) is not None
+                    except ValueError:
+                        result['failures'].append({'asin': asin, 'reason': 'INVALID_OFFER'})
+                        continue
+                    if not eligible:
+                        continue
+                    result['eligible'] += 1
+                    text_status = alert_fn(observation, enabled=send)
+                    result['alerts'].append({'asin': asin, 'kind': 'text', 'status': text_status})
+                elif eligible and send and text_status in ('SENT', 'SENT_NEW', 'SENT_UPDATED'):
                     try:
                         photo_status = alert_fn(observation, screenshot_path=image,
                                                 screenshot_sha256=digest, enabled=True)
