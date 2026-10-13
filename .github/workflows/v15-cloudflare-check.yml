@@ -161,7 +161,7 @@ jobs:
           CLOUDFLARE_ACCOUNT_ID: b015795e3322f02ca29cf8d8f1982212
         run: |
           set -euo pipefail
-          npx --yes wrangler@4.149.0 d1 execute egypt-amazon-v15-db --remote --file cloudflare_amazon_v15/migrations/0003_monitoring_claim_index.sql
+          echo "V15_INDEX_WRITE_SKIPPED_VERIFY_ONLY"
           npx --yes wrangler@4.149.0 d1 execute egypt-amazon-v15-db --remote --command "SELECT name FROM sqlite_master WHERE type='index' AND name='idx_v15_priority_due';" --json > /tmp/v15-index.json
           python3 - <<'VERIFY'
           import json
