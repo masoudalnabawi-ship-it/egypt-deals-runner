@@ -366,8 +366,6 @@ def main():
     )[:80]
     print('V15_DISCOVERY_CANDIDATES',len(candidates),flush=True)
     print('V15_DISCOVERY_ALREADY_KNOWN',len(known),flush=True)
-    before_rows=query('SELECT COUNT(*) AS total FROM product_monitoring;')
-    before=int(before_rows[0]['total']) if before_rows else 0
     if asins:
         stamp=timestamp(now)
         values=','.join(
@@ -380,16 +378,9 @@ def main():
             for asin in asins
         )
         query('INSERT OR IGNORE INTO product_monitoring (asin,priority,next_check_at,updated_at) VALUES '+values+';')
-    after_rows=query('SELECT COUNT(*) AS total FROM product_monitoring;')
-    after=int(after_rows[0]['total']) if after_rows else before
-    print('V15_DISCOVERY_NEW',max(0,after-before),flush=True)
+
     print('V15_DISCOVERY_ATTEMPTED',len(asins),flush=True)
-    print('V15_DISCOVERY_SEEDED',max(0,after-before),'actual_new_count',flush=True)
-    # Read-only counters to distinguish no catalog from not-yet-due.
-    try:
-        rows=query("SELECT COUNT(*) AS total, SUM(CASE WHEN next_check_at <= strftime('%Y-%m-%dT%H:%M:%S+00:00','now') THEN 1 ELSE 0 END) AS due FROM product_monitoring;")
-        print('V15_MONITORING_TOTAL',rows[0]['total'] if rows else 'unknown',flush=True)
-    except Exception as exc:
-        print('V15_DIAGNOSTIC_UNAVAILABLE',type(exc).__name__,flush=True)
+    print('V15_DISCOVERY_NEW_COUNT','not_measured',flush=True)
+    print('V15_DISCOVERY_STATS','full_table_counts_disabled',flush=True)
 
 if __name__=='__main__':main()

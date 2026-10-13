@@ -14,5 +14,9 @@ class DiscoveryRotationTests(unittest.TestCase):
     def test_metrics_distinguish_attempted_from_inserted(self):
         source=SOURCE.read_text()
         self.assertIn('V15_DISCOVERY_NEW',source)
-        self.assertIn('actual_new_count',source)
+        self.assertIn('V15_DISCOVERY_ATTEMPTED', source)
+        self.assertIn('V15_DISCOVERY_NEW_COUNT', source)
+        self.assertIn('not_measured', source)
+        self.assertIn('INSERT OR IGNORE INTO product_monitoring', source)
+        self.assertNotIn('SELECT COUNT(*) AS total FROM product_monitoring', source)
         self.assertIn('INSERT OR IGNORE INTO product_monitoring',source)
