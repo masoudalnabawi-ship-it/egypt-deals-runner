@@ -44,6 +44,7 @@ jobs:
 
           for account in accounts.get("result", []):
               account_id = account["id"]
+              print("CHECKING_ACCOUNT_ID:", account_id)
 
               url = (
                   "https://api.cloudflare.com/client/v4/accounts/"
