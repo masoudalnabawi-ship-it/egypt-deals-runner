@@ -37,3 +37,10 @@ It does **not** send Telegram messages, access Amazon, write D1, or change
 production monitoring. V15's existing Telegram path remains untouched.
 Run: `python scripts/v16/verified_alert_bridge.py path/to/verification.json`.
 Production integration requires a separate reviewed change with live evidence.
+
+## Phase 5: opt-in private Telegram transport (NOT deployed)
+`private_telegram_transport.send_verified_private(report, enabled=True)` uses
+V15's existing private Telegram sender and D1-backed dedup. It requires
+`V16_PRIVATE_TELEGRAM_ENABLED=1`, existing V15 Telegram credentials, and an
+explicit caller. It is **not** wired to any scheduled production workflow;
+no live monitoring or delivery is claimed. D1 outages fail closed.
