@@ -44,3 +44,10 @@ V15's existing private Telegram sender and D1-backed dedup. It requires
 `V16_PRIVATE_TELEGRAM_ENABLED=1`, existing V15 Telegram credentials, and an
 explicit caller. It is **not** wired to any scheduled production workflow;
 no live monitoring or delivery is claimed. D1 outages fail closed.
+
+## Phase 6: safe report runner (NOT scheduled / NOT deployed)
+Use `python scripts/v16/safe_runner.py --report path/to/verified.json` for
+read-only dry-run. `--send` is explicitly required to attempt private Telegram
+sending, plus `V16_PRIVATE_TELEGRAM_ENABLED=1`, V15 Telegram credentials, and
+working D1 dedup. This does NOT discover Amazon listings, automatically run
+on a schedule, or ensure Telegram delivery. Do not supply untrusted reports.
