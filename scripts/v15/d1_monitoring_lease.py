@@ -7,6 +7,7 @@ import uuid
 from datetime import datetime, timedelta, timezone
 
 DATABASE = "egypt-amazon-v15-db"
+_QUOTA_EXHAUSTED = False
 
 
 def utc_now():
@@ -22,6 +23,9 @@ def quote(value):
 
 
 def query(sql):
+    global _QUOTA_EXHAUSTED
+    if _QUOTA_EXHAUSTED:
+        raise RuntimeError("V15_D1_DAILY_QUOTA_EXHAUSTED")
     if not os.environ.get("CLOUDFLARE_API_TOKEN"):
         raise RuntimeError("V15_CLOUDFLARE_TOKEN_MISSING")
 
@@ -43,6 +47,9 @@ def query(sql):
         token = os.environ.get("CLOUDFLARE_API_TOKEN", "")
         if token:
             diagnostic = diagnostic.replace(token, "[REDACTED]")
+        if "exceeded D1" in diagnostic and "row read limit" in diagnostic:
+            _QUOTA_EXHAUSTED = True
+            raise RuntimeError("V15_D1_DAILY_QUOTA_EXHAUSTED")
         raise RuntimeError(
             f"V15_D1_QUERY_FAILED exit={result.returncode}: "
             f"{diagnostic or 'no diagnostic output'}"

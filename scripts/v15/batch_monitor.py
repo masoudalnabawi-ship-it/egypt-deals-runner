@@ -159,7 +159,13 @@ def main():
 
     leases = []
     for _ in range(count):
-        lease = claim_next_due(lease_minutes=15)
+        try:
+            lease = claim_next_due(lease_minutes=15)
+        except RuntimeError as exc:
+            if "V15_D1_DAILY_QUOTA_EXHAUSTED" in str(exc):
+                print("V15_DEGRADED_D1_QUOTA", flush=True)
+                return
+            raise
         if lease is None:
             print("V15_BATCH_NO_MORE_DUE", flush=True)
             break
