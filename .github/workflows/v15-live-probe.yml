@@ -65,6 +65,8 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: "3.12"
+          cache: pip
+          cache-dependency-path: .github/workflows/v15-live-probe.yml
 
       - name: Install dependencies
         if: ${{ inputs.v15_d1_smoke != true && inputs.v15_webhook_preflight != true && inputs.v15_webhook_deploy != true && inputs.v15_private_review_test != true }}
@@ -318,7 +320,7 @@ jobs:
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.V15_CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: b015795e3322f02ca29cf8d8f1982212
-          V15_BATCH_SIZE: '5'
+          V15_BATCH_SIZE: '2'
           V15_BATCH_WORKERS: '1'
           V15_TELEGRAM_BOT_TOKEN: ${{ secrets.V15_TELEGRAM_BOT_TOKEN }}
           V15_TELEGRAM_REVIEW_CHAT_ID: ${{ secrets.V15_TELEGRAM_REVIEW_CHAT_ID }}
@@ -326,7 +328,7 @@ jobs:
           set -o pipefail
           python scripts/v15/batch_monitor.py 2>&1 | tee /tmp/v15-batch.log || {
             if grep -q 'exceeded D1.s free tier daily row read limit' /tmp/v15-batch.log; then
-              echo 'V15_D1_DAILY_QUOTA_EXHAUSTED: wait until 00:00 UTC; no retry storm'
+              echo 'V15_DEGRADED_D1_QUOTA: remote D1 paused until midnight UTC; GitHub schedule remains active'
               exit 0
             fi
             exit 1
