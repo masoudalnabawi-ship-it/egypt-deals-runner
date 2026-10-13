@@ -29,3 +29,11 @@ requiring historical prices. `LocalDeduplicator` is **in-memory only** and
 not suitable for production. This phase **does not send Telegram messages**,
 query Amazon, or change V15. Future integration must reuse V15's persistent
 Telegram deduplication and transport, with live integration tests.
+
+## Phase 4: verified report bridge (read-only)
+`verified_alert_bridge.py` accepts a verified V15-style JSON report, calculates
+V16 scoring and prepares an urgent private alert for advertised 50%–<100%.
+It does **not** send Telegram messages, access Amazon, write D1, or change
+production monitoring. V15's existing Telegram path remains untouched.
+Run: `python scripts/v16/verified_alert_bridge.py path/to/verification.json`.
+Production integration requires a separate reviewed change with live evidence.
