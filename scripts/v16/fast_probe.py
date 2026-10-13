@@ -31,7 +31,44 @@ def probe_fast(asin):
             context = browser.new_context(locale='ar-EG', timezone_id='Africa/Cairo',
                 user_agent=v14.UA, viewport={'width': 1440, 'height': 1800})
             page = context.new_page()
-            observation = v14.inspect_amazon(page, f'https://www.amazon.eg/dp/{asin}', asin)
+            try:
+                observation = v14.inspect_amazon(page, f'https://www.amazon.eg/dp/{asin}', asin)
+            except RuntimeError as exc:
+                if str(exc) == 'no_live_price':
+                    try:
+                        title = page.title()
+                        body = page.locator('body').inner_text(timeout=2500)
+                        body_length = len(body.strip())
+                        has_product_title = page.locator('#productTitle').count() > 0
+                        has_buybox = page.locator('#buybox, #desktop_buybox').count() > 0
+
+                        if body_length < 200:
+                            diagnosis = 'EMPTY_OR_INCOMPLETE_PAGE'
+                        elif not has_product_title and not has_buybox:
+                            diagnosis = 'NON_PRODUCT_PAGE'
+                        else:
+                            diagnosis = 'PRODUCT_PAGE_WITHOUT_PRICE'
+
+                        print(
+                            'V16_PAGE_DIAGNOSTIC',
+                            {
+                                'asin': asin,
+                                'diagnosis': diagnosis,
+                                'title': title[:100],
+                                'body_length': body_length,
+                                'has_product_title': has_product_title,
+                                'has_buybox': has_buybox,
+                            },
+                            flush=True,
+                        )
+                        raise RuntimeError('no_live_price:' + diagnosis) from exc
+                    except RuntimeError as diagnostic_error:
+                        if str(diagnostic_error).startswith('no_live_price:'):
+                            raise
+                        raise exc
+                    except Exception:
+                        raise exc
+                raise
             if observation.get('page_asin') != asin:
                 raise ValueError('PAGE_ASIN_MISMATCH')
             offer = {'asin': asin, 'title': observation.get('title'),
