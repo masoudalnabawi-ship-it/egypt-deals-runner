@@ -1,0 +1,60 @@
+name: V15 Priority Index Preflight
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  apply-index:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+
+      - name: Apply V15 priority index
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.V15_CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.V15_CLOUDFLARE_ACCOUNT_ID }}
+        run: |
+          set -euo pipefail
+          npx --yes wrangler@4.149.0 d1 execute \
+            egypt-amazon-v15-db \
+            --remote \
+            --file cloudflare_amazon_v15/migrations/0003_monitoring_claim_index.sql
+
+      - name: Verify V15 priority index
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.V15_CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.V15_CLOUDFLARE_ACCOUNT_ID }}
+        run: |
+          set -euo pipefail
+          npx --yes wrangler@4.149.0 d1 execute \
+            egypt-amazon-v15-db \
+            --remote \
+            --command "SELECT name FROM sqlite_master WHERE type='index' AND name='idx_v15_priority_due';" \
+            --json > /tmp/v15-index.json
+
+          python3 - <<'VERIFY'
+          import json
+          from pathlib import Path
+
+          data = json.loads(Path("/tmp/v15-index.json").read_text())
+
+          assert any(
+              item.get("success") is True
+              and any(row.get("name") == "idx_v15_priority_due"
+                      for row in item.get("results", []))
+              for item in data
+          ), "V15_PRIORITY_INDEX_MISSING"
+
+          print("V15_REMOTE_PRIORITY_INDEX_CONFIRMED")
+          VERIFY
