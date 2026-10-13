@@ -161,7 +161,7 @@ def main():
                 ".savingsPercentage, [class*='savingsPercentage']"
             ):
                 match = re.search(
-                    r"-?\\s*(\\d+(?:\\.\\d+)?)\\s*%",
+                    r"-?\s*(\d+(?:\.\d+)?)\s*%",
                     badge.get_text(" ", strip=True)
                 )
                 if not match:
@@ -273,8 +273,6 @@ def main():
 
         time.sleep(2)
 
-    print("V15_ULTRA_RADAR_FOUND", len(ultra_found), flush=True)
-
     discovered.update(ultra_found)
     print("V15_ULTRA_RADAR_FOUND", len(ultra_found), flush=True)
 
@@ -350,10 +348,11 @@ def main():
     from book_filter import classify
     candidates=sorted(asin for asin in discovered if not classify(asin=asin))
     known=set()
-    if candidates:
-        rows=query('SELECT asin FROM product_monitoring WHERE asin IN (' +
-                   ','.join(quote(asin) for asin in candidates) + ');')
-        known={str(row['asin']).upper() for row in rows}
+    for offset in range(0, len(candidates), 100):
+        batch = candidates[offset:offset + 100]
+        rows = query('SELECT asin FROM product_monitoring WHERE asin IN (' +
+                     ','.join(quote(asin) for asin in batch) + ');')
+        known.update(str(row['asin']).upper() for row in rows)
     # Give new Ultra radar candidates first access to the bounded seed batch.
     # Search results are unverified; HOT means urgent verification only.
     fresh = [asin for asin in candidates if asin not in known]

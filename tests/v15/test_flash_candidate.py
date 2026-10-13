@@ -47,6 +47,12 @@ class FlashTests(unittest.TestCase):
     def test_normal(self):
         self.assertEqual(candidate(self.report(discount=10))["category"], "NORMAL")
 
+    def test_discount_100_not_flash_candidate(self):
+        self.assertIsNone(candidate(self.report(discount=100)))
+
+    def test_discount_99_is_candidate(self):
+        self.assertEqual(candidate(self.report(discount=99))["category"], "SUPER_ULTRA")
+
     def test_below_threshold(self):
         self.assertIsNone(candidate(self.report(discount=0)))
 

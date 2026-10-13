@@ -25,15 +25,17 @@ class GlobalMonitoringTests(unittest.TestCase):
         sql = seen[0]
         self.assertIn("UPDATE product_monitoring", sql)
         self.assertIn("INDEXED BY idx_v15_priority_due", sql)
-        self.assertIn("ORDER BY grp, rank", sql)
+        self.assertIn("COALESCE(", sql)
+        self.assertIn("ORDER BY next_check_at, asin LIMIT 1", sql)
 
         for priority in ("HOT", "ACTIVE", "STABLE", "LOW"):
             self.assertEqual(
-                sql.count("priority = '" + priority + "'"),
+                sql.count("priority='" + priority + "'"),
                 2
             )
 
-        self.assertEqual(sql.count("UNION ALL"), 7)
+        self.assertEqual(sql.count("UNION ALL"), 0)
+        self.assertEqual(sql.count("INDEXED BY idx_v15_priority_due"), 8)
         self.assertIn("next_check_at <=", sql)
         self.assertIn("next_check_at >", sql)
         self.assertIn('RETURNING asin, priority', seen[0])

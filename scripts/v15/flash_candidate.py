@@ -17,7 +17,7 @@ def candidate(report, threshold=Decimal("1")):
     except (InvalidOperation, ValueError, TypeError):
         return None
 
-    if not pct.is_finite() or not threshold <= pct <= 100:
+    if not pct.is_finite() or not threshold <= pct < 100:
         return None
 
     if pct >= 70:

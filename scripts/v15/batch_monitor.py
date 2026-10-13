@@ -91,6 +91,20 @@ def process(lease):
         try:
             candidate_path = stage_flash_candidate(report, ROOT / 'v15-flash-candidates')
             if candidate_path:
+                from decimal import Decimal
+                candidate_data = json.loads(candidate_path.read_text(encoding='utf-8'))
+                discount = Decimal(str(candidate_data.get('displayed_discount_pct', '0')))
+                if not discount.is_finite() or not (Decimal('50') <= discount < Decimal('100')):
+                    print('V15_FLASH_BELOW_ALERT_THRESHOLD', asin, flush=True)
+                    candidate_path = None
+            if candidate_path:
+                from decimal import Decimal
+                candidate_data = json.loads(candidate_path.read_text(encoding='utf-8'))
+                discount = Decimal(str(candidate_data.get('displayed_discount_pct', '0')))
+                if not discount.is_finite() or not (Decimal('50') <= discount < Decimal('100')):
+                    print('V15_FLASH_BELOW_ALERT_THRESHOLD', asin, flush=True)
+                    candidate_path = None
+            if candidate_path:
                 print('V15_FLASH_CANDIDATE', asin, 'UNVERIFIED', flush=True)
                 try:
                     initialize_flash_dedup()
