@@ -16,7 +16,7 @@ class ScreenshotFlashTests(unittest.TestCase):
     def test_99_percent(self):
         self.assertEqual(candidate_from_observation(dict(OFFER, displayed_discount_pct='99'))['category'], 'FLASH')
     def test_49_percent(self):
-        self.assertIsNone(candidate_from_observation(dict(OFFER, displayed_discount_pct='49.9')))
+        self.assertEqual(candidate_from_observation(dict(OFFER, displayed_discount_pct='49.9'))['category'], 'GOOD')
     def test_invalid(self):
         with self.assertRaises(ValueError):
             candidate_from_observation(dict(OFFER, current_price='NaN'))

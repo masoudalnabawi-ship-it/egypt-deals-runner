@@ -15,6 +15,20 @@ if str(V15) not in sys.path:
     sys.path.insert(0, str(V15))
 
 
+# Exclude only clearly identifiable book products; do not exclude notebooks,
+# bookcases, stationery or unrelated products containing "book" in their names.
+BOOK_PRODUCTS = re.compile(
+    r'(?i)(?:\b(?:novels?|ebooks?|e-books?|kindle\s+books?|audiobooks?|'
+    r'paperback|hardcover|book\s+covers?|book\s+jackets?)\b|'
+    r'\bbook\b(?!\s*(?:shelf|case|stand|light))|'
+    r'كتب|رواي(?:ة|ات)|كتاب(?:\s|$)|غلاف\s+(?:كتاب|كتب)|أغلفة\s+(?:الكتب|كتب))'
+)
+
+
+def excluded_book_product(title):
+    return bool(BOOK_PRODUCTS.search(str(title or '')))
+
+
 def candidate_from_observation(observation):
     asin = observation.get('asin')
     if not isinstance(asin, str) or not re.fullmatch(r'[A-Z0-9]{10}', asin):
@@ -24,16 +38,16 @@ def candidate_from_observation(observation):
         price = Decimal(str(observation.get('current_price')))
     except (InvalidOperation, TypeError, ValueError) as exc:
         raise ValueError('INVALID_OFFER') from exc
-    if not pct.is_finite() or not 0 <= pct < 100 or not price.is_finite() or price <= 0:
+    if not pct.is_finite() or not 0 <= pct <= 100 or not price.is_finite() or price <= 0:
         raise ValueError('INVALID_OFFER')
-    if pct < 50:
+    if pct < 5 or excluded_book_product(observation.get('title')):
         return None
     return {
         'asin': asin,
         'title': str(observation.get('title') or 'منتج أمازون مصر')[:180],
         'current_price': str(price),
         'displayed_discount_pct': str(pct),
-        'category': 'FLASH' if pct >= 90 else 'SUPER_ULTRA' if pct >= 70 else 'ULTRA',
+        'category': 'FLASH' if pct >= 90 else 'SUPER_ULTRA' if pct >= 70 else 'ULTRA' if pct >= 50 else 'GOOD' if pct >= 30 else 'STANDARD',
     }
 
 

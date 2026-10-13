@@ -13,7 +13,7 @@ SOURCES = (
     'https://www.amazon.eg/gp/new-releases',
 )
 ASIN = re.compile(r'^[A-Z0-9]{10}$')
-DISCOUNT = re.compile(r'(?:خصم\s*|[-−]\s*)(\d{1,2})\s*%|(?:وفر|توفير)\s*(\d{1,2})\s*%', re.I)
+DISCOUNT = re.compile(r'(?:خصم\s*|[-−]\s*)(100|\d{1,2})\s*%|(?:وفر|توفير)\s*(100|\d{1,2})\s*%', re.I)
 
 
 def valid_source(url):
@@ -33,7 +33,7 @@ def extract_cards(page, limit=100):
             continue
         seen.add(asin)
         hints = [int(a or b) for a, b in DISCOUNT.findall(row.get('text', ''))]
-        pct = max(hints) if hints else None
+        pct = max((v for v in hints if 5 <= v <= 100), default=None)
         result.append({'asin': asin, 'url': f'https://www.amazon.eg/dp/{asin}',
                        'listing_discount_hint': pct, 'source': page.url})
         if len(result) >= limit:
@@ -78,7 +78,7 @@ def discover(max_pages=4, max_candidates=80, pages=None, browser_factory=None):
     return {'captured_at': datetime.now(timezone.utc).isoformat(),
             'status': 'UNVERIFIED_LISTING_CANDIDATES',
             'sources_checked': min(max_pages, len(pages)), 'errors': errors,
-            'candidates': list(found.values())}
+            'candidates': sorted(found.values(), key=lambda row: (row['listing_discount_hint'] is None, -(row['listing_discount_hint'] or 0)))}
 
 
 def main():

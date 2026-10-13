@@ -24,9 +24,9 @@ def test_no_screenshot_below_threshold():
 
     def probe(asin):
         try:
-            yield observation(49), None, None
+            yield observation(4.99), None, None
             events.append("SCREENSHOT_CAPTURED")
-            yield observation(49), "image.png", "digest"
+            yield observation(4.99), "image.png", "digest"
         finally:
             events.append("BROWSER_CLOSED")
 
