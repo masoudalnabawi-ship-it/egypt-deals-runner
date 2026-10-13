@@ -66,9 +66,18 @@ def run_pipeline(*, send=False, max_candidates=5, discover_fn=discover,
         try:
             for observation, image, digest in probe_fn(asin):
                 summary['probed'] += 1
-                result = alert_fn(observation, screenshot_path=image,
-                                  screenshot_sha256=digest, enabled=send)
-                summary['alerts'].append({'asin': asin, 'status': result})
+                # Send the text notification before the photo. This cannot make
+                # the alert earlier than the product probe; it does prevent
+                # screenshot uploading from delaying the initial notification.
+                text_status = alert_fn(observation, enabled=send)
+                summary['alerts'].append({'asin': asin, 'status': text_status,
+                                          'kind': 'text'})
+                if send and text_status not in ('DISABLED', 'BELOW_THRESHOLD',
+                                                'MISSING_TELEGRAM_CONFIGURATION'):
+                    photo_status = alert_fn(observation, screenshot_path=image,
+                                            screenshot_sha256=digest, enabled=send)
+                    summary['alerts'].append({'asin': asin, 'status': photo_status,
+                                              'kind': 'photo'})
         except Exception as exc:
             summary['failures'] += 1
             print('V16_PRODUCT_FAILED', asin, type(exc).__name__, flush=True)
