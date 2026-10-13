@@ -39,10 +39,13 @@ def run(send=False, max_candidates=5, discover_fn=discover, probe_fn=probe_one, 
                 # No message is sent in default dry-run mode.
                 text_status = alert_fn(observation, enabled=send)
                 result['alerts'].append({'asin': asin, 'kind': 'text', 'status': text_status})
-                if send and text_status not in ('DISABLED', 'BELOW_THRESHOLD', 'MISSING_TELEGRAM_CONFIGURATION'):
-                    photo_status = alert_fn(observation, screenshot_path=image,
-                                            screenshot_sha256=digest, enabled=True)
-                    result['alerts'].append({'asin': asin, 'kind': 'photo', 'status': photo_status})
+                if send and text_status in ('SENT', 'SENT_NEW', 'SENT_UPDATED'):
+                    try:
+                        photo_status = alert_fn(observation, screenshot_path=image,
+                                                screenshot_sha256=digest, enabled=True)
+                        result['alerts'].append({'asin': asin, 'kind': 'photo', 'status': photo_status})
+                    except Exception as exc:
+                        result['failures'].append({'asin': asin, 'reason': 'PHOTO_' + type(exc).__name__})
         except Exception as exc:
             result['failures'].append({'asin': asin, 'reason': type(exc).__name__})
     return result
