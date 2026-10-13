@@ -47,9 +47,9 @@ def run(send=False, max_candidates=5, discover_fn=discover, probe_fn=probe_one, 
                                                 screenshot_sha256=digest, enabled=True)
                         result['alerts'].append({'asin': asin, 'kind': 'photo', 'status': photo_status})
                     except Exception as exc:
-                        result['failures'].append({'asin': asin, 'reason': 'PHOTO_' + type(exc).__name__})
+                        result['failures'].append({'asin': asin, 'reason': 'PHOTO_' + type(exc).__name__, 'detail': str(exc)[:300]})
         except Exception as exc:
-            result['failures'].append({'asin': asin, 'reason': type(exc).__name__})
+            result['failures'].append({'asin': asin, 'reason': type(exc).__name__, 'detail': str(exc)[:300]})
     return result
 
 
