@@ -50,6 +50,11 @@ def send_flash(observation, *, screenshot_path=None, screenshot_sha256=None,
     if sender is None:
         from flash_private_alert import send
         sender = send
+    if os.environ.get('V16_DEDUP_BACKEND') == 'sqlite' and screenshot_path is None and send_once is None:
+        from smart_dedup import send_once as v16_once
+        send_once = v16_once
+        # Text-only SQLite mode; never initialize or write V15 D1.
+        return send_once(candidate, sender)
     if send_once is None or send_screenshot_once is None or initialize is None:
         from flash_dedup import initialize as init, send_once as once, send_screenshot_once as screenshot_once
         initialize = initialize or init
