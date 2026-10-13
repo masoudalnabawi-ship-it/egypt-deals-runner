@@ -56,7 +56,7 @@ def send_flash(observation, *, screenshot_path=None, screenshot_sha256=None,
         # Text-only SQLite mode; never initialize or write V15 D1.
         return send_once(candidate, sender)
     if send_once is None or send_screenshot_once is None or initialize is None:
-        from flash_dedup import initialize as init, send_once as once, send_screenshot_once as screenshot_once
+        from d1_flash_dedup import initialize as init, send_once as once, send_screenshot_once as screenshot_once
         initialize = initialize or init
         send_once = send_once or once
         send_screenshot_once = send_screenshot_once or screenshot_once
