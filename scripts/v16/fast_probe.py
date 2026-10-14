@@ -63,7 +63,7 @@ def verified_page_discount(page):
 
             for i in range(count):
                 text = locator.nth(i).inner_text(timeout=1500)
-                clean_text = re.sub(r"[\\u200e\\u200f\\u061c\\u202a-\\u202e\\u2066-\\u2069]", "", text)
+                clean_text = re.sub(r"[\u200e\u200f\u061c\u202a-\u202e\u2066-\u2069]", "", text)
                 match = re.search(r"(100|[1-9]?[0-9])\s*%", clean_text)
 
                 if match:
