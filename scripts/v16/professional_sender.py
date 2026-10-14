@@ -96,7 +96,8 @@ def send(candidate, *, token=None, chat_id=None, opener=None):
                 logging.getLogger(__name__).exception('V16_INTERACTIVE_SETUP_FAILED message_id=%s',message_id)
                 # Safe fallback: photo remains private with product URL only.
 
-    if type(message_id) is int and message_id > 0:
+    if (type(message_id) is int and message_id > 0
+            and os.environ.get('V16_DEDUP_BACKEND') != 'd1'):
         try:
             from review_store import save_review_message_id
             save_review_message_id(candidate['asin'], message_id)
