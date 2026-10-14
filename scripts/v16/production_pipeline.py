@@ -108,7 +108,8 @@ def run_professional(*, send=False, max_candidates=5,
             return {'discovered':0,'probed':0,'eligible':0,'alerts':[], 'failures':[], 'discovery_errors':[], 'budget':'DENIED'}
         from cloud_dedup import send_once, already_sent
 
-    discovery = discover_fn(max_pages=4, max_candidates=100)
+    discovery = discover_fn(max_pages=8, max_candidates=150)
+    print('V16_SOURCE_STATS', json.dumps(discovery.get('source_stats', []), ensure_ascii=False), flush=True)
     hints = [
         x['listing_discount_hint']
         for x in discovery['candidates']
@@ -137,6 +138,7 @@ def run_professional(*, send=False, max_candidates=5,
         'alerts': [],
         'failures': [],
         'discovery_errors': discovery['errors'],
+        'source_stats': discovery.get('source_stats', []),
     }
 
     for item in candidates[:max_candidates]:

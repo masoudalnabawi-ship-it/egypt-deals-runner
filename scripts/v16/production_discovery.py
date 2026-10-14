@@ -6,7 +6,13 @@ from datetime import datetime, timezone
 from pathlib import Path
 from urllib.parse import urlparse
 
+# Search pages are discovery HINTS only. Every candidate is verified on its own
+# Amazon product page before being accepted; URL filters are not trusted.
 SOURCES = (
+    'https://www.amazon.eg/s?k=electronics&pct-off=50-99',
+    'https://www.amazon.eg/s?k=home+and+kitchen&pct-off=50-99',
+    'https://www.amazon.eg/s?k=beauty&pct-off=50-99',
+    'https://www.amazon.eg/s?k=fashion&pct-off=50-99',
     'https://www.amazon.eg/gp/goldbox',
     'https://www.amazon.eg/deals',
     'https://www.amazon.eg/gp/bestsellers',
@@ -58,7 +64,7 @@ def discover(max_pages=4, max_candidates=80, pages=None, browser_factory=None):
     if browser_factory is None:
         from playwright.sync_api import sync_playwright
         browser_factory = sync_playwright
-    found, errors = {}, []
+    found, errors, source_stats = {}, [], []
     with browser_factory() as playwright:
         browser = playwright.chromium.launch(headless=True, args=['--no-sandbox', '--disable-dev-shm-usage'])
         try:
@@ -71,8 +77,15 @@ def discover(max_pages=4, max_candidates=80, pages=None, browser_factory=None):
                     if any(x in title for x in ('captcha', 'robot check', 'sign in')):
                         errors.append({'source': url, 'reason': 'ACCESS_CHALLENGE'})
                         continue
-                    # Scan a bounded pool from EVERY source before ranking.
-                    for item in extract_cards(tab, limit=max_candidates):
+                    # Collect per-source metrics BEFORE global ASIN dedup/truncation.
+                    cards = extract_cards(tab, limit=max_candidates)
+                    source_stats.append({
+                        'source': url,
+                        'cards': len(cards),
+                        'discount_hints': sum(x.get('listing_discount_hint') is not None for x in cards),
+                        'discount_50_plus': sum((x.get('listing_discount_hint') or 0) >= 50 for x in cards),
+                    })
+                    for item in cards:
                         asin = item['asin']
                         prior = found.get(asin)
                         if prior is None or (item.get('listing_discount_hint') or 0) > (prior.get('listing_discount_hint') or 0):
@@ -86,6 +99,7 @@ def discover(max_pages=4, max_candidates=80, pages=None, browser_factory=None):
     return {'captured_at': datetime.now(timezone.utc).isoformat(),
             'status': 'UNVERIFIED_LISTING_CANDIDATES',
             'sources_checked': min(max_pages, len(pages)), 'errors': errors,
+            'source_stats': source_stats,
             'candidates': sorted(found.values(), key=lambda row: (row.get('listing_discount_hint') is None, -(row.get('listing_discount_hint') or 0)))[:max_candidates]}
 
 
@@ -99,6 +113,7 @@ def main():
     Path(args.output).write_text(json.dumps(report, ensure_ascii=False, indent=2), encoding='utf-8')
     hints = [x['listing_discount_hint'] for x in report['candidates']
              if x.get('listing_discount_hint') is not None]
+    print('V16_SOURCE_STATS', json.dumps(report['source_stats'], ensure_ascii=False), flush=True)
     print('V16_DISCOUNT_STATS', {
         'total': len(report['candidates']),
         'with_discount_hint': len(hints),
