@@ -70,11 +70,13 @@ def run(send=False, max_candidates=5, discover_fn=discover, probe_fn=probe_one, 
 def main():
     p = argparse.ArgumentParser()
     p.add_argument('--send', action='store_true')
+    p.add_argument('--professional', action='store_true', help='One photo + caption per alert (V16 SQLite)')
     p.add_argument('--max-candidates', type=int, default=5)
     p.add_argument('--output', default='v16-pipeline-report.json')
     p.add_argument('--health-output', default='v16-health.json')
     args = p.parse_args()
-    report = run(send=args.send, max_candidates=args.max_candidates)
+    report = (run_professional(send=args.send, max_candidates=args.max_candidates)
+              if args.professional else run(send=args.send, max_candidates=args.max_candidates))
     Path(args.output).write_text(json.dumps(report, ensure_ascii=False, indent=2), encoding='utf-8')
     health = assess(report)
     save_health(args.health_output, health)
@@ -82,5 +84,108 @@ def main():
     print('V16_PIPELINE_SUMMARY', json.dumps(report, ensure_ascii=False))
 
 
-if __name__ == '__main__':
+def run_professional(*, send=False, max_candidates=5,
+                     discover_fn=discover, probe_fn=probe_one,
+                     sender=None):
+    """V16 photo + caption in one private message; SQLite dedup only."""
+    from screenshot_flash import candidate_from_observation
+    from smart_dedup import send_once, already_sent
+    from professional_sender import send as professional_send
+
+    if not 1 <= max_candidates <= 10:
+        raise ValueError('max_candidates must be 1..10')
+
+    if send and os.environ.get('V16_PRIVATE_TELEGRAM_ENABLED') != '1':
+        raise RuntimeError('V16_PRIVATE_TELEGRAM_DISABLED')
+
+    if send and os.environ.get('V16_DEDUP_BACKEND') != 'sqlite':
+        raise RuntimeError('V16_PROFESSIONAL_REQUIRES_SQLITE')
+
+    discovery = discover_fn(max_pages=4, max_candidates=100)
+    candidates = sorted(
+        discovery['candidates'],
+        key=lambda row: (
+            row.get('listing_discount_hint') is None,
+            -(row.get('listing_discount_hint') or 0),
+        ),
+    )
+
+    result = {
+        'discovered': len(candidates),
+        'probed': 0,
+        'eligible': 0,
+        'alerts': [],
+        'failures': [],
+        'discovery_errors': discovery['errors'],
+    }
+
+    for item in candidates[:max_candidates]:
+        asin = item.get('asin')
+        if not isinstance(asin, str) or len(asin) != 10 or not asin.isascii() or not asin.isalnum():
+            continue
+
+        probe = None
+        try:
+            probe = iter(probe_fn(asin))
+            first = next(probe)
+            observation = first[0]
+            result['probed'] += 1
+
+            candidate = candidate_from_observation(observation)
+            if candidate is None:
+                continue
+
+            result['eligible'] += 1
+
+            if not send:
+                continue
+
+            if already_sent(candidate):
+                result['alerts'].append({
+                    'asin': asin,
+                    'kind': 'photo_with_caption',
+                    'status': 'SKIPPED_DUPLICATE',
+                })
+                continue
+
+            second = next(probe)
+            image, digest = second[1], second[2]
+
+            if not image or not digest:
+                raise RuntimeError('SCREENSHOT_MISSING')
+
+            candidate['screenshot_path'] = str(image)
+            candidate['screenshot_sha256'] = digest
+
+            status = send_once(
+                candidate,
+                sender or professional_send,
+            )
+
+            result['alerts'].append({
+                'asin': asin,
+                'kind': 'photo_with_caption',
+                'status': status,
+            })
+
+        except StopIteration:
+            result['failures'].append({
+                'asin': asin,
+                'reason': 'SCREENSHOT_NOT_PRODUCED',
+            })
+        except Exception as exc:
+            result['failures'].append({
+                'asin': asin,
+                'reason': type(exc).__name__,
+                'detail': str(exc)[:300],
+            })
+        finally:
+            close = getattr(probe, 'close', None)
+            if callable(close):
+                close()
+
+    return result
+
+
+if __name__ == "__main__":
     main()

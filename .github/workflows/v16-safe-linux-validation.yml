@@ -1,0 +1,38 @@
+name: V16 Safe Linux Validation
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: v16-safe-linux-validation
+  cancel-in-progress: true
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install lightweight test dependencies
+        run: python -m pip install pytest requests playwright==1.56.0
+      - name: Run V16 unit tests without browser or Telegram
+        env:
+          PYTHONPATH: scripts/v16:scripts/v15:scripts/v14
+          V16_PRIVATE_TELEGRAM_ENABLED: '0'
+          V16_INTERACTIVE_READY: '0'
+        run: python -m pytest -q tests/v16
+      - name: Check Cloudflare Worker JavaScript syntax
+        run: node --check cloudflare/v16-telegram-webhook/src.js
+      - name: Validate D1 SQL schema locally
+        run: |
+          python - <<'PY'
+          import sqlite3
+          from pathlib import Path
+          schema = Path('cloudflare/v16-telegram-webhook/schema.sql').read_text()
+          with sqlite3.connect(':memory:') as db:
+              db.executescript(schema)
+              db.executescript(schema)
+              print('D1_SQLITE_SCHEMA_VALID')
+          PY

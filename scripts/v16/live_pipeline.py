@@ -1,6 +1,6 @@
 """Bounded opt-in V16 discovery -> product inspection -> private screenshot alert.
 
-Uses V15 read-only product probe, never V15's queue or batch monitoring.
+Uses the V16 fast probe with V14 read-only inspector; no V15 dependency.
 Default is dry-run. No D1 writes unless --send is explicitly enabled.
 """
 import argparse
@@ -29,28 +29,15 @@ def observation_from_report(report):
             'displayed_discount_pct': obs.get('savings_percent')}
 
 
-def probe_one(asin, *, runner=subprocess.run):
-    with tempfile.TemporaryDirectory(prefix='v16-probe-') as tmp:
-        work = Path(tmp)
-        env = dict(os.environ, V15_TEST_ASIN=asin, GITHUB_OUTPUT=str(work / 'output.txt'))
-        runner([sys.executable, str(ROOT / 'scripts/v15/live_probe.py')],
-               cwd=work, env=env, check=True, timeout=115)
-        report_path = work / 'v15-live-evidence/verification.json'
-        if not report_path.is_file():
-            return None
-        report = json.loads(report_path.read_text(encoding='utf-8'))
-        if report.get('asin') != asin:
-            raise ValueError('REPORT_ASIN_MISMATCH')
-        image_name = report.get('screenshot', '')
-        if not image_name or Path(image_name).name != image_name:
-            raise ValueError('INVALID_SCREENSHOT_PATH')
-        image = report_path.parent / image_name
-        if not image.is_file():
-            raise ValueError('SCREENSHOT_MISSING')
-        digest = hashlib.sha256(image.read_bytes()).hexdigest()
-        if digest != report.get('screenshot_sha256'):
-            raise ValueError('SCREENSHOT_HASH_MISMATCH')
-        yield observation_from_report(report), image, digest
+def probe_one(asin, *, runner=None):
+    """V16 read-only probe; V14 inspector remains the supported page parser.
+
+    runner is accepted for compatibility but no V15 subprocess is invoked.
+    """
+    from fast_probe import probe_fast
+    for observation, image, digest in probe_fast(asin):
+        if image is not None:
+            yield observation, image, digest
 
 
 def run_pipeline(*, send=False, max_candidates=5, discover_fn=discover,
@@ -77,7 +64,7 @@ def run_pipeline(*, send=False, max_candidates=5, discover_fn=discover,
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument('--send', action='store_true', help='Send to private Telegram; requires V16_PRIVATE_TELEGRAM_ENABLED=1 and V15 credentials')
+    parser.add_argument('--send', action='store_true', help='Send to private Telegram; requires explicit private Telegram opt-in')
     parser.add_argument('--max-candidates', type=int, default=5)
     args = parser.parse_args()
     print(json.dumps(run_pipeline(send=args.send, max_candidates=args.max_candidates), ensure_ascii=False))

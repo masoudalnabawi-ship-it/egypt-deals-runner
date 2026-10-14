@@ -1,0 +1,8 @@
+name = "egypt-amazon-v16-telegram-webhook"
+main = "src.js"
+compatibility_date = "2026-10-14"
+workers_dev = true
+[[d1_databases]]
+binding = "DB"
+database_name = "egypt-amazon-v16-db"
+database_id = "REPLACE_WITH_NEW_V16_DATABASE_ID"

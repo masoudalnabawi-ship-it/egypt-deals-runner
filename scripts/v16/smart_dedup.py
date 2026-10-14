@@ -73,3 +73,26 @@ def send_once(candidate, sender):
             # Failed sends may retry immediately, but only if the same owner still holds the claim.
             db.execute("DELETE FROM alerts WHERE asin=? AND owner=? AND state='sending'", (asin, owner))
     return 'SENT' if delivered else 'SEND_FAILED_RETRY_LATER'
+
+
+def already_sent(candidate):
+    """Read-only early duplicate check; final send_once remains authoritative."""
+    asin, price = validate(candidate)
+    with connect() as db:
+        row = db.execute(
+            'SELECT price_cents, state, updated_at FROM alerts WHERE asin=?',
+            (asin,),
+        ).fetchone()
+
+    if row is None:
+        return False
+
+    old_price, state, updated_at = row
+
+    if state == 'sent' and price >= old_price:
+        return True
+
+    if state == 'sending' and time.time() - updated_at < LEASE_SECONDS:
+        return True
+
+    return False
