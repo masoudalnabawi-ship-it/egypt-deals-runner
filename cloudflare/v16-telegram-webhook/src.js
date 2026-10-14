@@ -78,10 +78,36 @@ async function webhook(e,req){
  try{return u.callback_query?await callback(e,u.callback_query):u.message?await message(e,u.message):json({ok:true});}
  catch(err){await e.DB.prepare('DELETE FROM v16_updates WHERE update_id=?').bind(u.update_id).run();throw err;}
 }
+
+// Atomic D1 lease for cross-run dedup. Sent offers repeat only after a lower price.
+async function deal(e,req,path){
+ if(req.headers.get('Authorization')!==`Bearer ${e.REGISTRATION_SECRET}`)return json({error:'UNAUTHORIZED'},403);
+ const data=await req.json().catch(()=>null), asin=data?.asin, price=data?.price_cents;
+ if(!ASIN.test(asin)||!Number.isSafeInteger(price)||price<=0)return json({error:'INVALID_DEAL'},400);
+ if(path==='/dedup/claim'){
+  const owner=data.owner;
+  if(typeof owner!=='string'||!/^[a-f0-9]{32}$/.test(owner))return json({error:'INVALID_OWNER'},400);
+  const rows=await e.DB.prepare(`INSERT INTO v16_deal_dedup(asin,price_cents,status,owner,updated_at)
+ VALUES(?,?,'sending',?,unixepoch()) ON CONFLICT(asin) DO UPDATE SET
+ price_cents=excluded.price_cents,status='sending',owner=excluded.owner,updated_at=unixepoch()
+ WHERE (v16_deal_dedup.status='sent' AND excluded.price_cents<v16_deal_dedup.price_cents)
+ OR (v16_deal_dedup.status='sending' AND v16_deal_dedup.updated_at<unixepoch()-600)
+ RETURNING asin`).bind(asin,price,owner).all();
+  return json({allowed:!!rows.results?.length});
+ }
+ if(path==='/dedup/finish'){
+  const owner=data.owner, success=data.success;
+  if(typeof owner!=='string'||!/^[a-f0-9]{32}$/.test(owner)||typeof success!=='boolean')return json({error:'INVALID_FINISH'},400);
+  if(success){const r=await e.DB.prepare("UPDATE v16_deal_dedup SET status='sent',updated_at=unixepoch() WHERE asin=? AND owner=? AND price_cents=? AND status='sending'").bind(asin,owner,price).run();return json({ok:!!r.meta?.changes});}
+  const r=await e.DB.prepare("DELETE FROM v16_deal_dedup WHERE asin=? AND owner=? AND price_cents=? AND status='sending'").bind(asin,owner,price).run();return json({ok:!!r.meta?.changes});
+ }
+ return json({error:'NOT_FOUND'},404);
+}
+
 export default {async fetch(req,e){
  if(req.method!=='POST')return new Response('Not found',{status:404});
  if(!validEnv(e))return json({error:'NOT_CONFIGURED'},503);
  const path=new URL(req.url).pathname;
- try{if(path==='/budget/claim')return await budget(e,req);if(path==='/register')return await register(e,req);if(path==='/telegram')return await webhook(e,req);return json({error:'NOT_FOUND'},404);}
+ try{if(path==='/budget/claim')return await budget(e,req);if(path==='/dedup/claim'||path==='/dedup/finish')return await deal(e,req,path);if(path==='/register')return await register(e,req);if(path==='/telegram')return await webhook(e,req);return json({error:'NOT_FOUND'},404);}
  catch(err){console.error('V16_WEBHOOK_FAILED',String(err?.message||err));return json({error:'RETRY'},500);}
 }};

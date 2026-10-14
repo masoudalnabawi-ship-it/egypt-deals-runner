@@ -17,6 +17,8 @@ def run(send=False, max_candidates=5, discover_fn=discover, probe_fn=probe_one, 
         raise ValueError('max_candidates must be 1..10')
     if send and os.environ.get('V16_PRIVATE_TELEGRAM_ENABLED') != '1':
         raise RuntimeError('Telegram send requires V16_PRIVATE_TELEGRAM_ENABLED=1')
+    if send and os.environ.get('V16_DEDUP_BACKEND') == 'd1':
+        raise RuntimeError('V16_D1_REQUIRES_PROFESSIONAL_MODE')
     # Collect a larger pool; probe only the strongest candidates.
     discovery = discover_fn(max_pages=4, max_candidates=100)
     candidates = sorted(discovery['candidates'], key=lambda row: (
@@ -98,8 +100,13 @@ def run_professional(*, send=False, max_candidates=5,
     if send and os.environ.get('V16_PRIVATE_TELEGRAM_ENABLED') != '1':
         raise RuntimeError('V16_PRIVATE_TELEGRAM_DISABLED')
 
-    if send and os.environ.get('V16_DEDUP_BACKEND') != 'sqlite':
-        raise RuntimeError('V16_PROFESSIONAL_REQUIRES_SQLITE')
+    if send and os.environ.get('V16_DEDUP_BACKEND') not in ('sqlite','d1'):
+        raise RuntimeError('V16_PROFESSIONAL_REQUIRES_DEDUP')
+    if send and os.environ.get('V16_DEDUP_BACKEND') == 'd1':
+        from cloud_budget import claim_run
+        if not claim_run():
+            return {'discovered':0,'probed':0,'eligible':0,'alerts':[], 'failures':[], 'discovery_errors':[], 'budget':'DENIED'}
+        from cloud_dedup import send_once, already_sent
 
     discovery = discover_fn(max_pages=4, max_candidates=100)
     candidates = sorted(
