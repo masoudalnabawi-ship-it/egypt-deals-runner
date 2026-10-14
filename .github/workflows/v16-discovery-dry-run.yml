@@ -2,6 +2,11 @@ name: V16 Discovery Dry Run
 
 on:
   workflow_dispatch:
+  push:
+    branches:
+      - feature/v16-smart-dedup-20261013203210
+    paths:
+      - .github/workflows/v16-discovery-dry-run.yml
 
 permissions:
   contents: read
