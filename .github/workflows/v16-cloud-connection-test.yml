@@ -1,0 +1,38 @@
+name: V16 Cloud Connection Test
+
+on:
+  push:
+    branches:
+      - feature/v16-smart-dedup-20261013203210
+    paths:
+      - .github/workflows/v16-cloud-connection-test.yml
+
+permissions:
+  contents: read
+
+jobs:
+  test-connection:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Test authenticated D1 connection
+        env:
+          V16_WORKER_URL: ${{ vars.V16_WORKER_URL }}
+          V16_REGISTRATION_SECRET: ${{ secrets.V16_REGISTRATION_SECRET }}
+        run: |
+          set -euo pipefail
+          test -n "$V16_WORKER_URL"
+          test -n "$V16_REGISTRATION_SECRET"
+
+          CODE=$(curl -sS -o /tmp/v16-response.json -w '%{http_code}' \
+            -X POST "$V16_WORKER_URL/budget/claim" \
+            -H "Authorization: Bearer $V16_REGISTRATION_SECRET")
+
+          echo "HTTP_STATUS=$CODE"
+
+          if [ "$CODE" != "200" ]; then
+            echo "V16_CLOUD_CONNECTION_FAILED"
+            exit 1
+          fi
+
+          echo "V16_CLOUD_CONNECTION_SUCCESS"
