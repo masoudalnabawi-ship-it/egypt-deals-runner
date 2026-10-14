@@ -44,6 +44,36 @@ def inspect_with_recovery(page, url, asin, inspector, blocked):
 
 
 
+
+def verified_page_discount(page):
+    """Read an explicitly advertised percentage from Amazon's product page."""
+    selectors = (
+        "#corePriceDisplay_desktop_feature_div .savingsPercentage",
+        "#corePrice_feature_div .savingsPercentage",
+        "#corePrice_desktop .savingsPercentage",
+        ".savingsPercentage",
+    )
+
+    import re
+
+    for selector in selectors:
+        try:
+            locator = page.locator(selector)
+            count = min(locator.count(), 5)
+
+            for i in range(count):
+                text = locator.nth(i).inner_text(timeout=1500)
+                match = re.search(r"(100|[1-9]?[0-9])\\s*%", text)
+
+                if match:
+                    value = int(match.group(1))
+                    if 5 <= value <= 100:
+                        return value
+        except Exception:
+            continue
+
+    return None
+
 def probe_fast(asin):
     import v14_production_pipeline as v14
     if not isinstance(asin, str) or len(asin) != 10 or not asin.isascii() or not asin.isalnum():
@@ -99,9 +129,13 @@ def probe_fast(asin):
                 raise
             if observation.get('page_asin') != asin:
                 raise ValueError('PAGE_ASIN_MISMATCH')
+            verified_discount = verified_page_discount(page)
             offer = {'asin': asin, 'title': observation.get('title'),
                 'current_price': observation.get('current_price'),
-                'displayed_discount_pct': observation.get('savings_percent')}
+                'displayed_discount_pct': (
+                    verified_discount if verified_discount is not None
+                    else observation.get('savings_percent')
+                )}
             # First yield happens BEFORE screenshot capture, not after it.
             yield offer, None, None
             with tempfile.TemporaryDirectory(prefix='v16-image-') as directory:
