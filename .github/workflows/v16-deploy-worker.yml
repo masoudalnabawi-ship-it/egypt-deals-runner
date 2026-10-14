@@ -6,6 +6,8 @@ on:
       - feature/v16-smart-dedup-20261013203210
     paths:
       - .github/workflows/v16-deploy-worker.yml
+      - cloudflare/v16-telegram-webhook/src.js
+      - cloudflare/v16-telegram-webhook/wrangler.toml.template
 
 permissions:
   contents: read
@@ -28,6 +30,7 @@ jobs:
           REGISTRATION_SECRET: ${{ secrets.V16_REGISTRATION_SECRET }}
         run: |
           set -euo pipefail
+          trap 'rm -f /tmp/v16-worker-secrets.json /tmp/v16-bot-id' EXIT
           test -n "$CLOUDFLARE_API_TOKEN"
           test -n "$TELEGRAM_BOT_TOKEN"
           test -n "$TELEGRAM_WEBHOOK_SECRET"
