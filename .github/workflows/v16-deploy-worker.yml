@@ -1,0 +1,65 @@
+name: V16 Deploy Cloudflare Worker
+
+on:
+  push:
+    branches:
+      - feature/v16-smart-dedup-20261013203210
+    paths:
+      - .github/workflows/v16-deploy-worker.yml
+
+permissions:
+  contents: read
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Deploy V16 Worker with secrets
+        working-directory: cloudflare/v16-telegram-webhook
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.V15_CLOUDFLARE_API_TOKEN }}
+          TELEGRAM_BOT_TOKEN: ${{ secrets.V15_TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_WEBHOOK_SECRET: ${{ secrets.V15_TELEGRAM_WEBHOOK_SECRET }}
+          OWNER_USER_ID: ${{ secrets.V15_TELEGRAM_OWNER_USER_ID }}
+          REVIEW_CHAT_ID: ${{ secrets.V15_TELEGRAM_REVIEW_CHAT_ID }}
+          REGISTRATION_SECRET: ${{ secrets.V16_REGISTRATION_SECRET }}
+        run: |
+          set -euo pipefail
+          test -n "$CLOUDFLARE_API_TOKEN"
+          test -n "$TELEGRAM_BOT_TOKEN"
+          test -n "$TELEGRAM_WEBHOOK_SECRET"
+          test -n "$OWNER_USER_ID"
+          test -n "$REVIEW_CHAT_ID"
+          test -n "$REGISTRATION_SECRET"
+
+          cp wrangler.toml.template wrangler.toml
+
+          BOT_USER_ID="$(curl -fsS \
+            "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/getMe" \
+            | python3 -c 'import json,sys; d=json.load(sys.stdin); assert d["ok"]; print(d["result"]["id"])')"
+
+          printf '%s' "$BOT_USER_ID" > /tmp/v16-bot-id
+
+          npx --yes wrangler@4 deploy
+
+          python3 - <<'PY' > /tmp/v16-worker-secrets.json
+          import json, os
+          from pathlib import Path
+          data = {
+              "TELEGRAM_BOT_TOKEN": os.environ["TELEGRAM_BOT_TOKEN"],
+              "TELEGRAM_WEBHOOK_SECRET": os.environ["TELEGRAM_WEBHOOK_SECRET"],
+              "OWNER_USER_ID": os.environ["OWNER_USER_ID"],
+              "REVIEW_CHAT_ID": os.environ["REVIEW_CHAT_ID"],
+              "REGISTRATION_SECRET": os.environ["REGISTRATION_SECRET"],
+              "BOT_USER_ID": Path("/tmp/v16-bot-id").read_text().strip(),
+          }
+          print(json.dumps(data))
+          PY
+
+          npx --yes wrangler@4 secret bulk /tmp/v16-worker-secrets.json
+          rm -f /tmp/v16-worker-secrets.json /tmp/v16-bot-id
+
+          echo "V16_WORKER_DEPLOYED_WITH_SECRETS"
