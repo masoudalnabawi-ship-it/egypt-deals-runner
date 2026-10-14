@@ -34,8 +34,26 @@ def send_once(candidate,sender):
     try:
         delivered=bool(sender(candidate))
     finally:
-        # If finalize fails after delivery, lease expires after 10 minutes; monitor failures.
-        request('/dedup/finish',{**payload,'success':delivered})
+        # Retry finalization; never send the Telegram message again here.
+        import time
+        last_error = None
+        for attempt in range(3):
+            try:
+                result = request('/dedup/finish', {
+                    **payload, 'success': delivered
+                })
+                if result.get('ok') is not True:
+                    raise RuntimeError('V16_D1_FINISH_NOT_CONFIRMED')
+                last_error = None
+                break
+            except Exception as exc:
+                last_error = exc
+                if attempt < 2:
+                    time.sleep(1 + attempt)
+        if last_error is not None:
+            raise RuntimeError(
+                'V16_D1_FINALIZATION_UNCONFIRMED'
+            ) from last_error
     return 'SENT' if delivered else 'SEND_FAILED_RETRY_LATER'
 
 def already_sent(candidate):
