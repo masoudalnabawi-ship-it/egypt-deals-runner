@@ -109,6 +109,19 @@ def run_professional(*, send=False, max_candidates=5,
         from cloud_dedup import send_once, already_sent
 
     discovery = discover_fn(max_pages=4, max_candidates=100)
+    hints = [
+        x['listing_discount_hint']
+        for x in discovery['candidates']
+        if x.get('listing_discount_hint') is not None
+    ]
+    print('V16_DISCOVERY_DISCOUNT_STATS', {
+        'total': len(discovery['candidates']),
+        'with_discount_hint': len(hints),
+        'discount_50_plus': sum(x >= 50 for x in hints),
+        'discount_90_plus': sum(x >= 90 for x in hints),
+        'without_discount_hint': len(discovery['candidates']) - len(hints),
+    }, flush=True)
+
     candidates = sorted(
         discovery['candidates'],
         key=lambda row: (
