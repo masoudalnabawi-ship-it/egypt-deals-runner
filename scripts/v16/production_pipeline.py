@@ -94,8 +94,8 @@ def run_professional(*, send=False, max_candidates=5,
     from smart_dedup import send_once, already_sent
     from professional_sender import send as professional_send
 
-    if not 1 <= max_candidates <= 10:
-        raise ValueError('max_candidates must be 1..10')
+    if not 1 <= max_candidates <= 25:
+        raise ValueError('max_candidates must be 1..25')
 
     if send and os.environ.get('V16_PRIVATE_TELEGRAM_ENABLED') != '1':
         raise RuntimeError('V16_PRIVATE_TELEGRAM_DISABLED')
