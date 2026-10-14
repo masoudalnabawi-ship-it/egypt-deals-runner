@@ -41,8 +41,13 @@ jobs:
                   },
                   method='POST'
               )
-              with urllib.request.urlopen(req, timeout=15) as response:
-                  return json.load(response)
+              try:
+                  with urllib.request.urlopen(req, timeout=15) as response:
+                      return json.load(response)
+              except urllib.error.HTTPError as exc:
+                  print('HTTP_STATUS:', exc.code)
+                  print('RESPONSE:', exc.read().decode()[:300])
+                  raise
 
           owner1 = uuid.uuid4().hex
           owner2 = uuid.uuid4().hex
