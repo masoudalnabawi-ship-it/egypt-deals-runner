@@ -1,6 +1,7 @@
 name: V16 D1 Dedup Test
 
 on:
+  workflow_dispatch:
   push:
     branches:
       - feature/v16-smart-dedup-20261013203210
