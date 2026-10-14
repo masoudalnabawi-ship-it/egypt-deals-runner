@@ -1,0 +1,57 @@
+name: V16 Private Telegram Smoke
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  private-message:
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - name: Send exactly one private test message
+        env:
+          BOT_TOKEN: ${{ secrets.V15_TELEGRAM_BOT_TOKEN }}
+          REVIEW_CHAT_ID: ${{ secrets.V15_TELEGRAM_REVIEW_CHAT_ID }}
+        run: |
+          set -euo pipefail
+          test -n "$BOT_TOKEN"
+          test -n "$REVIEW_CHAT_ID"
+          python - <<'PYCODE'
+          import json, os, urllib.request
+
+          token = os.environ["BOT_TOKEN"]
+          chat = os.environ["REVIEW_CHAT_ID"]
+
+          if not chat.lstrip("-").isdigit():
+              raise SystemExit("INVALID_PRIVATE_CHAT_ID")
+
+          payload = {
+              "chat_id": chat,
+              "text": (
+                  "🧪 اختبار V16 الخاص\n\n"
+                  "✅ اتصال Telegram يعمل.\n"
+                  "🔒 لا يوجد نشر عام.\n"
+                  "🛒 عرض رصده V16 بخصم 73% وقت الفحص:\n"
+                  "https://www.amazon.eg/dp/B0BXB1LRFY\n\n"
+                  "⚠️ السعر والخصم قد يتغيران."
+              ),
+          }
+
+          request = urllib.request.Request(
+              f"https://api.telegram.org/bot{token}/sendMessage",
+              data=json.dumps(payload).encode(),
+              headers={"Content-Type": "application/json"},
+              method="POST",
+          )
+
+          with urllib.request.urlopen(request, timeout=20) as response:
+              result = json.load(response)
+
+          if not result.get("ok"):
+              raise SystemExit("TELEGRAM_SEND_FAILED")
+
+          print("V16_PRIVATE_MESSAGE_SENT")
+          PYCODE
