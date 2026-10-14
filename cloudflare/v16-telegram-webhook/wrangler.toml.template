@@ -5,4 +5,4 @@ workers_dev = true
 [[d1_databases]]
 binding = "DB"
 database_name = "egypt-amazon-v16-db"
-database_id = "REPLACE_WITH_NEW_V16_DATABASE_ID"
+database_id = "cea77db5-56c9-4b37-85f7-436609bca056"
