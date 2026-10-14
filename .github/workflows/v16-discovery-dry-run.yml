@@ -1,0 +1,52 @@
+name: V16 Discovery Dry Run
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: v16-discovery-dry-run
+  cancel-in-progress: false
+
+jobs:
+  discover:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install browser dependencies
+        run: |
+          python -m pip install playwright==1.56.0
+          python -m playwright install --with-deps chromium
+
+      - name: Run bounded V16 discovery without Telegram
+        env:
+          V16_PRIVATE_TELEGRAM_ENABLED: '0'
+          PYTHONPATH: scripts/v16
+        run: |
+          set -euo pipefail
+          python scripts/v16/production_pipeline.py \
+            --professional \
+            --max-candidates 3 \
+            --output v16-discovery-report.json \
+            --health-output v16-discovery-health.json
+
+      - name: Upload discovery reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: v16-discovery-dry-run-report
+          path: |
+            v16-discovery-report.json
+            v16-discovery-health.json
+          if-no-files-found: warn
+          retention-days: 3
