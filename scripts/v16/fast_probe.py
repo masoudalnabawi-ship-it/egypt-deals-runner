@@ -135,7 +135,7 @@ def probe_fast(asin):
                     "[class*='savingsPercentage'], "
                     "#corePriceDisplay_desktop_feature_div .a-text-price, "
                     "#corePrice_feature_div .a-text-price"
-                ).all_inner_texts(timeout=3000)
+                ).all_inner_texts()
                 print("V16_DISCOUNT_EVIDENCE", {
                     "asin": asin,
                     "elements": [x.strip()[:100] for x in discount_evidence[:12]]
