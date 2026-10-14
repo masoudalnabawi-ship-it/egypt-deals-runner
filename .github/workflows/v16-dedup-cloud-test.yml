@@ -1,0 +1,66 @@
+name: V16 D1 Dedup Test
+
+on:
+  push:
+    branches:
+      - feature/v16-smart-dedup-20261013203210
+    paths:
+      - .github/workflows/v16-dedup-cloud-test.yml
+
+permissions:
+  contents: read
+
+jobs:
+  test-dedup:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Verify persistent dedup
+        env:
+          V16_WORKER_URL: ${{ vars.V16_WORKER_URL }}
+          V16_REGISTRATION_SECRET: ${{ secrets.V16_REGISTRATION_SECRET }}
+        run: |
+          python3 - <<'PY'
+          import json, os, uuid, urllib.request
+
+          url = os.environ['V16_WORKER_URL'].rstrip('/')
+          secret = os.environ['V16_REGISTRATION_SECRET']
+          asin = 'T' + uuid.uuid4().hex[:9].upper()
+          price = 12345
+
+          def call(path, owner, success=None):
+              payload = {'asin': asin, 'price_cents': price, 'owner': owner}
+              if success is not None:
+                  payload['success'] = success
+              req = urllib.request.Request(
+                  url + path,
+                  data=json.dumps(payload).encode(),
+                  headers={
+                      'Authorization': 'Bearer ' + secret,
+                      'Content-Type': 'application/json'
+                  },
+                  method='POST'
+              )
+              with urllib.request.urlopen(req, timeout=15) as response:
+                  return json.load(response)
+
+          owner1 = uuid.uuid4().hex
+          owner2 = uuid.uuid4().hex
+
+          first = call('/dedup/claim', owner1)
+          assert first.get('allowed') is True, first
+
+          duplicate = call('/dedup/claim', owner2)
+          assert duplicate.get('allowed') is False, duplicate
+
+          finished = call('/dedup/finish', owner1, False)
+          assert finished.get('ok') is True, finished
+
+          retry = call('/dedup/claim', owner2)
+          assert retry.get('allowed') is True, retry
+
+          cleanup = call('/dedup/finish', owner2, False)
+          assert cleanup.get('ok') is True, cleanup
+
+          print('V16_D1_DEDUP_TEST_PASSED')
+          PY
