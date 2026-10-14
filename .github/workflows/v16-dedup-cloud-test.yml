@@ -41,13 +41,31 @@ jobs:
                   },
                   method='POST'
               )
-              try:
-                  with urllib.request.urlopen(req, timeout=15) as response:
-                      return json.load(response)
-              except urllib.error.HTTPError as exc:
-                  print('HTTP_STATUS:', exc.code)
-                  print('RESPONSE:', exc.read().decode()[:300])
-                  raise
+              import subprocess
+              result = subprocess.run(
+                  [
+                      'curl', '--silent', '--show-error',
+                      '--max-time', '15',
+                      '--request', 'POST',
+                      '--header', 'Authorization: Bearer ' + secret,
+                      '--header', 'Content-Type: application/json',
+                      '--data-binary', '@-',
+                      '--write-out', '\\n%{http_code}',
+                      url + path
+                  ],
+                  input=json.dumps(payload),
+                  text=True,
+                  capture_output=True,
+                  timeout=20
+              )
+              if result.returncode:
+                  raise RuntimeError('CURL_FAILED: ' + result.stderr[:200])
+              body, status = result.stdout.rsplit('\\n', 1)
+              if status != '200':
+                  raise RuntimeError(
+                      'HTTP_STATUS: ' + status + ' RESPONSE: ' + body[:200]
+                  )
+              return json.loads(body)
 
           owner1 = uuid.uuid4().hex
           owner2 = uuid.uuid4().hex
