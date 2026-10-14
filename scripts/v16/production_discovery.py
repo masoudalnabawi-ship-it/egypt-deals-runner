@@ -24,7 +24,12 @@ def valid_source(url):
 def extract_cards(page, limit=100):
     rows = page.locator('[data-asin]').evaluate_all('''nodes => nodes.map(n => ({
         asin: (n.getAttribute('data-asin') || '').trim().toUpperCase(),
-        text: (n.innerText || '').slice(0, 900)
+        text: [
+            (n.innerText || '').slice(0, 3000),
+            ...Array.from(n.querySelectorAll(
+                '.savingsPercentage, [class*="savingsPercentage"]'
+            )).map(e => e.textContent || '')
+        ].join(' ')
     }))''')
     result, seen = [], set()
     for row in rows:
