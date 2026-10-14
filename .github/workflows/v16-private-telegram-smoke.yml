@@ -1,6 +1,11 @@
 name: V16 Private Telegram Smoke
 
 on:
+  push:
+    branches:
+      - feature/v16-smart-dedup-20261013203210
+    paths:
+      - .github/workflows/v16-private-telegram-smoke.yml
   workflow_dispatch:
 
 permissions:
