@@ -129,6 +129,22 @@ def probe_fast(asin):
                 raise
             if observation.get('page_asin') != asin:
                 raise ValueError('PAGE_ASIN_MISMATCH')
+            try:
+                discount_evidence = page.locator(
+                    ".savingsPercentage, "
+                    "[class*='savingsPercentage'], "
+                    "#corePriceDisplay_desktop_feature_div .a-text-price, "
+                    "#corePrice_feature_div .a-text-price"
+                ).all_inner_texts(timeout=3000)
+                print("V16_DISCOUNT_EVIDENCE", {
+                    "asin": asin,
+                    "elements": [x.strip()[:100] for x in discount_evidence[:12]]
+                }, flush=True)
+            except Exception as exc:
+                print("V16_DISCOUNT_EVIDENCE_ERROR", {
+                    "asin": asin,
+                    "reason": type(exc).__name__
+                }, flush=True)
             verified_discount = verified_page_discount(page)
             offer = {'asin': asin, 'title': observation.get('title'),
                 'current_price': observation.get('current_price'),
