@@ -1,5 +1,13 @@
 name: V16 Safe Linux Validation
 on:
+  push:
+    branches:
+      - 'feature/v16-smart-dedup-*'
+    paths:
+      - 'scripts/v16/**'
+      - 'tests/v16/**'
+      - 'cloudflare/v16-telegram-webhook/**'
+      - '.github/workflows/v16-safe-linux-validation.yml'
   workflow_dispatch:
 permissions:
   contents: read
