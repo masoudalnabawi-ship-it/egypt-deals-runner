@@ -43,7 +43,7 @@ jobs:
           set -euo pipefail
           python scripts/v16/production_pipeline.py \
             --professional \
-            --max-candidates 10 \
+            --max-candidates 25 \
             --output v16-discovery-report.json \
             --health-output v16-discovery-health.json
 
