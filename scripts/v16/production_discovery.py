@@ -89,6 +89,15 @@ def main():
     args = parser.parse_args()
     report = discover(args.max_pages, args.max_candidates)
     Path(args.output).write_text(json.dumps(report, ensure_ascii=False, indent=2), encoding='utf-8')
+    hints = [x['listing_discount_hint'] for x in report['candidates']
+             if x.get('listing_discount_hint') is not None]
+    print('V16_DISCOUNT_STATS', {
+        'total': len(report['candidates']),
+        'with_discount_hint': len(hints),
+        'discount_50_plus': sum(x >= 50 for x in hints),
+        'discount_90_plus': sum(x >= 90 for x in hints),
+        'without_discount_hint': len(report['candidates']) - len(hints),
+    }, flush=True)
     print('V16_DISCOVERY_CANDIDATES', len(report['candidates']), 'ERRORS', len(report['errors']), 'D1_CALLS=0', flush=True)
 
 

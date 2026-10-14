@@ -8,6 +8,7 @@ on:
     paths:
       - .github/workflows/v16-discovery-dry-run.yml
       - scripts/v16/production_pipeline.py
+      - scripts/v16/production_discovery.py
 
 permissions:
   contents: read
