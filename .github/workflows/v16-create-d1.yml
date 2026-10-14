@@ -2,6 +2,11 @@ name: V16 Create D1 Database
 
 on:
   workflow_dispatch:
+  push:
+    branches:
+      - feature/v16-smart-dedup-20261013203210
+    paths:
+      - .github/workflows/v16-create-d1.yml
 
 permissions:
   contents: read
