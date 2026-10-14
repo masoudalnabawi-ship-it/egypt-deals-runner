@@ -50,7 +50,7 @@ jobs:
                       '--header', 'Authorization: Bearer ' + secret,
                       '--header', 'Content-Type: application/json',
                       '--data-binary', '@-',
-                      '--write-out', '\\n%{http_code}',
+                      '--write-out', '\n%{http_code}',
                       url + path
                   ],
                   input=json.dumps(payload),
@@ -60,7 +60,7 @@ jobs:
               )
               if result.returncode:
                   raise RuntimeError('CURL_FAILED: ' + result.stderr[:200])
-              body, status = result.stdout.rsplit('\\n', 1)
+              body, status = result.stdout.rsplit('\n', 1)
               if status != '200':
                   raise RuntimeError(
                       'HTTP_STATUS: ' + status + ' RESPONSE: ' + body[:200]
