@@ -1,5 +1,5 @@
 """Persistent D1 deal lease; no local fallback when cloud mode is selected."""
-import json, os, uuid, urllib.request
+import json, os, uuid, urllib.request, subprocess
 from smart_dedup import validate
 
 def request(path, payload, opener=None):
@@ -8,8 +8,20 @@ def request(path, payload, opener=None):
     if not url.startswith('https://') or not secret:
         raise RuntimeError('V16_D1_NOT_CONFIGURED')
     req=urllib.request.Request(url+path,data=json.dumps(payload).encode(),method='POST',headers={'Authorization':'Bearer '+secret,'Content-Type':'application/json'})
-    with (opener or urllib.request.urlopen)(req,timeout=12) as response:
-        data=json.load(response)
+    if opener is not None:
+        with opener(req, timeout=12) as response:
+            data=json.load(response)
+    else:
+        result=subprocess.run(
+            ['curl','--fail-with-body','--silent','--show-error',
+             '--max-time','12','--request','POST',
+             '--header','Authorization: Bearer '+secret,
+             '--header','Content-Type: application/json',
+             '--data-binary',json.dumps(payload),
+             url+path],
+            capture_output=True,text=True,timeout=15,check=True
+        )
+        data=json.loads(result.stdout)
     return data
 
 def send_once(candidate,sender):
