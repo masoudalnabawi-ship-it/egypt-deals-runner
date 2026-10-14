@@ -7,6 +7,7 @@ on:
       - feature/v16-smart-dedup-20261013203210
     paths:
       - .github/workflows/v16-discovery-dry-run.yml
+      - scripts/v16/production_pipeline.py
 
 permissions:
   contents: read

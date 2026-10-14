@@ -139,6 +139,12 @@ def run_professional(*, send=False, max_candidates=5,
             result['probed'] += 1
 
             candidate = candidate_from_observation(observation)
+            print("V16_OFFER_DIAGNOSTIC", {
+                "asin": asin,
+                "price": observation.get("current_price"),
+                "discount": observation.get("displayed_discount_pct"),
+                "eligible": candidate is not None
+            }, flush=True)
             if candidate is None:
                 continue
 
