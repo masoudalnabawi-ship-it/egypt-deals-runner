@@ -1,0 +1,40 @@
+name: V16 Python Cloud Connection Test
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - feature/v16-smart-dedup-20261013203210
+    paths:
+      - .github/workflows/v16-python-cloud-test.yml
+
+permissions:
+  contents: read
+
+jobs:
+  test-connection:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Test Python curl connection to Cloudflare D1
+        env:
+          V16_WORKER_URL: ${{ vars.V16_WORKER_URL }}
+          V16_REGISTRATION_SECRET: ${{ secrets.V16_REGISTRATION_SECRET }}
+          PYTHONPATH: scripts/v16
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import uuid
+          from cloud_dedup import request
+
+          asin = 'B0' + uuid.uuid4().hex[:8].upper()
+          result = request('/dedup/check', {
+              'asin': asin,
+              'price_cents': 10000,
+          })
+
+          assert result.get('duplicate') is False, result
+          print('V16_PYTHON_CLOUDFLARE_CONNECTION_PASSED')
+          PY
