@@ -32,7 +32,10 @@ def extract_cards(page, limit=100):
         if not ASIN.fullmatch(asin) or asin in seen:
             continue
         seen.add(asin)
-        hints = [int(a or b) for a, b in DISCOUNT.findall(row.get('text', ''))]
+        # Amazon listings may contain invisible bidirectional Unicode marks.
+        text = re.sub(r'[\u200e\u200f\u061c\u202a-\u202e\u2066-\u2069]', '',
+                      row.get('text', ''))
+        hints = [int(a or b) for a, b in DISCOUNT.findall(text)]
         pct = max((v for v in hints if 5 <= v <= 100), default=None)
         result.append({'asin': asin, 'url': f'https://www.amazon.eg/dp/{asin}',
                        'listing_discount_hint': pct, 'source': page.url})
