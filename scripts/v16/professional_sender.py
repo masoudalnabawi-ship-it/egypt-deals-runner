@@ -75,6 +75,9 @@ def send(candidate, *, token=None, chat_id=None, opener=None):
     if type(message_id) is int and message_id > 0 and interactive_ready():
         worker = os.environ.get('V16_WORKER_URL','').rstrip('/')
         secret = os.environ.get('V16_REGISTRATION_SECRET','')
+        if not worker.startswith('https://') or not secret:
+            import logging
+            logging.getLogger(__name__).error('V16_INTERACTIVE_CONFIG_MISSING message_id=%s',message_id)
         if worker.startswith('https://') and secret:
             payload = json.dumps({'asin':candidate['asin'],'message_id':message_id,'chat_id':str(chat_id)}).encode()
             req = urllib.request.Request(worker+'/register',data=payload,method='POST',headers={
@@ -82,6 +85,8 @@ def send(candidate, *, token=None, chat_id=None, opener=None):
             try:
                 with urllib.request.urlopen(req,timeout=12) as resp:
                     registered = json.load(resp).get('ok') is True
+                if not registered:
+                    raise RuntimeError('V16_REVIEW_REGISTRATION_NOT_CONFIRMED')
                 if registered:
                     keyboard = json.loads(review_keyboard(candidate,interactive=True))
                     edit = urllib.request.Request(

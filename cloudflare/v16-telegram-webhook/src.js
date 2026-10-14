@@ -43,14 +43,14 @@ async function callback(e,cb){
  if(action==='publish'){await ack(e,cb,'🔒 النشر العام معطّل');return json({ok:true});}
  if(row.state==='rejected'){await ack(e,cb,'العرض مرفوض بالفعل');return json({ok:true});}
  if(action==='reject'){
-  await e.DB.prepare("UPDATE v16_reviews SET state='rejected',prompt_id=NULL WHERE message_id=? AND state!='rejected'").bind(m.message_id).run();
-  await ack(e,cb,'❌ تم رفض العرض');return json({ok:true});
+  const r=await e.DB.prepare("UPDATE v16_reviews SET state='rejected',prompt_id=NULL WHERE message_id=? AND chat_id=? AND state IN ('pending','editing','custom')").bind(m.message_id,String(e.REVIEW_CHAT_ID)).run();
+  await ack(e,cb,r.meta?.changes?'❌ تم رفض العرض':'⚠️ التعديل قيد التنفيذ؛ حاول الرفض بعد لحظات');return json({ok:true});
  }
  const next=action==='edit'?'editing':'custom';
  // Only accept a reply to the exact prompt sent by this worker.
  const prompt=await tg(e,'sendMessage',{chat_id:e.REVIEW_CHAT_ID,text:`${action==='edit'?'✏️ تعديل':'📝 رسالة مخصصة'} للعرض ${asin}\nرد على هذه الرسالة بالنص الجديد (900 حرف بحد أقصى).`,reply_markup:{force_reply:true,selective:true}});
- await e.DB.prepare("UPDATE v16_reviews SET state=?,prompt_id=? WHERE message_id=? AND state!='rejected'").bind(next,prompt.message_id,m.message_id).run();
- await ack(e,cb,'رد على رسالة التعديل');return json({ok:true});
+ const changed=await e.DB.prepare("UPDATE v16_reviews SET state=?,prompt_id=? WHERE message_id=? AND chat_id=? AND state IN ('pending','editing','custom')").bind(next,prompt.message_id,m.message_id,String(e.REVIEW_CHAT_ID)).run();
+ await ack(e,cb,changed.meta?.changes?'رد على رسالة التعديل':'⚠️ العرض غير متاح للتعديل الآن');return json({ok:true});
 }
 async function message(e,m){
  if(!owner(e,m?.from,m?.chat)||!ownBot(e,m?.reply_to_message))return json({ok:true});
@@ -62,9 +62,16 @@ async function message(e,m){
  if(typeof value!=='string'||!value.trim()||value.length>900||/[\x00-\x08\x0b\x0c\x0e-\x1f]/.test(value)){
   await tg(e,'sendMessage',{chat_id:e.REVIEW_CHAT_ID,text:'⚠️ النص غير صالح (1–900 حرف).'});return json({ok:true});
  }
- // Update caption first; if Telegram fails, state remains awaiting edit.
- await tg(e,'editMessageCaption',{chat_id:e.REVIEW_CHAT_ID,message_id:row.message_id,caption:value.trim()+'\n\n🔒 للمراجعة الخاصة — لا نشر تلقائي.'});
- await e.DB.prepare("UPDATE v16_reviews SET state='pending',prompt_id=NULL,custom_text=? WHERE message_id=? AND prompt_id=? AND state IN ('editing','custom')").bind(value.trim(),row.message_id,promptId).run();
+ // Atomically claim this edit before touching Telegram; reject cannot race with an in-flight edit.
+ const claim=await e.DB.prepare("UPDATE v16_reviews SET state='applying' WHERE message_id=? AND prompt_id=? AND state IN ('editing','custom') RETURNING message_id").bind(row.message_id,promptId).all();
+ if(!claim.results?.length)return json({ok:true});
+ try{
+  await tg(e,'editMessageCaption',{chat_id:e.REVIEW_CHAT_ID,message_id:row.message_id,caption:value.trim()+'\n\n🔒 للمراجعة الخاصة — لا نشر تلقائي.'});
+ }catch(err){
+  await e.DB.prepare("UPDATE v16_reviews SET state='editing' WHERE message_id=? AND prompt_id=? AND state='applying'").bind(row.message_id,promptId).run();
+  throw err;
+ }
+ await e.DB.prepare("UPDATE v16_reviews SET state='pending',prompt_id=NULL,custom_text=? WHERE message_id=? AND prompt_id=? AND state='applying'").bind(value.trim(),row.message_id,promptId).run();
  return json({ok:true});
 }
 async function webhook(e,req){
