@@ -27,6 +27,12 @@ def send_once(candidate,sender):
     return 'SENT' if delivered else 'SEND_FAILED_RETRY_LATER'
 
 def already_sent(candidate):
-    # Do not claim before screenshot: the authoritative lease is in send_once.
-    validate(candidate)
-    return False
+    # Read-only optimization; send_once remains authoritative.
+    asin, price = validate(candidate)
+    result = request('/dedup/check', {
+        'asin': asin,
+        'price_cents': price,
+    })
+    if type(result.get('duplicate')) is not bool:
+        raise RuntimeError('V16_D1_INVALID_CHECK_RESPONSE')
+    return result['duplicate']

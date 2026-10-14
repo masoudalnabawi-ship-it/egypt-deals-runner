@@ -84,6 +84,16 @@ async function deal(e,req,path){
  if(req.headers.get('Authorization')!==`Bearer ${e.REGISTRATION_SECRET}`)return json({error:'UNAUTHORIZED'},403);
  const data=await req.json().catch(()=>null), asin=data?.asin, price=data?.price_cents;
  if(!ASIN.test(asin)||!Number.isSafeInteger(price)||price<=0)return json({error:'INVALID_DEAL'},400);
+ if(path==='/dedup/check'){
+  const row=await e.DB.prepare(
+   'SELECT price_cents,status,updated_at FROM v16_deal_dedup WHERE asin=?'
+  ).bind(asin).first();
+  const duplicate=!!row&&(
+   (row.status==='sent'&&price>=row.price_cents)||
+   (row.status==='sending'&&row.updated_at>=Math.floor(Date.now()/1000)-600)
+  );
+  return json({duplicate});
+ }
  if(path==='/dedup/claim'){
   const owner=data.owner;
   if(typeof owner!=='string'||!/^[a-f0-9]{32}$/.test(owner))return json({error:'INVALID_OWNER'},400);
