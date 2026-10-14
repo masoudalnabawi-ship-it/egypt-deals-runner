@@ -70,14 +70,26 @@ jobs:
           owner1 = uuid.uuid4().hex
           owner2 = uuid.uuid4().hex
 
+          # A new offer must pass the read-only pre-screenshot check.
+          fresh = call('/dedup/check', owner1)
+          assert fresh.get('duplicate') is False, fresh
+
           first = call('/dedup/claim', owner1)
           assert first.get('allowed') is True, first
+
+          # An active lease must block screenshot work.
+          early_duplicate = call('/dedup/check', owner2)
+          assert early_duplicate.get('duplicate') is True, early_duplicate
 
           duplicate = call('/dedup/claim', owner2)
           assert duplicate.get('allowed') is False, duplicate
 
           finished = call('/dedup/finish', owner1, False)
           assert finished.get('ok') is True, finished
+
+          # A released lease must allow another attempt.
+          released = call('/dedup/check', owner2)
+          assert released.get('duplicate') is False, released
 
           retry = call('/dedup/claim', owner2)
           assert retry.get('allowed') is True, retry
