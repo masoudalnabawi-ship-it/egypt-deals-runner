@@ -118,6 +118,6 @@ export default {async fetch(req,e){
  if(req.method!=='POST')return new Response('Not found',{status:404});
  if(!validEnv(e))return json({error:'NOT_CONFIGURED'},503);
  const path=new URL(req.url).pathname;
- try{if(path==='/budget/claim')return await budget(e,req);if(path==='/dedup/claim'||path==='/dedup/finish')return await deal(e,req,path);if(path==='/register')return await register(e,req);if(path==='/telegram')return await webhook(e,req);return json({error:'NOT_FOUND'},404);}
+ try{if(path==='/budget/claim')return await budget(e,req);if(path==='/dedup/check'||path==='/dedup/claim'||path==='/dedup/finish')return await deal(e,req,path);if(path==='/register')return await register(e,req);if(path==='/telegram')return await webhook(e,req);return json({error:'NOT_FOUND'},404);}
  catch(err){console.error('V16_WEBHOOK_FAILED',String(err?.message||err));return json({error:'RETRY'},500);}
 }};
