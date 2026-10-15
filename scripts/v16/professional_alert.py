@@ -28,10 +28,18 @@ def format_alert(candidate):
         '🟢 عرض مميز'
     )
 
+    before = price / (Decimal('1') - discount / Decimal('100')) if discount < 100 else None
+    before_line = (
+        f'🏷️ السعر قبل الخصم (تقديري): {before:,.2f} جنيه\\n'
+        if before is not None else
+        '🏷️ السعر قبل الخصم: غير متاح\\n'
+    )
+
     return (
         f'{label} | V16 أمازون مصر 🇪🇬\n\n'
         f'📦 {title}\n\n'
         f'💰 السعر الحالي: {price:,.2f} جنيه\n'
+        f'{before_line}'
         f'📉 الخصم المعلن: {discount}%\n\n'
         f'🛒 https://www.amazon.eg/dp/{asin}\n\n'
         '⚡ الخصم ظاهر على أمازون وقت الرصد.\n'
@@ -59,9 +67,7 @@ def review_keyboard(candidate, *, interactive=False):
                  'callback_data': f'v16:reject:{asin}'},
             ],
             [
-                {'text': '✏️ تعديل الرسالة',
-                 'callback_data': f'v16:edit:{asin}'},
-                {'text': '📝 رسالة مخصصة',
+                {'text': '✍️ رسالة مخصصة',
                  'callback_data': f'v16:custom:{asin}'},
             ],
             [
