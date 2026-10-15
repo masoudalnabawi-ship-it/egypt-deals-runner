@@ -1,0 +1,111 @@
+name: V16 Automatic Private Deals
+
+on:
+  schedule:
+    - cron: '*/5 * * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: v16-automatic-private-deals
+  cancel-in-progress: false
+
+jobs:
+  discover-and-send:
+    if: ${{ vars.V16_AUTOMATION_ENABLED == '1' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: feature/v16-smart-dedup-20261013203210
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install browser
+        run: |
+          python -m pip install playwright==1.56.0 requests
+          python -m playwright install --with-deps chromium
+
+      - name: Discover and send private photo offers
+        env:
+          PYTHONPATH: scripts/v16:scripts/v14
+          V16_PRIVATE_TELEGRAM_ENABLED: '1'
+          V16_INTERACTIVE_READY: '1'
+          V16_DEDUP_BACKEND: d1
+          V16_MAX_SEND_PER_RUN: '10'
+          V16_MAX_RUNTIME_SECONDS: '235'
+          V16_ROTATE_SOURCES: '1'
+          V16_ROTATE_CANDIDATES: '1'
+          V16_MIN_SEND_DISCOUNT: '50'
+          V15_TELEGRAM_BOT_TOKEN: ${{ secrets.V15_TELEGRAM_BOT_TOKEN }}
+          V15_TELEGRAM_REVIEW_CHAT_ID: ${{ secrets.V15_TELEGRAM_REVIEW_CHAT_ID }}
+          V16_WORKER_URL: ${{ vars.V16_WORKER_URL }}
+          V16_REGISTRATION_SECRET: ${{ secrets.V16_REGISTRATION_SECRET }}
+        run: |
+          python scripts/v16/production_pipeline.py \
+            --professional --send --max-candidates 25 \
+            --output v16-auto-report.json \
+            --health-output v16-auto-health.json
+
+      - name: Validate report and surface partial failures
+        if: ${{ success() }}
+        shell: bash
+        run: |
+          python - <<'PY'
+          import json
+          import os
+          import sys
+          from pathlib import Path
+
+          report_path = Path('v16-auto-report.json')
+          if not report_path.exists():
+              print('::error::V16 report missing; delivery is not verified')
+              sys.exit(1)
+          try:
+              report = json.loads(report_path.read_text(encoding='utf-8'))
+          except (ValueError, OSError) as exc:
+              print(f'::error::V16 report unreadable: {exc}')
+              sys.exit(1)
+          alerts = report.get('alerts', [])
+          failures = report.get('failures', [])
+          discovery_errors = report.get('discovery_errors', [])
+          sent = sum(a.get('status') in ('SENT', 'SENT_NEW', 'SENT_UPDATED') for a in alerts)
+          duplicates = sum(a.get('status') == 'SKIPPED_DUPLICATE' for a in alerts)
+          unknown = [a for a in alerts if a.get('status') not in ('SENT', 'SENT_NEW', 'SENT_UPDATED', 'SKIPPED_DUPLICATE')]
+          budget = report.get('budget')
+          summary = (f"V16: discovered={report.get('discovered', 0)}, "
+                     f"probed={report.get('probed', 0)}, eligible={report.get('eligible', 0)}, "
+                     f"telegram_confirmed_by_sender={sent}, duplicates={duplicates}, "
+                     f"probe_failures={len(failures)}, source_errors={len(discovery_errors)}, "
+                     f"unconfirmed_alerts={len(unknown)}, budget={budget or 'OK'}")
+          print(summary)
+          with open(os.environ['GITHUB_STEP_SUMMARY'], 'a', encoding='utf-8') as f:
+              f.write('## V16 run diagnostics\n\n' + summary + '\n\n')
+              f.write('`telegram_confirmed_by_sender` is based on sender status in the report, not independent Telegram receipt verification.\n')
+          if failures or discovery_errors:
+              print(f'::warning::V16 PARTIAL_FAILURE: {len(failures)} product errors and {len(discovery_errors)} source errors')
+          if unknown:
+              print(f'::warning::V16 has {len(unknown)} alert statuses without confirmed send')
+          if budget == 'DENIED':
+              print('::error::V16 cloud run budget denied')
+              sys.exit(1)
+          if unknown:
+              sys.exit(1)
+          PY
+
+      - name: Save reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: v16-automatic-report
+          path: |
+            v16-auto-report.json
+            v16-auto-health.json
+          if-no-files-found: warn
+          retention-days: 3
