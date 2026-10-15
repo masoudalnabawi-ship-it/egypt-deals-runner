@@ -483,138 +483,146 @@ class V14Pipeline:
             queued_total = 0
             errors = 0
 
-            for surface in plan.surfaces:
-                surface_fetched = 0
-                surface_queued = 0
-                surface_latency = 0
-                surface_error = ""
+            semaphore = asyncio.Semaphore(2)
 
-                try:
-                    fetch_url = surface.url
-                    hunter_page = 1
+            async def process_surface(surface):
+                async with semaphore:
+                    surface_fetched = 0
+                    surface_queued = 0
+                    surface_latency = 0
+                    surface_error = ""
 
-                    if store == "amazon":
-                        (
+                    try:
+                        fetch_url = surface.url
+                        hunter_page = 1
+
+                        if store == "amazon":
+                            (
+                                fetch_url,
+                                hunter_page,
+                            ) = self._amazon_ultra_page_url(
+                                surface
+                            )
+
+                        result = await self.http.fetch(
                             fetch_url,
-                            hunter_page,
-                        ) = self._amazon_ultra_page_url(
-                            surface
+                            store,
                         )
 
-                    result = await self.http.fetch(
-                        fetch_url,
-                        store,
-                    )
-
-                    surface_latency = int(
-                        getattr(
-                            result,
-                            "latency_ms",
-                            0,
-                        )
-                        or 0
-                    )
-
-                    deals = (
-                        adapter.parse_search(
-                            result.text,
-                            surface,
-                        )
-                        if store == "amazon"
-                        else adapter.parse_page(
-                            result.text,
-                            surface,
-                        )
-                    )
-
-                    surface_fetched = len(deals)
-                    fetched_total += len(deals)
-
-                    for deal in deals:
-                        if deal.current_price <= 0:
-                            continue
-
-                        preliminary = self._preliminary(
-                            deal
+                        surface_latency = int(
+                            getattr(
+                                result,
+                                "latency_ms",
+                                0,
+                            )
+                            or 0
                         )
 
-                        priority = (
-                            self.ultra_hunter
-                            .prioritize(
-                                deal,
-                                preliminary,
-                                noon_probe_floor=(
-                                    self.settings
-                                    .ultra_hunter_noon_probe_floor
-                                ),
+                        deals = (
+                            adapter.parse_search(
+                                result.text,
+                                surface,
+                            )
+                            if store == "amazon"
+                            else adapter.parse_page(
+                                result.text,
+                                surface,
                             )
                         )
 
-                        if not priority:
-                            continue
+                        surface_fetched = len(deals)
 
-                        metadata = dict(
-                            deal.metadata or {}
+                        for deal in deals:
+                            if deal.current_price <= 0:
+                                continue
+
+                            preliminary = self._preliminary(
+                                deal
+                            )
+
+                            priority = (
+                                self.ultra_hunter
+                                .prioritize(
+                                    deal,
+                                    preliminary,
+                                    noon_probe_floor=(
+                                        self.settings
+                                        .ultra_hunter_noon_probe_floor
+                                    ),
+                                )
+                            )
+
+                            if not priority:
+                                continue
+
+                            metadata = dict(
+                                deal.metadata or {}
+                            )
+
+                            metadata.update({
+                                "v14_ultra_hunter": True,
+                                "v14_hunter_surface":
+                                    surface.name,
+                                "v14_hunter_observed_discount":
+                                    deal.discount_percent,
+                                "v14_hunter_page":
+                                    hunter_page,
+                            })
+
+                            deal.metadata = metadata
+
+                            upsert_result = await asyncio.to_thread(
+                                self.db.upsert_candidate,
+                                deal,
+                                preliminary,
+                            )
+
+                            # Count only genuinely useful discoveries:
+                            # - brand-new ASIN
+                            # - meaningful price improvement
+                            # - lane upgrade
+                            #
+                            # Repeated unchanged products no longer make a
+                            # stale Amazon source look productive.
+                            if upsert_result.get(
+                                "new_or_reopened"
+                            ):
+                                surface_queued += 1
+
+                    except Exception as exc:
+
+                        surface_error = (
+                            f"{type(exc).__name__}:"
+                            f"{exc}"
                         )
 
-                        metadata.update({
-                            "v14_ultra_hunter": True,
-                            "v14_hunter_surface":
-                                surface.name,
-                            "v14_hunter_observed_discount":
-                                deal.discount_percent,
-                            "v14_hunter_page":
-                                hunter_page,
-                        })
-
-                        deal.metadata = metadata
-
-                        upsert_result = await asyncio.to_thread(
-                            self.db.upsert_candidate,
-                            deal,
-                            preliminary,
+                        log.warning(
+                            "ULTRA HUNTER %s/%s failed | %s:%s",
+                            store,
+                            surface.name,
+                            type(exc).__name__,
+                            exc,
                         )
 
-                        # Count only genuinely useful discoveries:
-                        # - brand-new ASIN
-                        # - meaningful price improvement
-                        # - lane upgrade
-                        #
-                        # Repeated unchanged products no longer make a
-                        # stale Amazon source look productive.
-                        if upsert_result.get(
-                            "new_or_reopened"
-                        ):
-                            surface_queued += 1
-                            queued_total += 1
-
-                except Exception as exc:
-                    errors += 1
-
-                    surface_error = (
-                        f"{type(exc).__name__}:"
-                        f"{exc}"
-                    )
-
-                    log.warning(
-                        "ULTRA HUNTER %s/%s failed | %s:%s",
+                    # Teach Source Brain from BOTH success and failure.
+                    await asyncio.to_thread(
+                        self.db.source_result,
                         store,
                         surface.name,
-                        type(exc).__name__,
-                        exc,
+                        surface.category,
+                        surface_fetched,
+                        surface_queued,
+                        surface_latency,
+                        surface_error,
                     )
+                    return surface_fetched, surface_queued, bool(surface_error)
 
-                # Teach Source Brain from BOTH success and failure.
-                await asyncio.to_thread(
-                    self.db.source_result,
-                    store,
-                    surface.name,
-                    surface.category,
-                    surface_fetched,
-                    surface_queued,
-                    surface_latency,
-                    surface_error,
-                )
+            results = await asyncio.gather(
+                *(process_surface(surface) for surface in plan.surfaces)
+            )
+            fetched_total = sum(item[0] for item in results)
+            queued_total = sum(item[1] for item in results)
+            errors = sum(item[2] for item in results)
 
             log.info(
                 "ULTRA HUNTER store=%s "
