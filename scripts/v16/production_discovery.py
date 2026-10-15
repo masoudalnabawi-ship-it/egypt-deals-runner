@@ -2,6 +2,7 @@
 import argparse
 import json
 import re
+import time
 from datetime import datetime, timezone
 from pathlib import Path
 from urllib.parse import urlparse
@@ -72,10 +73,48 @@ def discover(max_pages=4, max_candidates=80, pages=None, browser_factory=None):
             for url in pages[:max_pages]:
                 tab = context.new_page()
                 try:
-                    response = tab.goto(url, wait_until='domcontentloaded', timeout=25000)
-                    title = tab.title().lower()
-                    if any(x in title for x in ('captcha', 'robot check', 'sign in')):
-                        errors.append({'source': url, 'reason': 'ACCESS_CHALLENGE'})
+                    response = None
+                    challenge = False
+
+                    for attempt in range(2):
+                        try:
+                            response = tab.goto(
+                                url,
+                                wait_until='domcontentloaded',
+                                timeout=25000
+                            )
+                        except Exception:
+                            if attempt == 0:
+                                time.sleep(2)
+                                continue
+                            raise
+
+                        title = tab.title().lower()
+
+                        if any(x in title for x in (
+                            'captcha', 'robot check', 'sign in'
+                        )):
+                            errors.append({
+                                'source': url,
+                                'reason': 'ACCESS_CHALLENGE'
+                            })
+                            challenge = True
+                            break
+
+                        if response and response.status == 503 and attempt == 0:
+                            time.sleep(2)
+                            continue
+
+                        break
+
+                    if challenge:
+                        continue
+
+                    if response and response.status >= 400:
+                        errors.append({
+                            'source': url,
+                            'reason': 'HTTP_' + str(response.status)
+                        })
                         continue
                     # Diagnose empty Amazon listings without logging page contents.
                     diagnostics = tab.evaluate('''() => ({

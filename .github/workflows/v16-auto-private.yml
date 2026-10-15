@@ -50,6 +50,61 @@ jobs:
         run: |
           python scripts/v16/production_pipeline.py             --professional --send --max-candidates 16             --output v16-auto-report.json             --health-output v16-auto-health.json
 
+      - name: V16 Health Summary
+        if: always()
+        run: |
+          python - <<'PYHEALTH'
+          import json
+          import os
+          from pathlib import Path
+
+          path = Path("v16-auto-health.json")
+          lines = ["## V16 Automatic Deals — Health Report", ""]
+
+          if not path.exists():
+              lines += [
+                  "### ❌ CRITICAL: Health report missing",
+                  "The pipeline failed before producing its health report.",
+              ]
+              print("::error::V16 health report missing")
+          else:
+              h = json.loads(path.read_text(encoding="utf-8"))
+              status = h.get("status", "UNKNOWN")
+              sources = int(h.get("source_failures", 0))
+              products = int(h.get("product_failures", 0))
+
+              if status in ("PARTIAL_FAILURE", "NO_VERIFIED_PROBES", "NO_CANDIDATES") or sources or products:
+                  print(f"::warning::V16 status={status}; source_failures={sources}; product_failures={products}")
+
+              lines += [
+                  f"### Status: {status}",
+                  "",
+                  "| Metric | Value |",
+                  "|---|---:|",
+              ]
+
+              for label, key in [
+                  ("Discovered", "discovered"),
+                  ("Probed", "probed"),
+                  ("Eligible", "eligible"),
+                  ("Text alerts", "text_alert_results"),
+                  ("Source failures", "source_failures"),
+                  ("Product failures", "product_failures"),
+              ]:
+                  lines.append(f"| {label} | {h.get(key, 0)} |")
+
+              lines += [
+                  "",
+                  "Source failures are reported as warnings; they do not automatically stop the bot.",
+              ]
+
+          summary = os.environ.get("GITHUB_STEP_SUMMARY")
+          if summary:
+              with open(summary, "a", encoding="utf-8") as f:
+                  f.write("\\n".join(lines) + "\\n")
+          print("\\n".join(lines))
+          PYHEALTH
+
       - name: Save reports
         if: always()
         uses: actions/upload-artifact@v4

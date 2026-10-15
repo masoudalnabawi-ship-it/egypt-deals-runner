@@ -20,7 +20,7 @@ def assess(report, *, minimum_discovered=1):
         status = 'NO_CANDIDATES'
     elif probed == 0:
         status = 'NO_VERIFIED_PROBES'
-    elif failures:
+    elif failures or errors:
         status = 'PARTIAL_FAILURE'
     else:
         status = 'OK'
