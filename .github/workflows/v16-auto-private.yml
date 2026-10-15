@@ -48,7 +48,7 @@ jobs:
           V16_WORKER_URL: ${{ vars.V16_WORKER_URL }}
           V16_REGISTRATION_SECRET: ${{ secrets.V16_REGISTRATION_SECRET }}
         run: |
-          python scripts/v16/production_pipeline.py             --professional --send --max-candidates 16             --output v16-auto-report.json             --health-output v16-auto-health.json
+          python scripts/v16/production_pipeline.py             --professional --send --max-candidates 25             --output v16-auto-report.json             --health-output v16-auto-health.json
 
       - name: Save reports
         if: always()
