@@ -31,10 +31,10 @@ jobs:
           python - <<'PYCODE'
           import hashlib
           from pathlib import Path
-          from fast_probe import probe_product
+          from fast_probe import probe_fast
 
           asin = "B0BXB1LRFY"
-          result = iter(probe_product(asin))
+          result = iter(probe_fast(asin))
           observation, _, _ = next(result)
           print("VERIFIED_PRODUCT:", observation)
 
