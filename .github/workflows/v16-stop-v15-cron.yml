@@ -1,0 +1,25 @@
+name: V16 Stop V15 Cloudflare Cron
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  stop-v15-cron:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Disable V15 cron triggers
+        env:
+          CF_TOKEN: ${{ secrets.V15_CLOUDFLARE_API_TOKEN }}
+          CF_ACCOUNT: b015795e3322f02ca29cf8d8f1982212
+        run: |
+          set -euo pipefail
+          test -n "$CF_TOKEN"
+          curl --fail-with-body -sS \
+            -X PUT \
+            "https://api.cloudflare.com/client/v4/accounts/${CF_ACCOUNT}/workers/scripts/egypt-amazon-v15-cron/schedules" \
+            -H "Authorization: Bearer ${CF_TOKEN}" \
+            -H "Content-Type: application/json" \
+            --data '[]' \
+            | python3 -c 'import json,sys; d=json.load(sys.stdin); print("CLOUDFLARE_SUCCESS=",d.get("success")); print("ERRORS=",d.get("errors")); sys.exit(0 if d.get("success") else 1)'
