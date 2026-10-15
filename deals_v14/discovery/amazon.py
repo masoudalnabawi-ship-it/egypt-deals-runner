@@ -495,7 +495,24 @@ class AmazonDiscovery:
                 continue
 
             title_el = card.select_one("h2 a span, h2 span")
-            price_el = card.select_one(".a-price .a-offscreen")
+            # Select the actual product price, not a unit price
+            # or a crossed-out reference price.
+            price_el = None
+            for candidate in card.select(".a-price .a-offscreen"):
+                if candidate.find_parent(
+                    class_=lambda classes: classes and any(
+                        marker in str(classes).lower()
+                        for marker in (
+                            "unit-price",
+                            "unitprice",
+                            "a-text-price",
+                        )
+                    )
+                ):
+                    continue
+
+                price_el = candidate
+                break
 
             # Amazon search cards can omit the product href entirely.
             # ASIN is already canonical, so do not depend on fragile
