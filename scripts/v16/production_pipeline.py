@@ -102,6 +102,11 @@ def run_professional(*, send=False, max_candidates=5,
 
     if send and os.environ.get('V16_DEDUP_BACKEND') not in ('sqlite','d1'):
         raise RuntimeError('V16_PROFESSIONAL_REQUIRES_DEDUP')
+    max_sent = int(os.environ.get('V16_MAX_SEND_PER_RUN', '2'))
+    min_discount = int(os.environ.get('V16_MIN_SEND_DISCOUNT', '50'))
+    if not 1 <= max_sent <= 25 or not 5 <= min_discount <= 100:
+        raise ValueError('INVALID_AUTOMATION_LIMITS')
+
     if send and os.environ.get('V16_DEDUP_BACKEND') == 'd1':
         from cloud_budget import claim_run
         if not claim_run():
@@ -141,7 +146,10 @@ def run_professional(*, send=False, max_candidates=5,
         'source_stats': discovery.get('source_stats', []),
     }
 
+    sent_count = 0
     for item in candidates[:max_candidates]:
+        if send and sent_count >= max_sent:
+            break
         asin = item.get('asin')
         if not isinstance(asin, str) or len(asin) != 10 or not asin.isascii() or not asin.isalnum():
             continue
@@ -164,6 +172,9 @@ def run_professional(*, send=False, max_candidates=5,
                 continue
 
             result['eligible'] += 1
+
+            if send and float(candidate['displayed_discount_pct']) < min_discount:
+                continue
 
             if not send:
                 continue
@@ -195,6 +206,8 @@ def run_professional(*, send=False, max_candidates=5,
                 'kind': 'photo_with_caption',
                 'status': status,
             })
+            if status == 'SENT':
+                sent_count += 1
 
         except StopIteration:
             result['failures'].append({
