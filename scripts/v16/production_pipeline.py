@@ -119,7 +119,7 @@ def run_professional(*, send=False, max_candidates=5,
     if not 120 <= runtime_limit <= 540:
         raise ValueError('INVALID_RUNTIME_LIMIT')
 
-    if send and os.environ.get('V16_ROTATE_SOURCES') == '1':
+    if False:  # V16: temporarily disable source rotation
         from production_discovery import SOURCES
         slot = int(time.time() // 300)
         selected = SOURCES[slot % 2::2]
