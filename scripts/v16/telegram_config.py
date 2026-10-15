@@ -10,7 +10,6 @@ def review_chat():
 def interactive_ready():
     return (os.environ.get('V16_INTERACTIVE_READY') == '1'
             and os.environ.get('V16_PRIVATE_TELEGRAM_ENABLED') == '1'
-            and os.environ.get('V16_TELEGRAM_ADMIN_ID', '').isdigit()
             and review_chat().lstrip('-').isdigit()
             and os.environ.get('V16_DEDUP_BACKEND') in ('sqlite', 'd1')
             and bool(os.environ.get('V16_WORKER_URL', '').startswith('https://'))

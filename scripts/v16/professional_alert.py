@@ -61,9 +61,9 @@ def review_keyboard(candidate, *, interactive=False):
     if interactive:
         rows = [
             [
-                {'text': '✅ نشر العرض',
+                {'text': '🚀 نشر',
                  'callback_data': f'v16:publish:{asin}'},
-                {'text': '❌ رفض العرض',
+                {'text': '❌ رفض',
                  'callback_data': f'v16:reject:{asin}'},
             ],
             [
