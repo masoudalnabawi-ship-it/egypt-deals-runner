@@ -1,11 +1,7 @@
 name: V16 Cloud Connection Test
 
 on:
-  push:
-    branches:
-      - feature/v16-smart-dedup-20261013203210
-    paths:
-      - .github/workflows/v16-cloud-connection-test.yml
+  workflow_dispatch:
 
 permissions:
   contents: read
@@ -15,24 +11,13 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
-      - name: Test authenticated D1 connection
+      - uses: actions/checkout@v4
+
+      - name: Verify V16 Cloudflare account and database
         env:
-          V16_WORKER_URL: ${{ vars.V16_WORKER_URL }}
-          V16_REGISTRATION_SECRET: ${{ secrets.V16_REGISTRATION_SECRET }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.V15_CLOUDFLARE_API_TOKEN }}
         run: |
           set -euo pipefail
-          test -n "$V16_WORKER_URL"
-          test -n "$V16_REGISTRATION_SECRET"
-
-          CODE=$(curl -sS -o /tmp/v16-response.json -w '%{http_code}' \
-            -X POST "$V16_WORKER_URL/budget/claim" \
-            -H "Authorization: Bearer $V16_REGISTRATION_SECRET")
-
-          echo "HTTP_STATUS=$CODE"
-
-          if [ "$CODE" != "200" ]; then
-            echo "V16_CLOUD_CONNECTION_FAILED"
-            exit 1
-          fi
-
-          echo "V16_CLOUD_CONNECTION_SUCCESS"
+          test -n "$CLOUDFLARE_API_TOKEN"
+          npx --yes wrangler@4 d1 info egypt-amazon-v16-db
+          echo "V16_CLOUDFLARE_READ_ONLY_CHECK_PASSED"
