@@ -119,17 +119,8 @@ def run_professional(*, send=False, max_candidates=5,
     if not 120 <= runtime_limit <= 540:
         raise ValueError('INVALID_RUNTIME_LIMIT')
 
-    if False:  # V16: temporarily disable source rotation
-        from production_discovery import SOURCES
-        slot = int(time.time() // 300)
-        selected = SOURCES[slot % 2::2]
-        discovery = discover_fn(
-            max_pages=4,
-            max_candidates=150,
-            pages=selected
-        )
-    else:
-        discovery = discover_fn(max_pages=8, max_candidates=150)
+    # Scan all sources; don't silently lose deals from alternating source groups.
+    discovery = discover_fn(max_pages=8, max_candidates=150)
     print('V16_SOURCE_STATS', json.dumps(discovery.get('source_stats', []), ensure_ascii=False), flush=True)
     hints = [
         x['listing_discount_hint']
@@ -162,22 +153,21 @@ def run_professional(*, send=False, max_candidates=5,
         'source_stats': discovery.get('source_stats', []),
     }
 
-    if send and os.environ.get('V16_ROTATE_CANDIDATES') == '1':
-        priority = [
-            c for c in candidates
-            if (c.get('listing_discount_hint') or 0) >= 70
-        ][:3]
-        priority_asins = {c['asin'] for c in priority}
-        remaining = [
-            c for c in candidates
-            if c['asin'] not in priority_asins
-        ]
-        if remaining:
-            step = max(1, max_candidates - len(priority))
-            offset = (int(time.time() // 300) * step) % len(remaining)
-            candidates = (
-                priority + remaining[offset:] + remaining[:offset]
-            )
+    # Priority: 90%+, 70%+, 50%+, then unknown discount hints.
+    # Within each tier rotate the starting position to avoid repeating the
+    # same failed product pages on every run.
+    if send:
+        tiers = [[], [], [], []]
+        for c in candidates:
+            pct = c.get('listing_discount_hint') or 0
+            tiers[0 if pct >= 90 else 1 if pct >= 70 else 2 if pct >= 50 else 3].append(c)
+        slot = int(time.time() // 300)
+        rotated = []
+        for index, tier in enumerate(tiers):
+            if tier:
+                shift = (slot * max_candidates + index * 7) % len(tier)
+                rotated.extend(tier[shift:] + tier[:shift])
+        candidates = rotated
 
     sent_count = 0
     for item in candidates:
@@ -190,6 +180,10 @@ def run_professional(*, send=False, max_candidates=5,
             break
         asin = item.get('asin')
         if not isinstance(asin, str) or len(asin) != 10 or not asin.isascii() or not asin.isalnum():
+            continue
+
+        hint = item.get('listing_discount_hint')
+        if send and hint is not None and hint < min_discount:
             continue
 
         probe = None

@@ -92,6 +92,10 @@ def discover(max_pages=4, max_candidates=80, pages=None, browser_factory=None):
                     }, ensure_ascii=False), flush=True)
                     # Collect per-source metrics BEFORE global ASIN dedup/truncation.
                     cards = extract_cards(tab, limit=max_candidates)
+                    if response and response.status >= 400:
+                        errors.append({'source': url, 'reason': 'HTTP_' + str(response.status)})
+                    elif not cards:
+                        errors.append({'source': url, 'reason': 'NO_PRODUCT_CARDS'})
                     source_stats.append({
                         'source': url,
                         'cards': len(cards),

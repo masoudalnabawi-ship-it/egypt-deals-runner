@@ -30,9 +30,9 @@ def format_alert(candidate):
 
     before = price / (Decimal('1') - discount / Decimal('100')) if discount < 100 else None
     before_line = (
-        f'🏷️ السعر قبل الخصم (تقديري): {before:,.2f} جنيه\\n'
+        f'🏷️ السعر قبل الخصم (تقديري): {before:,.2f} جنيه\n'
         if before is not None else
-        '🏷️ السعر قبل الخصم: غير متاح\\n'
+        '🏷️ السعر قبل الخصم: غير متاح\n'
     )
 
     return (
