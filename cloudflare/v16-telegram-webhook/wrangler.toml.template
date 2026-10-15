@@ -6,3 +6,7 @@ workers_dev = true
 binding = "DB"
 database_name = "egypt-amazon-v16-db"
 database_id = "cea77db5-56c9-4b37-85f7-436609bca056"
+
+[vars]
+V16_DAILY_RUN_LIMIT = "288"
+V16_MONTHLY_RUN_LIMIT = "8928"
