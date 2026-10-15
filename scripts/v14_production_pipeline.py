@@ -55,6 +55,12 @@ PRICE_SELECTORS = [
     "#tp_price_block_total_price_ww .a-offscreen",
     "#corePrice_desktop .a-price .a-offscreen",
     "#corePriceDisplay_desktop_feature_div .a-price-whole",
+    "#corePriceDisplay_desktop_feature_div .priceToPay .a-price-whole",
+    "#corePrice_feature_div .priceToPay .a-price-whole",
+    "#apex_desktop .priceToPay .a-offscreen",
+    "#apex_desktop .a-price:not(.a-text-price) .a-offscreen",
+    "#buybox .a-price:not(.a-text-price) .a-offscreen",
+    "#price .a-price:not(.a-text-price) .a-offscreen",
 ]
 
 OLD_PRICE_SELECTORS = [
@@ -225,7 +231,7 @@ def coupon_percent(page) -> float:
                 if not any(word in low for word in ("coupon", "كوبون", "قسيمة", "خصم")):
                     continue
                 matches = re.findall(
-                    r"(\\d{1,2}(?:\\.\\d+)?)\\s*%",
+                    r"(\d{1,2}(?:\.\d+)?)\s*%",
                     text.translate(ARABIC_DIGITS),
                 )
                 if len(matches) == 1:
@@ -249,6 +255,9 @@ def inspect_amazon(page, url: str, expected_asin: str = "") -> dict[str, Any]:
         raise RuntimeError(f"http_{status}")
     if page_blocked(page):
         raise RuntimeError("amazon_blocked")
+    # Fail closed: the URL can return HTTP 200 while displaying a generic page.
+    if not first_text(page, ["#productTitle", "h1#title", "#title #productTitle"]):
+        raise RuntimeError("amazon_product_page_missing")
 
     current_text = first_price_text(page, PRICE_SELECTORS)
     if not parse_number(current_text):
@@ -278,6 +287,9 @@ def inspect_amazon(page, url: str, expected_asin: str = "") -> dict[str, Any]:
                     "title": page.title()[:120],
                     "price_counts": price_counts,
                     "size_selectors": size_count,
+                    "http_status": status,
+                    "asin_detected": asin_from_page(page),
+                    "product_title_present": bool(first_text(page, ["#productTitle", "h1#title"])),
                 },
                 flush=True,
             )
@@ -441,9 +453,11 @@ def v14_excluded_product(job, obs=None):
 def send_review_photo(job: dict[str, Any], photo: Path, live_discount: float) -> dict[str, Any]:
     if v14_excluded_product(job):
         raise RuntimeError("blocked_excluded_at_telegram_boundary")
-    if str(job.get("lane") or "normal").lower() != "normal":
-        raise RuntimeError("github_ultra_delivery_disabled")
-    if not NORMAL_REVIEW_CHAT:
+    lane = str(job.get("lane") or "normal").lower()
+    if lane not in ("normal", "ultra"):
+        raise RuntimeError("unknown_review_lane")
+    destination = REVIEW_CHAT if lane == "ultra" else NORMAL_REVIEW_CHAT
+    if not destination:
         raise RuntimeError("telegram_review_chat_missing")
     short = str(job.get("deal_key") or "")[:16]
     url = str(job.get("url") or "")
@@ -464,7 +478,7 @@ def send_review_photo(job: dict[str, Any], photo: Path, live_discount: float) ->
         r = requests.post(
             f"https://api.telegram.org/bot{BOT_TOKEN}/sendPhoto",
             data={
-                "chat_id": NORMAL_REVIEW_CHAT,
+                "chat_id": destination,
                 "caption": build_caption(job, live_discount),
                 "parse_mode": "HTML",
                 "reply_markup": json.dumps(keyboard, ensure_ascii=False),
