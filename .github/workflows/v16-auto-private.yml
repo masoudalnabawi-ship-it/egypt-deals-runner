@@ -16,7 +16,7 @@ jobs:
   discover-and-send:
     if: ${{ vars.V16_AUTOMATION_ENABLED == '1' }}
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 12
 
     steps:
       - uses: actions/checkout@v4
@@ -38,14 +38,17 @@ jobs:
           V16_PRIVATE_TELEGRAM_ENABLED: '1'
           V16_INTERACTIVE_READY: '0'
           V16_DEDUP_BACKEND: d1
-          V16_MAX_SEND_PER_RUN: '2'
+          V16_MAX_SEND_PER_RUN: '10'
+          V16_MAX_RUNTIME_SECONDS: '235'
+          V16_ROTATE_SOURCES: '1'
+          V16_ROTATE_CANDIDATES: '1'
           V16_MIN_SEND_DISCOUNT: '50'
           V15_TELEGRAM_BOT_TOKEN: ${{ secrets.V15_TELEGRAM_BOT_TOKEN }}
           V15_TELEGRAM_REVIEW_CHAT_ID: ${{ secrets.V15_TELEGRAM_REVIEW_CHAT_ID }}
           V16_WORKER_URL: ${{ vars.V16_WORKER_URL }}
           V16_REGISTRATION_SECRET: ${{ secrets.V16_REGISTRATION_SECRET }}
         run: |
-          python scripts/v16/production_pipeline.py             --professional --send --max-candidates 25             --output v16-auto-report.json             --health-output v16-auto-health.json
+          python scripts/v16/production_pipeline.py             --professional --send --max-candidates 16             --output v16-auto-report.json             --health-output v16-auto-health.json
 
       - name: Save reports
         if: always()

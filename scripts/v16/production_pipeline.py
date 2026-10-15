@@ -3,6 +3,7 @@ import argparse
 import json
 import os
 import sys
+import time
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
@@ -102,7 +103,7 @@ def run_professional(*, send=False, max_candidates=5,
 
     if send and os.environ.get('V16_DEDUP_BACKEND') not in ('sqlite','d1'):
         raise RuntimeError('V16_PROFESSIONAL_REQUIRES_DEDUP')
-    max_sent = int(os.environ.get('V16_MAX_SEND_PER_RUN', '2'))
+    max_sent = int(os.environ.get('V16_MAX_SEND_PER_RUN', '10'))
     min_discount = int(os.environ.get('V16_MIN_SEND_DISCOUNT', '50'))
     if not 1 <= max_sent <= 25 or not 5 <= min_discount <= 100:
         raise ValueError('INVALID_AUTOMATION_LIMITS')
@@ -113,7 +114,22 @@ def run_professional(*, send=False, max_candidates=5,
             return {'discovered':0,'probed':0,'eligible':0,'alerts':[], 'failures':[], 'discovery_errors':[], 'budget':'DENIED'}
         from cloud_dedup import send_once, already_sent
 
-    discovery = discover_fn(max_pages=8, max_candidates=150)
+    started_at = time.monotonic()
+    runtime_limit = int(os.environ.get('V16_MAX_RUNTIME_SECONDS', '235'))
+    if not 120 <= runtime_limit <= 540:
+        raise ValueError('INVALID_RUNTIME_LIMIT')
+
+    if send and os.environ.get('V16_ROTATE_SOURCES') == '1':
+        from production_discovery import SOURCES
+        slot = int(time.time() // 300)
+        selected = SOURCES[slot % 2::2]
+        discovery = discover_fn(
+            max_pages=4,
+            max_candidates=150,
+            pages=selected
+        )
+    else:
+        discovery = discover_fn(max_pages=8, max_candidates=150)
     print('V16_SOURCE_STATS', json.dumps(discovery.get('source_stats', []), ensure_ascii=False), flush=True)
     hints = [
         x['listing_discount_hint']
@@ -146,8 +162,28 @@ def run_professional(*, send=False, max_candidates=5,
         'source_stats': discovery.get('source_stats', []),
     }
 
+    if send and os.environ.get('V16_ROTATE_CANDIDATES') == '1':
+        priority = [
+            c for c in candidates
+            if (c.get('listing_discount_hint') or 0) >= 70
+        ][:3]
+        priority_asins = {c['asin'] for c in priority}
+        remaining = [
+            c for c in candidates
+            if c['asin'] not in priority_asins
+        ]
+        if remaining:
+            step = max(1, max_candidates - len(priority))
+            offset = (int(time.time() // 300) * step) % len(remaining)
+            candidates = (
+                priority + remaining[offset:] + remaining[:offset]
+            )
+
     sent_count = 0
     for item in candidates[:max_candidates]:
+        if send and time.monotonic() - started_at >= runtime_limit:
+            result['stop_reason'] = 'TIME_BUDGET'
+            break
         if send and sent_count >= max_sent:
             break
         asin = item.get('asin')

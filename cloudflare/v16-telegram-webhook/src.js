@@ -87,6 +87,16 @@ async function webhook(e,req){
 }
 
 // Atomic D1 lease for cross-run dedup. Sent offers repeat only after a lower price.
+
+function dealCaps(e){
+ const h=Number(e.V16_MAX_DEALS_PER_HOUR||36);
+ const d=Number(e.V16_MAX_DEALS_PER_DAY||180);
+ if(!Number.isSafeInteger(h)||h<1||h>200||
+    !Number.isSafeInteger(d)||d<1||d>2000)
+   throw Error('INVALID_DEAL_CAPS');
+ return {h,d};
+}
+
 async function deal(e,req,path){
  if(req.headers.get('Authorization')!==`Bearer ${e.REGISTRATION_SECRET}`)return json({error:'UNAUTHORIZED'},403);
  const data=await req.json().catch(()=>null), asin=data?.asin, price=data?.price_cents;
@@ -99,17 +109,37 @@ async function deal(e,req,path){
    (row.status==='sent'&&price>=row.price_cents)||
    (row.status==='sending'&&row.updated_at>=Math.floor(Date.now()/1000)-600)
   );
-  return json({duplicate});
+  if(duplicate)return json({duplicate:true});
+  const caps=dealCaps(e);
+  const counts=await e.DB.prepare(`SELECT
+    SUM(CASE WHEN updated_at>=unixepoch()-3600 THEN 1 ELSE 0 END) AS hourly,
+    SUM(CASE WHEN updated_at>=unixepoch()-86400 THEN 1 ELSE 0 END) AS daily
+    FROM v16_deal_dedup
+    WHERE status='sent'
+       OR (status='sending' AND updated_at>=unixepoch()-600)`).first();
+  const blocked=(Number(counts?.hourly||0)>=caps.h||
+                 Number(counts?.daily||0)>=caps.d);
+  return json({duplicate:blocked,quota_blocked:blocked});
  }
  if(path==='/dedup/claim'){
   const owner=data.owner;
   if(typeof owner!=='string'||!/^[a-f0-9]{32}$/.test(owner))return json({error:'INVALID_OWNER'},400);
+  const caps=dealCaps(e);
   const rows=await e.DB.prepare(`INSERT INTO v16_deal_dedup(asin,price_cents,status,owner,updated_at)
- VALUES(?,?,'sending',?,unixepoch()) ON CONFLICT(asin) DO UPDATE SET
+ SELECT ?,?,'sending',?,unixepoch()
+ WHERE (SELECT COUNT(*) FROM v16_deal_dedup
+        WHERE updated_at>=unixepoch()-3600
+        AND (status='sent' OR
+        (status='sending' AND updated_at>=unixepoch()-600))) < ?
+ AND (SELECT COUNT(*) FROM v16_deal_dedup
+      WHERE updated_at>=unixepoch()-86400
+      AND (status='sent' OR
+      (status='sending' AND updated_at>=unixepoch()-600))) < ?
+ ON CONFLICT(asin) DO UPDATE SET
  price_cents=excluded.price_cents,status='sending',owner=excluded.owner,updated_at=unixepoch()
  WHERE (v16_deal_dedup.status='sent' AND excluded.price_cents<v16_deal_dedup.price_cents)
  OR (v16_deal_dedup.status='sending' AND v16_deal_dedup.updated_at<unixepoch()-600)
- RETURNING asin`).bind(asin,price,owner).all();
+ RETURNING asin`).bind(asin,price,owner,caps.h,caps.d).all();
   return json({allowed:!!rows.results?.length});
  }
  if(path==='/dedup/finish'){
