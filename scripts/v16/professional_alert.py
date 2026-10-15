@@ -67,6 +67,8 @@ def review_keyboard(candidate, *, interactive=False):
                  'callback_data': f'v16:reject:{asin}'},
             ],
             [
+                {'text': '✏️ تعديل',
+                 'callback_data': f'v16:edit:{asin}'},
                 {'text': '✍️ رسالة مخصصة',
                  'callback_data': f'v16:custom:{asin}'},
             ],

@@ -3,6 +3,7 @@ import hashlib
 import json
 import os
 import uuid
+from decimal import Decimal, InvalidOperation
 import urllib.request
 from pathlib import Path
 
@@ -11,6 +12,13 @@ from telegram_config import token as configured_token, review_chat, interactive_
 
 
 def send(candidate, *, token=None, chat_id=None, opener=None):
+    try:
+        discount = Decimal(str(candidate.get('displayed_discount_pct')))
+    except (InvalidOperation, TypeError, ValueError):
+        return False
+    if not discount.is_finite() or not 70 <= discount <= 100:
+        return False
+
     token = token if token is not None else configured_token()
     chat_id = chat_id if chat_id is not None else review_chat()
 

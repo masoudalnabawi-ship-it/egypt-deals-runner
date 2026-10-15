@@ -15,6 +15,7 @@ class FakeResponse(io.BytesIO):
 
 
 class D1ReviewMappingTests(unittest.TestCase):
+    discount = 90
     def test_d1_registration_without_local_sqlite(self):
         events = []
 
@@ -53,7 +54,7 @@ class D1ReviewMappingTests(unittest.TestCase):
                 "asin": "B0867X1QGP",
                 "title": "منتج تجريبي",
                 "current_price": 899,
-                "displayed_discount_pct": 25,
+                "displayed_discount_pct": self.discount,
                 "screenshot_path": str(image),
                 "screenshot_sha256": hashlib.sha256(
                     image.read_bytes()
@@ -92,6 +93,15 @@ class D1ReviewMappingTests(unittest.TestCase):
             "ACTIVATE_BUTTONS",
         ])
 
+
+
+
+class D1DiscountBoundary70Tests(D1ReviewMappingTests):
+    discount = 70
+
+
+class D1DiscountBoundary100Tests(D1ReviewMappingTests):
+    discount = 100
 
 if __name__ == "__main__":
     unittest.main()

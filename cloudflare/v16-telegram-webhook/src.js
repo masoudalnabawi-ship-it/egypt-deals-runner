@@ -115,8 +115,9 @@ async function deal(e,req,path){
     SUM(CASE WHEN updated_at>=unixepoch()-3600 THEN 1 ELSE 0 END) AS hourly,
     SUM(CASE WHEN updated_at>=unixepoch()-86400 THEN 1 ELSE 0 END) AS daily
     FROM v16_deal_dedup
-    WHERE status='sent'
-       OR (status='sending' AND updated_at>=unixepoch()-600)`).first();
+    WHERE updated_at>=unixepoch()-86400
+      AND (status='sent'
+       OR (status='sending' AND updated_at>=unixepoch()-600))`).first();
   const blocked=(Number(counts?.hourly||0)>=caps.h||
                  Number(counts?.daily||0)>=caps.d);
   return json({duplicate:blocked,quota_blocked:blocked});
@@ -127,19 +128,23 @@ async function deal(e,req,path){
   const caps=dealCaps(e);
   const rows=await e.DB.prepare(`INSERT INTO v16_deal_dedup(asin,price_cents,status,owner,updated_at)
  SELECT ?,?,'sending',?,unixepoch()
- WHERE (SELECT COUNT(*) FROM v16_deal_dedup
+ WHERE (SELECT COUNT(*) FROM (
+        SELECT 1 FROM v16_deal_dedup
         WHERE updated_at>=unixepoch()-3600
         AND (status='sent' OR
-        (status='sending' AND updated_at>=unixepoch()-600))) < ?
- AND (SELECT COUNT(*) FROM v16_deal_dedup
+        (status='sending' AND updated_at>=unixepoch()-600))
+        LIMIT ?)) < ?
+ AND (SELECT COUNT(*) FROM (
+      SELECT 1 FROM v16_deal_dedup
       WHERE updated_at>=unixepoch()-86400
       AND (status='sent' OR
-      (status='sending' AND updated_at>=unixepoch()-600))) < ?
+      (status='sending' AND updated_at>=unixepoch()-600))
+      LIMIT ?)) < ?
  ON CONFLICT(asin) DO UPDATE SET
  price_cents=excluded.price_cents,status='sending',owner=excluded.owner,updated_at=unixepoch()
  WHERE (v16_deal_dedup.status='sent' AND excluded.price_cents<v16_deal_dedup.price_cents)
  OR (v16_deal_dedup.status='sending' AND v16_deal_dedup.updated_at<unixepoch()-600)
- RETURNING asin`).bind(asin,price,owner,caps.h,caps.d).all();
+ RETURNING asin`).bind(asin,price,owner,caps.h,caps.h,caps.d,caps.d).all();
   return json({allowed:!!rows.results?.length});
  }
  if(path==='/dedup/finish'){

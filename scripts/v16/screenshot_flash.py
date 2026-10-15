@@ -57,6 +57,8 @@ def send_flash(observation, *, screenshot_path=None, screenshot_sha256=None,
     candidate = candidate_from_observation(observation)
     if candidate is None:
         return 'BELOW_THRESHOLD'
+    if Decimal(candidate['displayed_discount_pct']) < 70:
+        return 'BELOW_THRESHOLD'
     if not enabled or os.environ.get('V16_PRIVATE_TELEGRAM_ENABLED') != '1':
         return 'DISABLED'
     if not os.environ.get('V15_TELEGRAM_BOT_TOKEN') or not os.environ.get('V15_TELEGRAM_REVIEW_CHAT_ID'):

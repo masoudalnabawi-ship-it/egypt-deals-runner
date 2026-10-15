@@ -18,3 +18,7 @@ CREATE TABLE IF NOT EXISTS v16_deal_dedup (
   asin TEXT PRIMARY KEY, price_cents INTEGER NOT NULL, status TEXT NOT NULL, owner TEXT NOT NULL DEFAULT '',
   updated_at INTEGER NOT NULL DEFAULT 0
 );
+
+-- Speed up V16 hourly/daily deal-cap queries.
+CREATE INDEX IF NOT EXISTS v16_deal_dedup_updated_at_idx
+ON v16_deal_dedup(updated_at);

@@ -104,7 +104,7 @@ def run_professional(*, send=False, max_candidates=5,
     if send and os.environ.get('V16_DEDUP_BACKEND') not in ('sqlite','d1'):
         raise RuntimeError('V16_PROFESSIONAL_REQUIRES_DEDUP')
     max_sent = int(os.environ.get('V16_MAX_SEND_PER_RUN', '10'))
-    min_discount = int(os.environ.get('V16_MIN_SEND_DISCOUNT', '50'))
+    min_discount = max(70, int(os.environ.get('V16_MIN_SEND_DISCOUNT', '70')))
     if not 1 <= max_sent <= 25 or not 5 <= min_discount <= 100:
         raise ValueError('INVALID_AUTOMATION_LIMITS')
 
@@ -209,14 +209,6 @@ def run_professional(*, send=False, max_candidates=5,
                 continue
 
             if not send:
-                continue
-
-            if already_sent(candidate):
-                result['alerts'].append({
-                    'asin': asin,
-                    'kind': 'photo_with_caption',
-                    'status': 'SKIPPED_DUPLICATE',
-                })
                 continue
 
             second = next(probe)
