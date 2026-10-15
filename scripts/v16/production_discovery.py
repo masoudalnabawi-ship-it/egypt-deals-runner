@@ -72,11 +72,24 @@ def discover(max_pages=4, max_candidates=80, pages=None, browser_factory=None):
             for url in pages[:max_pages]:
                 tab = context.new_page()
                 try:
-                    tab.goto(url, wait_until='domcontentloaded', timeout=25000)
+                    response = tab.goto(url, wait_until='domcontentloaded', timeout=25000)
                     title = tab.title().lower()
                     if any(x in title for x in ('captcha', 'robot check', 'sign in')):
                         errors.append({'source': url, 'reason': 'ACCESS_CHALLENGE'})
                         continue
+                    # Diagnose empty Amazon listings without logging page contents.
+                    diagnostics = tab.evaluate('''() => ({
+                        title: document.title.slice(0, 100),
+                        asin_nodes: document.querySelectorAll('[data-asin]').length,
+                        search_cards: document.querySelectorAll('[data-component-type="s-search-result"]').length,
+                        product_links: document.querySelectorAll('a[href*="/dp/"]').length,
+                        body_length: document.body ? document.body.innerText.length : 0
+                    })''')
+                    print('V16_PAGE_DIAGNOSTICS', json.dumps({
+                        'source': url,
+                        'http_status': response.status if response else None,
+                        **diagnostics
+                    }, ensure_ascii=False), flush=True)
                     # Collect per-source metrics BEFORE global ASIN dedup/truncation.
                     cards = extract_cards(tab, limit=max_candidates)
                     source_stats.append({
