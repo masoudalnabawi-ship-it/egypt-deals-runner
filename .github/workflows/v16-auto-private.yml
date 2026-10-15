@@ -36,7 +36,7 @@ jobs:
         env:
           PYTHONPATH: scripts/v16:scripts/v14
           V16_PRIVATE_TELEGRAM_ENABLED: '1'
-          V16_INTERACTIVE_READY: '0'
+          V16_INTERACTIVE_READY: '1'
           V16_DEDUP_BACKEND: d1
           V16_MAX_SEND_PER_RUN: '10'
           V16_MAX_RUNTIME_SECONDS: '235'
