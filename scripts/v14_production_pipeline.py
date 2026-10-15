@@ -356,6 +356,16 @@ def verify_one(page) -> bool:
             str(job.get("url") or ""),
             str(job.get("external_id") or ""),
         )
+        print(
+            "V14_PRICE_AUDIT",
+            key[:12],
+            "current=", obs.get("current_price"),
+            "old=", obs.get("old_price"),
+            "savings=", obs.get("savings_percent"),
+            "coupon=", obs.get("coupon_percent"),
+            "calculated=", effective_discount(obs),
+            flush=True,
+        )
         payload = {
             "deal_key": key,
             "status": "verified",
