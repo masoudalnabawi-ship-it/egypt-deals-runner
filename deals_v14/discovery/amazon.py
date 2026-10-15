@@ -14,11 +14,35 @@ BASE = "https://www.amazon.eg"
 
 
 def _p(text) -> float:
-    text = str(text or "").replace(",", "").translate(str.maketrans("٠١٢٣٤٥٦٧٨٩٫٬", "0123456789.,"))
-    m = re.search(r"(\d+(?:\.\d+)?)", text)
+    """Parse Amazon prices with Arabic or Western separators."""
+    raw = str(text or "").translate(
+        str.maketrans("٠١٢٣٤٥٦٧٨٩٫٬", "0123456789.,")
+    )
+
+    match = re.search(r"\d[\d.,\s]*", raw)
+    if not match:
+        return 0.0
+
+    value = re.sub(r"\s+", "", match.group()).rstrip(".,")
+    if not value:
+        return 0.0
+
+    if "." in value and "," in value:
+        decimal = "." if value.rfind(".") > value.rfind(",") else ","
+        thousands = "," if decimal == "." else "."
+        value = value.replace(thousands, "").replace(decimal, ".")
+    elif "," in value:
+        parts = value.split(",")
+        if len(parts) == 2 and len(parts[1]) in (1, 2):
+            value = value.replace(",", ".")
+        else:
+            value = value.replace(",", "")
+    elif value.count(".") > 1:
+        value = value.replace(".", "")
+
     try:
-        return float(m.group(1)) if m else 0.0
-    except Exception:
+        return float(value)
+    except ValueError:
         return 0.0
 
 
