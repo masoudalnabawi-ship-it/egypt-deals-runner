@@ -66,3 +66,5 @@ jobs:
           rm -f /tmp/v16-worker-secrets.json /tmp/v16-bot-id
 
           echo "V16_WORKER_DEPLOYED_WITH_SECRETS"
+
+# V16 Cloudflare bindings recovery
