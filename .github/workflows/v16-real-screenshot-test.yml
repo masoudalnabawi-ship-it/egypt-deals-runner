@@ -1,0 +1,54 @@
+name: V16 Real Screenshot Test
+
+on:
+  push:
+    branches:
+      - feature/v16-smart-dedup-20261013203210
+    paths:
+      - .github/workflows/v16-real-screenshot-test.yml
+
+permissions:
+  contents: read
+
+jobs:
+  screenshot:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install browser
+        run: |
+          pip install playwright==1.56.0 requests
+          python -m playwright install --with-deps chromium
+      - name: Capture actual Amazon product page
+        env:
+          PYTHONPATH: scripts/v16:scripts/v14
+          V16_PRIVATE_TELEGRAM_ENABLED: '0'
+        run: |
+          python - <<'PYCODE'
+          import hashlib
+          from pathlib import Path
+          from fast_probe import probe_product
+
+          asin = "B0BXB1LRFY"
+          result = iter(probe_product(asin))
+          observation, _, _ = next(result)
+          print("VERIFIED_PRODUCT:", observation)
+
+          _, image, digest = next(result)
+          output = Path("v16-real-amazon.jpg")
+          output.write_bytes(Path(image).read_bytes())
+
+          assert output.stat().st_size > 10000
+          assert hashlib.sha256(output.read_bytes()).hexdigest() == digest
+          print("REAL_SCREENSHOT_SUCCESS", output.stat().st_size)
+          PYCODE
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: v16-real-amazon-screenshot
+          path: v16-real-amazon.jpg
+          if-no-files-found: ignore
