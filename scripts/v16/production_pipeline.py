@@ -180,11 +180,13 @@ def run_professional(*, send=False, max_candidates=5,
             )
 
     sent_count = 0
-    for item in candidates[:max_candidates]:
+    for item in candidates:
         if send and time.monotonic() - started_at >= runtime_limit:
             result['stop_reason'] = 'TIME_BUDGET'
             break
         if send and sent_count >= max_sent:
+            break
+        if result['probed'] >= max_candidates:
             break
         asin = item.get('asin')
         if not isinstance(asin, str) or len(asin) != 10 or not asin.isascii() or not asin.isalnum():
