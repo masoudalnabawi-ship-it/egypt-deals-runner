@@ -10,10 +10,10 @@ from urllib.parse import urlparse
 # Search pages are discovery HINTS only. Every candidate is verified on its own
 # Amazon product page before being accepted; URL filters are not trusted.
 SOURCES = (
-    'https://www.amazon.eg/s?k=electronics&pct-off=50-99',
-    'https://www.amazon.eg/s?k=home+and+kitchen&pct-off=50-99',
-    'https://www.amazon.eg/s?k=beauty&pct-off=50-99',
-    'https://www.amazon.eg/s?k=fashion&pct-off=50-99',
+    'https://www.amazon.eg/s?k=electronics&pct-off=70-99',
+    'https://www.amazon.eg/s?k=home+and+kitchen&pct-off=70-99',
+    'https://www.amazon.eg/s?k=beauty&pct-off=70-99',
+    'https://www.amazon.eg/s?k=fashion&pct-off=70-99',
     'https://www.amazon.eg/gp/goldbox',
     'https://www.amazon.eg/deals',
     'https://www.amazon.eg/gp/bestsellers',
