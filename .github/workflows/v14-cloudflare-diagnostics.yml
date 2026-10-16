@@ -1,0 +1,33 @@
+name: V14 Cloudflare Diagnostics
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout V14
+        uses: actions/checkout@v4
+        with:
+          ref: v14-cloudflare
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Install Wrangler
+        run: npm install --no-save wrangler@4
+
+      - name: Capture V14 Worker errors
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUD_API_KEY }}
+        run: |
+          timeout 90s npx wrangler tail egypt-amazon-v14 \
+            --format json \
+            --status error || true
