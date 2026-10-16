@@ -256,7 +256,17 @@ def inspect_amazon(page, url: str, expected_asin: str = "") -> dict[str, Any]:
     if page_blocked(page):
         raise RuntimeError("amazon_blocked")
     # Fail closed: the URL can return HTTP 200 while displaying a generic page.
-    if not first_text(page, ["#productTitle", "h1#title", "#title #productTitle"]):
+    title_selectors = ["#productTitle", "h1#title", "#title #productTitle"]
+    product_title = first_text(page, title_selectors)
+    if not product_title:
+        for _ in range(3):
+            page.wait_for_timeout(1500)
+            if page_blocked(page):
+                raise RuntimeError("amazon_blocked")
+            product_title = first_text(page, title_selectors)
+            if product_title:
+                break
+    if not product_title:
         raise RuntimeError("amazon_product_page_missing")
 
     current_text = first_price_text(page, PRICE_SELECTORS)
