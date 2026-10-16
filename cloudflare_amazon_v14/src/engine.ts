@@ -553,6 +553,27 @@ async function scanAmazonSurface(repo: D1Repository, settings: Settings, surface
   try {
     const result = await fetchAmazonSurface(surface); latency = result.latency;
     const deals = parseAmazon(result.text, surface); fetched = deals.length;
+
+    // V14_ULTRA_ZERO_RESULTS_DIAGNOSTIC: logging only; no extra requests.
+    if (
+      fetched === 0 &&
+      (
+        AMAZON_ULTRA_HUNTER_ORDER.includes(surface.name) ||
+        AMAZON_EXCEPTIONAL_HUNTER_ORDER.includes(surface.name)
+      )
+    ) {
+      const html = result.text;
+      console.log(JSON.stringify({
+        event: "v14_ultra_zero_results",
+        source: surface.name,
+        html_bytes: new TextEncoder().encode(html).length,
+        search_result_markers: (html.match(/s-search-result/gi) || []).length,
+        asin_markers: (html.match(/data-asin/gi) || []).length,
+        search_page_marker: /s-search|search-results|searchResult/i.test(html),
+        protection_marker: /robot check|captcha|access denied|unusual traffic/i.test(html),
+      }));
+    }
+
     queued = await admitAmazon(repo, settings, surface, deals);
   } catch (e) { error = `${e instanceof Error ? e.name : 'Error'}:${e instanceof Error ? e.message : String(e)}`; }
   await repo.sourceResult('amazon', surface.name, surface.category, fetched, queued, latency, error);
