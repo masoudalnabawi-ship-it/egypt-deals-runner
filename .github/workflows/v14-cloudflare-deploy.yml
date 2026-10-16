@@ -1,0 +1,42 @@
+name: V14 Cloudflare Deploy
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: v14-cloudflare-deploy
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout V14
+        uses: actions/checkout@v4
+        with:
+          ref: v14-cloudflare
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Install dependencies
+        working-directory: cloudflare_amazon_v14
+        run: npm install --no-audit --no-fund
+
+      - name: Validate V14
+        working-directory: cloudflare_amazon_v14
+        run: |
+          npm run typecheck
+          npm test
+
+      - name: Deploy V14 only
+        working-directory: cloudflare_amazon_v14
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUD_API_KEY }}
+        run: npx wrangler deploy --config wrangler.jsonc
