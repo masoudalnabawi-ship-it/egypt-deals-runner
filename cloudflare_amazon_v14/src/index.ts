@@ -1707,6 +1707,31 @@ export default {
       );
     }
 
+    // Read-only, authenticated Ultra pipeline diagnostic. No extra work on Cron.
+    if (request.method === 'GET' && url.pathname === '/admin/ultra-health') {
+      if (!adminAllowed(request, env)) return json({ok:false,error:'unauthorized'},401);
+      const since = Math.floor(Date.now() / 1000) - 86400;
+      const db = env.egypt_deals_v14_db;
+      const rows = await db.prepare(`
+        SELECT lane, state, COUNT(*) AS count,
+               MAX(discovered_at) AS last_discovered_at,
+               MAX(verified_at) AS last_verified_at,
+               MAX(sent_at) AS last_sent_at
+        FROM deals
+        WHERE store='amazon' AND discovered_at >= ?
+        GROUP BY lane, state
+      `).bind(since).all();
+      const events = await db.prepare(`
+        SELECT event, COUNT(*) AS count, MAX(ts) AS last_at
+        FROM events WHERE store='amazon' AND ts >= ?
+        GROUP BY event ORDER BY count DESC LIMIT 30
+      `).bind(since).all();
+      return json({
+        ok:true, worker:'egypt-amazon-v14', window_hours:24,
+        note:'Read-only counts; does not prove external Telegram delivery',
+        deals:rows.results || [], events:events.results || [],
+      });
+    }
     if (request.method === 'POST' && url.pathname === '/admin/bootstrap') return bootstrap(request, env);
       if (request.method === 'POST' && url.pathname === '/admin/discover') { if (!adminAllowed(request, env)) return json({ok:false,error:'unauthorized'},401); return json(await runDiscoveryOnly(env,getSettings(env))); }
     if (request.method === 'POST' && url.pathname === '/admin/run') {
