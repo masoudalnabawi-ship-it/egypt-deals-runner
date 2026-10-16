@@ -24,10 +24,23 @@ jobs:
       - name: Install Wrangler
         run: npm install --no-save wrangler@4
 
-      - name: Capture V14 Worker errors
+      - name: Capture V14 error during one verification claim
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUD_API_KEY }}
+          V14_GITHUB_PIPELINE_KEY: ${{ secrets.V14_GITHUB_PIPELINE_KEY }}
         run: |
-          timeout 90s npx wrangler tail egypt-amazon-v14 \
-            --format json \
-            --status error || true
+          set -eu
+          timeout 65s npx wrangler tail egypt-amazon-v14 --format json --status error > /tmp/v14-tail.log 2>&1 &
+          TAIL_PID=$!
+          trap 'kill "$TAIL_PID" 2>/dev/null || true' EXIT
+          sleep 15
+          curl --silent --show-error --max-time 25 \
+            --output /tmp/v14-response.txt \
+            --write-out 'CLAIM_HTTP_STATUS:%{http_code}\n' \
+            -X POST 'https://egypt-amazon-v14.masoud-amazon-eg.workers.dev/admin/playwright-verify/claim' \
+            -H "Authorization: Bearer $V14_GITHUB_PIPELINE_KEY" \
+            -H 'Content-Type: application/json' \
+            --data '{"worker_id":"v14-diagnostic-once"}' || true
+          sleep 8
+          echo '=== CLOUDFLARE ERRORS ==='
+          cat /tmp/v14-tail.log
