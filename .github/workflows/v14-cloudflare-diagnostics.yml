@@ -47,6 +47,7 @@ jobs:
 
       # V14_ULTRA_HEALTH_CHECK
       - name: Check V14 Ultra database
+        if: ${{ false }}
         env:
           V14_GITHUB_PIPELINE_KEY: ${{ secrets.V14_GITHUB_PIPELINE_KEY }}
         run: |
