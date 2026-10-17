@@ -76,7 +76,7 @@ jobs:
       - name: Inspect V14 D1 directly
         working-directory: cloudflare_amazon_v14
         env:
-          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUD_API_KEY }}
         run: |
           echo "=== AMAZON DEALS LAST 24 HOURS ==="
           npx wrangler d1 execute egypt-amazon-v14-db --remote --command "SELECT lane,state,COUNT(*) AS total,MAX(discovered_at) AS latest FROM deals WHERE store='amazon' AND discovered_at >= CAST(strftime('%s','now') AS INTEGER)-86400 GROUP BY lane,state;"
