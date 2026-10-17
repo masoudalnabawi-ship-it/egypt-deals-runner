@@ -245,9 +245,40 @@ async function claimPlaywrightVerification(
    * GitHub Playwright now acts as the expensive
    * rendered verifier for strong Amazon Ultra leads.
    */
-  const row =
-    (await repo.claimForVerification("amazon", "ultra", workerId, 300)) ??
-    (await repo.claimForVerification("amazon", "normal", workerId, 300));
+  // Fast Ultra: discovery discount is a *reported* discount, not a verified saving.
+  // Promote to the existing screenshot/review queue without old-price verification.
+  const ultraLead = await repo.claimForVerification("amazon", "ultra", workerId, 300);
+  if (ultraLead) {
+    const pct = Number(ultraLead.visible_discount || 0);
+    const price = Number(ultraLead.current_price || 0);
+    const asin = String(ultraLead.external_id || "").trim().toUpperCase();
+    let validUrl = false;
+    try {
+      const u = new URL(String(ultraLead.url || ""));
+      validUrl = u.protocol === "https:" &&
+        (u.hostname === "amazon.eg" || u.hostname === "www.amazon.eg") &&
+        /^[A-Z0-9]{10}$/.test(asin) &&
+        u.pathname.toUpperCase().includes(asin);
+    } catch {}
+    if (!(price > 0 && Number.isFinite(price) && pct >= getSettings(env).ultra_min_discount && pct < 100 && validUrl)) {
+      await repo.markRejected(ultraLead.deal_key, "fast_ultra_invalid_discovery_data");
+    } else {
+      const candidate = repo.rowToCandidate(ultraLead);
+      const decision = preliminaryDecision(getSettings(env), candidate);
+      decision.lane = "ultra";
+      decision.real_discount = pct;
+      decision.score = pct >= getSettings(env).ultra_hot_discount ? 100 : Math.max(94, decision.score);
+      await repo.markVerified(ultraLead.deal_key, candidate, decision, {
+        ...(candidate.metadata || {}),
+        fast_ultra_discovery_only: true,
+        discount_unverified: true,
+        advertised_discount: pct,
+        verified_route: "ultra",
+      });
+      await repo.event("fast_ultra_queued_for_review", "amazon", ultraLead.deal_key, {advertised_discount:pct});
+    }
+  }
+  const row = await repo.claimForVerification("amazon", "normal", workerId, 300);
 
   if (!row) {
     return json({
@@ -1065,8 +1096,8 @@ async function claimScreenshotJob(
   if (
     row.lane === "ultra" &&
     (
-      Number(row.real_discount || 0) < 65 ||
-      Number(row.confidence || 0) < 0.76
+      Number(row.real_discount || 0) < getSettings(env).ultra_min_discount ||
+      (!String(row.metadata_json || "").includes('"fast_ultra_discovery_only":true') && Number(row.confidence || 0) < getSettings(env).min_confidence_ultra)
     )
   ) {
     await repo.markRejected(
@@ -1207,7 +1238,7 @@ async function completeScreenshotJob(
     (
       status === "sent" &&
       row.lane === "ultra" &&
-      !(liveDiscount >= 65)
+      !(liveDiscount >= getSettings(env).ultra_min_discount)
     )
   ) {
     const blockReason =

@@ -434,7 +434,8 @@ def build_caption(job: dict[str, Any], live_discount: float) -> str:
     if old > current > 0:
         lines.append(f"🏷 <b>السعر السابق:</b> <s>{old:,.2f}</s> ج.م")
     lines.extend([
-        f"📉 <b>الخصم الحي:</b> {live_discount:.1f}%",
+        (f"📉 <b>خصم معلن عند الاكتشاف (غير موثق):</b> {live_discount:.1f}%"
+         if lane == "ultra" else f"📉 <b>الخصم الحي:</b> {live_discount:.1f}%"),
         f"🧠 <b>التقييم:</b> {score:.1f}/100",
         f"🛡 <b>الثقة:</b> {confidence:.0f}%",
     ])
@@ -583,6 +584,24 @@ def deliver_one(page, lane: str, ultra_min: float) -> bool:
             return True
 
         live_discount = effective_discount(obs)
+        if lane == "ultra":
+            # Current product/price still must be valid; old/list price need not be.
+            expected_asin = str(job.get("external_id") or "").strip().upper()
+            page_asin = str(obs.get("page_asin") or "").strip().upper()
+            current = float(obs.get("current_price") or 0)
+            discovered = float(job.get("current_price") or 0)
+            advertised = float(job.get("real_discount") or 0)
+            if (current <= 0 or not page_asin or page_asin != expected_asin
+                    or (discovered > 0 and current > discovered * 1.03)
+                    or not (ultra_min <= advertised < 100)):
+                api_post("/admin/screenshot/complete", {
+                    "deal_key": key, "status": "retry",
+                    "reason": "fast_ultra_product_or_current_price_mismatch",
+                    "live_discount": 0, "proof": obs,
+                }, retries=10)
+                print("ULTRA CURRENT PRODUCT/PRICE CHECK FAILED", key[:12], flush=True)
+                return True
+            live_discount = advertised  # Advertised at discovery, not historical proof.
 
         if lane == "normal" and not (10 <= live_discount < ultra_min):
             api_post("/admin/screenshot/complete", {"deal_key": key, "status": "invalid_normal", "reason": f"live_discount_{live_discount}_outside_normal_range", "live_discount": live_discount, "proof": obs}, retries=10)
@@ -607,7 +626,8 @@ def deliver_one(page, lane: str, ultra_min: float) -> bool:
         with tempfile.TemporaryDirectory(prefix="v14-shot-") as td:
             shot = Path(td) / "deal.jpg"
             capture_product_screenshot(page, shot)
-            live_job = {**job, "current_price": obs["current_price"], "old_price": obs["old_price"]}
+            live_job = {**job, "current_price": obs["current_price"],
+                        "old_price": (0 if lane == "ultra" else obs["old_price"])}
             telegram_result = send_review_photo(live_job, shot, live_discount)
             message_id = telegram_result["message_id"]
 
