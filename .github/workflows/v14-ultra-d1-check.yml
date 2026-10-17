@@ -1,0 +1,30 @@
+name: V14 Ultra D1 Check
+
+on:
+  workflow_dispatch:
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout V14
+        uses: actions/checkout@v4
+        with:
+          ref: v14-cloudflare
+
+      - name: Install Wrangler
+        run: npm install --no-save wrangler
+
+      - name: Inspect Ultra deals and events
+        working-directory: cloudflare_amazon_v14
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        run: |
+          echo "=== AMAZON DEALS BY LANE AND STATE ==="
+          npx wrangler d1 execute egypt-amazon-v14-db --remote --command "SELECT lane, state, COUNT(*) AS total, MAX(discovered_at) AS latest_discovery FROM deals WHERE store='amazon' AND discovered_at >= CAST(strftime('%s','now') AS INTEGER)-86400 GROUP BY lane,state ORDER BY lane,state;"
+
+          echo "=== AMAZON EVENTS LAST 24 HOURS ==="
+          npx wrangler d1 execute egypt-amazon-v14-db --remote --command "SELECT event, COUNT(*) AS total, MAX(ts) AS latest_event FROM events WHERE store='amazon' AND ts >= CAST(strftime('%s','now') AS INTEGER)-86400 GROUP BY event ORDER BY total DESC LIMIT 30;"
+
+          echo "=== ALL AMAZON DEAL STATES ==="
+          npx wrangler d1 execute egypt-amazon-v14-db --remote --command "SELECT lane,state,COUNT(*) AS total FROM deals WHERE store='amazon' GROUP BY lane,state ORDER BY lane,state;"
