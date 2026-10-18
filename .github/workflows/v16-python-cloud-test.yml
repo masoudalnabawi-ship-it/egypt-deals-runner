@@ -30,10 +30,17 @@ jobs:
           from cloud_dedup import request
 
           asin = 'B0' + uuid.uuid4().hex[:8].upper()
-          result = request('/dedup/check', {
-              'asin': asin,
-              'price_cents': 10000,
-          })
+          import subprocess
+
+          try:
+              result = request('/dedup/check', {
+                  'asin': asin,
+                  'price_cents': 10000,
+              })
+          except subprocess.CalledProcessError as exc:
+              print('HTTP_ERROR_EXIT_CODE:', exc.returncode)
+              print('WORKER_RESPONSE:', (exc.stdout or '')[:500])
+              raise RuntimeError('V16_WORKER_REQUEST_FAILED') from None
 
           assert result.get('duplicate') is False, result
           print('V16_PYTHON_CLOUDFLARE_CONNECTION_PASSED')
