@@ -1,0 +1,35 @@
+name: V16 Live Price History Test
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - name: Test V16 price history
+        env:
+          PYTHONPATH: scripts/v16
+          V16_WORKER_URL: ${{ vars.V16_WORKER_URL }}
+          V16_REGISTRATION_SECRET: ${{ secrets.V16_REGISTRATION_SECRET }}
+        run: |
+          python - <<'PY'
+          import uuid
+          from worker_price_history import record_price, historical_discount
+
+          asin = "V16TEST" + uuid.uuid4().hex[:3].upper()
+          price = 999.99
+
+          assert record_price(asin, price), "PRICE_RECORD_FAILED"
+          print("PASS: Price recorded in Cloudflare D1")
+
+          result = historical_discount(asin, price)
+          assert result is None, "UNVERIFIED_DISCOUNT_ACCEPTED"
+          print("PASS: No false discount accepted")
+          print("V16 LIVE PRICE HISTORY TEST PASSED")
+          PY
