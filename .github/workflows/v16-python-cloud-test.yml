@@ -37,4 +37,18 @@ jobs:
 
           assert result.get('duplicate') is False, result
           print('V16_PYTHON_CLOUDFLARE_CONNECTION_PASSED')
+
+          from worker_price_history import record_price, historical_discount
+
+          test_asin = 'B0' + uuid.uuid4().hex[:8].upper()
+          test_price = 999.99
+
+          assert record_price(test_asin, test_price), 'PRICE_RECORD_FAILED'
+          print('PASS: V16 price recorded in D1')
+
+          result = historical_discount(test_asin, test_price)
+          assert result is None, 'UNVERIFIED_DISCOUNT_ACCEPTED'
+          print('PASS: Unverified discount rejected')
+
+          print('V16_PRICE_HISTORY_LIVE_PASSED')
           PY
