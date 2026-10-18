@@ -156,10 +156,62 @@ async function deal(e,req,path){
  return json({error:'NOT_FOUND'},404);
 }
 
+
+// V16-only persistent historical prices.
+async function priceHistory(e,req,path){
+ if(req.headers.get('Authorization')!==`Bearer ${e.REGISTRATION_SECRET}`)
+  return json({error:'UNAUTHORIZED'},403);
+
+ const data=await req.json().catch(()=>null);
+ const asin=data?.asin;
+ const price=data?.price_cents;
+
+ if(!ASIN.test(asin)||!Number.isSafeInteger(price)||price<=0)
+  return json({error:'INVALID_PRICE'},400);
+
+ if(path==='/prices/record'){
+  await e.DB.prepare(
+   `INSERT OR IGNORE INTO v16_price_history
+    (asin,price_cents,observed_at)
+    VALUES(?,?,CURRENT_TIMESTAMP)`
+  ).bind(asin,price).run();
+
+  return json({ok:true});
+ }
+
+ if(path==='/prices/history'){
+  const row=await e.DB.prepare(
+   `SELECT MIN(price_cents) AS previous_price
+    FROM v16_price_history
+    WHERE asin=?
+    AND observed_at<=datetime('now','-7 days')`
+  ).bind(asin).first();
+
+  const previous=row?.previous_price;
+
+  if(!Number.isSafeInteger(previous)||previous<=price)
+   return json({verified:false});
+
+  const discount=(previous-price)*100/previous;
+
+  if(discount<70)
+   return json({verified:false});
+
+  return json({
+   verified:true,
+   asin,
+   previous_price_cents:previous,
+   verified_discount_pct:discount
+  });
+ }
+
+ return json({error:'NOT_FOUND'},404);
+}
+
 export default {async fetch(req,e){
  if(req.method!=='POST')return new Response('Not found',{status:404});
  if(!validEnv(e))return json({error:'NOT_CONFIGURED'},503);
  const path=new URL(req.url).pathname;
- try{if(path==='/budget/claim')return await budget(e,req);if(path==='/dedup/check'||path==='/dedup/claim'||path==='/dedup/finish')return await deal(e,req,path);if(path==='/register')return await register(e,req);if(path==='/telegram')return await webhook(e,req);return json({error:'NOT_FOUND'},404);}
+ try{if(path==='/prices/record'||path==='/prices/history')return await priceHistory(e,req,path);if(path==='/budget/claim')return await budget(e,req);if(path==='/dedup/check'||path==='/dedup/claim'||path==='/dedup/finish')return await deal(e,req,path);if(path==='/register')return await register(e,req);if(path==='/telegram')return await webhook(e,req);return json({error:'NOT_FOUND'},404);}
  catch(err){console.error('V16_WEBHOOK_FAILED',String(err?.message||err));return json({error:'RETRY'},500);}
 }};

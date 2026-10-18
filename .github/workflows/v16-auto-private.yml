@@ -45,6 +45,7 @@ jobs:
           V16_MIN_SEND_DISCOUNT: '50'
           V15_TELEGRAM_BOT_TOKEN: ${{ secrets.V15_TELEGRAM_BOT_TOKEN }}
           V15_TELEGRAM_REVIEW_CHAT_ID: ${{ secrets.V15_TELEGRAM_REVIEW_CHAT_ID }}
+          V16_PRICE_HISTORY_BACKEND: worker
           V16_WORKER_URL: ${{ vars.V16_WORKER_URL }}
           V16_REGISTRATION_SECRET: ${{ secrets.V16_REGISTRATION_SECRET }}
         run: |

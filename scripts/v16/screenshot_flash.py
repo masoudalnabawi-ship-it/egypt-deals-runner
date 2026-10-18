@@ -89,13 +89,38 @@ def candidate_from_observation(observation):
         raise ValueError('INVALID_OFFER') from exc
     if not pct.is_finite() or not 0 <= pct <= 100 or not price.is_finite() or price <= 0:
         raise ValueError('INVALID_OFFER')
-    if pct < 5 or excluded_book_product(observation.get('title')):
+    if excluded_book_product(observation.get('title')) or excluded_printed_material(observation.get('title')):
         return None
 
     if excluded_printed_material(observation.get("title")):
         return None
 
-    verified_discount = verified_real_discount(observation)
+    import os
+
+    if os.environ.get("V16_PRICE_HISTORY_BACKEND") == "worker":
+        from worker_price_history import record_price, historical_discount
+    elif os.environ.get("V16_PRICE_HISTORY_BACKEND") == "d1":
+        from d1_price_history import record_price, historical_discount
+    else:
+        from price_history import record_price, historical_discount
+
+    evidence = historical_discount(
+        observation.get("asin"),
+        observation.get("current_price"),
+    )
+
+    record_price(
+        observation.get("asin"),
+        observation.get("current_price"),
+    )
+
+    if evidence is None:
+        return None
+
+    verified_discount = verified_real_discount({
+        **observation,
+        "price_verification": evidence,
+    })
 
     if verified_discount is None:
         return None
