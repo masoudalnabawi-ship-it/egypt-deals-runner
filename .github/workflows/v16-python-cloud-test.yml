@@ -38,6 +38,10 @@ jobs:
             -H "Content-Type: application/json" \
             --data '{"asin":"B0TEST1234","price_cents":10000}' || true
           wait "$TAIL_PID" || true
+          echo "=== V16 TAIL CONNECTION STATUS ==="
+          grep -Ei 'error|failed|unauthorized|forbidden|connected|tail' /tmp/v16-tail-error.log | tail -12 || true
+          echo "=== V16 TAIL EVENT COUNT ==="
+          wc -l /tmp/v16-tail.log
           python3 - <<'LOG'
           import json
           from pathlib import Path
