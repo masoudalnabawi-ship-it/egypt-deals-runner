@@ -21,10 +21,37 @@ jobs:
       - name: Test Python curl connection to Cloudflare D1
         env:
           V16_WORKER_URL: ${{ vars.V16_WORKER_URL }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.V15_CLOUDFLARE_API_TOKEN }}
           V16_REGISTRATION_SECRET: ${{ secrets.V16_REGISTRATION_SECRET }}
           PYTHONPATH: scripts/v16
         run: |
           set -euo pipefail
+          echo "V16_WORKER_DIAGNOSTICS"
+          cd cloudflare/v16-telegram-webhook
+          cp wrangler.toml.template wrangler.toml
+          timeout 25s npx --yes wrangler@4 tail egypt-amazon-v16-telegram-webhook --format json > /tmp/v16-tail.log 2>/tmp/v16-tail-error.log &
+          TAIL_PID=$!
+          cd ../..
+          sleep 10
+          curl -sS -o /dev/null -X POST "$V16_WORKER_URL/dedup/check" \
+            -H "Authorization: Bearer $V16_REGISTRATION_SECRET" \
+            -H "Content-Type: application/json" \
+            --data '{"asin":"B0TEST1234","price_cents":10000}' || true
+          wait "$TAIL_PID" || true
+          python3 - <<'LOG'
+          import json
+          from pathlib import Path
+          for line in Path('/tmp/v16-tail.log').read_text().splitlines():
+              try:
+                  event = json.loads(line)
+                  for item in event.get('logs', []):
+                      message = ' '.join(map(str, item.get('message', [])))
+                      if 'V16_WEBHOOK_FAILED' in message:
+                          print('V16_ACTUAL_ERROR:', message[:500])
+              except (ValueError, TypeError):
+                  continue
+          LOG
+
           python3 - <<'PY'
           import uuid
           from cloud_dedup import request
