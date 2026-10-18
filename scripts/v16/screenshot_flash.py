@@ -29,6 +29,55 @@ def excluded_book_product(title):
     return bool(BOOK_PRODUCTS.search(str(title or '')))
 
 
+
+def verified_real_discount(observation):
+    """Reject discounts without independent historical price evidence."""
+    from decimal import Decimal, InvalidOperation
+
+    evidence = observation.get("price_verification")
+
+    if not isinstance(evidence, dict):
+        return None
+
+    if (
+        evidence.get("status") != "verified"
+        or evidence.get("source_type") != "independent_price_history"
+        or evidence.get("asin") != observation.get("asin")
+        or not evidence.get("source_reference")
+        or not evidence.get("observed_at")
+    ):
+        return None
+
+    try:
+        current = Decimal(str(observation["current_price"]))
+        previous = Decimal(str(evidence["historical_price"]))
+    except (InvalidOperation, ValueError, TypeError, KeyError):
+        return None
+
+    if not current.is_finite() or not previous.is_finite():
+        return None
+
+    if current <= 0 or previous <= current:
+        return None
+
+    discount = (previous - current) * 100 / previous
+    return discount if discount >= 70 else None
+
+
+def excluded_printed_material(title):
+    import re
+
+    return bool(re.search(
+        r"(?i)\b(?:books?|ebooks?|paperbacks?|hardcovers?|"
+        r"magazines?|textbooks?|workbooks?|exam papers?|"
+        r"study guides?|revision guides?|book covers?|"
+        r"printed worksheets?)\b|"
+        r"كتب|كتاب|مجلات?|روايات|ملازم|ملزمة|"
+        r"أوراق امتحانات|بنك أسئلة|غلاف كتاب",
+        str(title or "")
+    ))
+
+
 def candidate_from_observation(observation):
     asin = observation.get('asin')
     if not isinstance(asin, str) or not re.fullmatch(r'[A-Z0-9]{10}', asin):
@@ -42,6 +91,17 @@ def candidate_from_observation(observation):
         raise ValueError('INVALID_OFFER')
     if pct < 5 or excluded_book_product(observation.get('title')):
         return None
+
+    if excluded_printed_material(observation.get("title")):
+        return None
+
+    verified_discount = verified_real_discount(observation)
+
+    if verified_discount is None:
+        return None
+
+    pct = verified_discount
+
     return {
         'asin': asin,
         'title': str(observation.get('title') or 'منتج أمازون مصر')[:180],
