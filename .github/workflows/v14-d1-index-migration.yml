@@ -34,4 +34,4 @@ jobs:
           npx wrangler d1 execute egypt-amazon-v14-db \
             --remote \
             --config wrangler.jsonc \
-            --file migrations/0003_events_health_index.sql
+            --command "CREATE INDEX IF NOT EXISTS idx_events_event_ts_deal ON events(event, ts, deal_key);"
