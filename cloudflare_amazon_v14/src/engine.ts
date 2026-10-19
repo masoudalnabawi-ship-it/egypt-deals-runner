@@ -614,6 +614,11 @@ async function scanNoonSurface(env: V14Env, repo: D1Repository, settings: Settin
  * receive deterministic probe turns so discovery never becomes blind.
  */
 
+const v14HealthCache: {
+  expiresAt: number;
+  value: AmazonHealthSnapshot[];
+} = { expiresAt: 0, value: [] };
+
 type AmazonHealthSnapshot = {
   source:string;
   scans:number;
@@ -1006,40 +1011,29 @@ async function discoveryStep(
    * discovery. If the historical query is slow, continue
    * immediately with neutral weights.
    */
-  let amazonHealth:
-    AmazonHealthSnapshot[] = [];
+  let amazonHealth: AmazonHealthSnapshot[] = [];
 
-  try {
+  const now = Date.now();
 
-    amazonHealth =
-      await Promise.race([
+  if (now < v14HealthCache.expiresAt) {
+    amazonHealth = v14HealthCache.value;
+  } else {
+    v14HealthCache.expiresAt = now + 15 * 60 * 1000;
+
+    try {
+      amazonHealth = await Promise.race([
         repo.amazonSourceHealth(),
-
-        new Promise<
-          AmazonHealthSnapshot[]
-        >(
-          resolve =>
-            setTimeout(
-              () => resolve([]),
-              1200,
-            )
+        new Promise<AmazonHealthSnapshot[]>(resolve =>
+          setTimeout(() => resolve([]), 1200)
         ),
       ]);
 
-  } catch (e) {
-
-    console.warn(
-      JSON.stringify({
-        event:
-          "amazon_health_fallback",
-        error:
-          e instanceof Error
-            ? `${e.name}:${e.message}`
-            : String(e),
-      })
-    );
-
-    amazonHealth = [];
+      v14HealthCache.value = amazonHealth;
+    } catch (e) {
+      console.warn("V14 source health fallback", e);
+      amazonHealth = [];
+      v14HealthCache.value = [];
+    }
   }
 
   const aCur =
