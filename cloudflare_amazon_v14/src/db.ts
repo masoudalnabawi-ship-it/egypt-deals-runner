@@ -792,47 +792,29 @@ export class D1Repository {
     manual_rejects:number;
   }>> {
 
-    const cutoff =
-      nowTs() - 172800;
-
-    const reviewerCutoff =
-      nowTs() - 1209600;
-
-    const rows =
-      await this.db.prepare(`
-        WITH recent_events AS MATERIALIZED (
-          SELECT d.source AS source,
-            SUM(CASE WHEN e.event='ultra_false_discovery' AND e.ts>=? THEN 1 ELSE 0 END) AS false_ultra,
-            SUM(CASE WHEN e.event='manual_publish' THEN 1 ELSE 0 END) AS published,
-            SUM(CASE WHEN e.event='manual_reject' THEN 1 ELSE 0 END) AS manual_rejects
-          FROM events e JOIN deals d ON d.deal_key=e.deal_key
-          WHERE d.store='amazon' AND e.ts>=?
-            AND e.event IN ('ultra_false_discovery','manual_publish','manual_reject')
-          GROUP BY d.source
-        )
-        SELECT sh.source,sh.scans,sh.fetched,sh.candidates,sh.verified,sh.sent,
-          sh.errors,sh.consecutive_errors,
-          COALESCE(re.false_ultra,0) AS false_ultra,
-          COALESCE(re.published,0) AS published,
-          COALESCE(re.manual_rejects,0) AS manual_rejects
-        FROM source_health sh
-        LEFT JOIN recent_events re ON re.source=sh.source
-        WHERE sh.store='amazon'
-      `)
-      .bind(cutoff, reviewerCutoff)
-      .all<{
-        source:string;
-        scans:number;
-        fetched:number;
-        candidates:number;
-        verified:number;
-        sent:number;
-        errors:number;
-        consecutive_errors:number;
-        false_ultra:number;
-        published:number;
-        manual_rejects:number;
-      }>();
+    // V14_D1_LOW_READ_SOURCE_HEALTH
+    // Read compact source statistics instead of scanning events.
+    const rows = await this.db.prepare(`
+      SELECT source,scans,fetched,candidates,verified,sent,
+             errors,consecutive_errors,
+             0 AS false_ultra,
+             0 AS published,
+             0 AS manual_rejects
+      FROM source_health
+      WHERE store='amazon'
+    `).all<{
+      source:string;
+      scans:number;
+      fetched:number;
+      candidates:number;
+      verified:number;
+      sent:number;
+      errors:number;
+      consecutive_errors:number;
+      false_ultra:number;
+      published:number;
+      manual_rejects:number;
+    }>();
 
     return (rows.results || []).map(
       row => ({
