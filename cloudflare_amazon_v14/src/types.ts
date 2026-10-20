@@ -131,4 +131,4 @@ export interface Settings {
   lease_seconds: number;
 }
 
-export type JobMessage = { type: "cycle"; scheduled_at: number };
+export type JobMessage = { type: "cycle" | "discover"; scheduled_at: number };
