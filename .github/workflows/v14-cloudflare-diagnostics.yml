@@ -30,7 +30,7 @@ jobs:
           V14_GITHUB_PIPELINE_KEY: ${{ secrets.AMAZON_V14_PIPELINE_KEY }}
         run: |
           set -eu
-          timeout 65s npx wrangler tail egypt-amazon-v14 --format json > /tmp/v14-tail.log 2>&1 &
+          timeout 390s npx wrangler tail egypt-amazon-v14 --format json > /tmp/v14-tail.log 2>&1 &
           TAIL_PID=$!
           trap 'kill "$TAIL_PID" 2>/dev/null || true' EXIT
           sleep 15
@@ -41,7 +41,7 @@ jobs:
             -H "Authorization: Bearer $V14_GITHUB_PIPELINE_KEY" \
             -H 'Content-Type: application/json' \
             --data '{"worker_id":"v14-diagnostic-once"}' || true
-          sleep 8
+          sleep 360
           echo '=== CLOUDFLARE DISCOVERY LOGS ==='
           cat /tmp/v14-tail.log
 
