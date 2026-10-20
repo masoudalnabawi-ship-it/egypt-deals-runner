@@ -1828,12 +1828,9 @@ export default {
            * keep Amazon/Noon discovery alive.
            */
           try {
-
-            await runDiscoveryOnly(
-              env,
-              settings,
-            );
-
+            // Dispatch discovery separately so Cron does not run heavy scans.
+            await env.JOBS.send({type: "discover", scheduled_at: controller.scheduledTime});
+            console.log(JSON.stringify({event: "v14_discovery_queued"}));
           } catch (e) {
 
             console.error(
@@ -1875,7 +1872,8 @@ export default {
     ) {
 
       if (
-        message.body?.type !== "cycle"
+        message.body?.type !== "cycle" &&
+        message.body?.type !== "discover"
       ) {
         message.ack();
         continue;
@@ -1914,12 +1912,11 @@ export default {
       }
 
       try {
-
-        await runProcessingCycle(
-          env,
-          settings,
-        );
-
+        if (message.body.type === "discover") {
+          await runDiscoveryOnly(env, settings);
+        } else {
+          await runProcessingCycle(env, settings);
+        }
         message.ack();
 
       } catch (e) {
