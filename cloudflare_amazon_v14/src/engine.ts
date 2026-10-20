@@ -1001,10 +1001,8 @@ async function discoveryStep(
    * This is observability only.
    * No read-modify-write counter is required anymore.
    */
-  await repo.counterSet(
-    "cycle_count",
-    cycle,
-  );
+  // Source rotation uses the wall-clock cycle.
+  // Avoid an unnecessary D1 write on every discovery run.
 
   /*
    * Adaptive history is useful but not allowed to block
