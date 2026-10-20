@@ -791,6 +791,18 @@ def main() -> int:
             },
         )
 
+        # V14_ULTRA_FAST_PRIORITY_V1
+        # Send one already-verified Ultra before expensive verification.
+        remaining = max(0, args.max_deliver)
+        if remaining > 0:
+            page = context.new_page()
+            try:
+                if deliver_one(page, "ultra", ultra_min):
+                    worked += 1
+                    remaining -= 1
+            finally:
+                page.close()
+
         for _ in range(max(0, args.max_verify)):
             page = context.new_page()
             try:
@@ -800,7 +812,6 @@ def main() -> int:
             finally:
                 page.close()
 
-        remaining = max(0, args.max_deliver)
         while remaining > 0:
             progressed = False
             # GitHub handles both Normal and Ultra review delivery.
