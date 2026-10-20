@@ -486,7 +486,18 @@ async function admitAmazon(repo: D1Repository, settings: Settings, surface: Surf
   }
 
   const ranked = deals.slice().sort((a,b) => discountPercent(b)-discountPercent(a));
-  for (const base of ranked.slice(0, Math.max(sourceLimit, 1) * 2)) {
+  const candidateLimit = Math.max(sourceLimit, 1) * 2;
+  const selected = ranked.slice(0, candidateLimit);
+
+  // V14: ensure the rotating coupon probe reaches admission.
+  if (probeId && !selected.some(x => x.external_id === probeId)) {
+    const probe = ranked.find(x => x.external_id === probeId);
+    if (probe) {
+      selected[selected.length - 1] = probe;
+    }
+  }
+
+  for (const base of selected) {
     if (!(base.current_price > 0)) continue;
     const deal: DealCandidate = { ...base, metadata: { ...(base.metadata || {}) } };
     const isProbe = Boolean(probeId && deal.external_id === probeId);
