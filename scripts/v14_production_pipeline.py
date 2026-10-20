@@ -456,20 +456,37 @@ def capture_product_screenshot(page, path: Path) -> None:
 
 
 def v14_excluded_product(job, obs=None):
-    """Exclude books, educational print, and sofa items at every delivery boundary."""
+    """Exclude books, educational print, and sofas without blocking laptops."""
     import re
+
     obs = obs or {}
-    values = [job.get('title'), job.get('category'), obs.get('title'), obs.get('category')]
-    text = ' '.join(str(x or '') for x in values).casefold()
-    english = (r'\b(?:books?|textbooks?|workbooks?|paperbacks?|hardcovers?|'
-               r'novels?|notebooks?|book\s*covers?|book\s*sleeves?|'
-               r'exercise\s*books?|study\s*guides?|exam\s*(?:prep|preparation)|'
-               r'sofas?|couches?|loveseats?|sectional\s*sofas?|sofa\s*covers?|'
-               r'poems?|poetry|revision\s*guides?|school\s*books?)\b')
-    arabic = ('كتاب', 'كتب', 'مذكرة', 'مذكرات', 'رواية', 'روايات',
-              'كراسة', 'كشكول', 'تجليد', 'كنبة', 'كنب', 'أريكة',
-              'اريكة', 'انتريه', 'أنتريه', 'شعر', 'ملازم', 'ملزمة')
-    return bool(re.search(english, text)) or any(word in text for word in arabic)
+    values = [
+        job.get("title"), job.get("category"),
+        obs.get("title"), obs.get("category"),
+    ]
+    text = " ".join(str(x or "") for x in values).casefold()
+
+    english = (
+        r"\b(?:books?|textbooks?|workbooks?|paperbacks?|hardcovers?|"
+        r"novels?|book\s*covers?|book\s*sleeves?|"
+        r"exercise\s*books?|study\s*guides?|"
+        r"exam\s*(?:prep|preparation)|"
+        r"sofas?|couches?|loveseats?|sectional\s*sofas?|"
+        r"sofa\s*covers?|poems?|poetry|revision\s*guides?|"
+        r"school\s*books?)\b"
+    )
+
+    arabic = (
+        "كتاب", "كتب", "مذكرة", "مذكرات",
+        "رواية", "روايات", "كراسة", "كشكول",
+        "تجليد", "كنبة", "كنب", "أريكة",
+        "اريكة", "انتريه", "أنتريه",
+        "ملازم", "ملزمة",
+    )
+
+    return bool(re.search(english, text)) or any(
+        word in text for word in arabic
+    )
 
 def send_review_photo(job: dict[str, Any], photo: Path, live_discount: float) -> dict[str, Any]:
     if v14_excluded_product(job):
@@ -521,31 +538,7 @@ def send_review_photo(job: dict[str, Any], photo: Path, live_discount: float) ->
 
 
 def unwanted_product_v14(job, obs):
-    text = " ".join(
-        str(x or "") for x in (
-            job.get("title"),
-            job.get("category"),
-            obs.get("title"),
-            obs.get("category"),
-        )
-    ).casefold()
-
-    english = (
-        r"\b(?:books?|textbooks?|workbooks?|paperbacks?|"
-        r"hardcovers?|novels?|notebooks?|book\s*covers?|"
-        r"book\s*sleeves?|exercise\s*books?|study\s*guides?|"
-        r"exam\s*(?:prep|preparation)|sofas?|couches?|"
-        r"loveseats?|sectional\s*sofas?|sofa\s*covers?)\b"
-    )
-
-    arabic = (
-        "كتاب", "كتب", "مذكرة", "مذكرات",
-        "رواية", "روايات", "كراسة", "كشكول",
-        "تجليد", "كنبة", "كنب", "أريكة",
-        "اريكة", "انتريه", "أنتريه",
-    )
-
-    return bool(re.search(english, text)) or any(x in text for x in arabic)
+    return v14_excluded_product(job, obs)
 
 
 def deliver_one(page, lane: str, ultra_min: float) -> bool:
