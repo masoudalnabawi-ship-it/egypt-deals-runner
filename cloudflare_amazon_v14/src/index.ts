@@ -1799,22 +1799,23 @@ export default {
       (
         async () => {
 
-          // Queue processing first so a slow discovery cannot starve delivery.
+          // Publish discovery first to prioritize fresh deals.
           /*
-           * Priority #2:
-           * verification / delivery are queued
-           * only AFTER the discovery attempt.
+           * Priority #1:
+           * discovery is queued first
+           * to prioritize fresh offers.
            */
           try {
 
-            await env.JOBS.send(job);
+            await env.JOBS.send({type: "discover", scheduled_at: controller.scheduledTime});
+            console.log(JSON.stringify({event: "v14_discovery_queued"}));
 
           } catch (e) {
 
             console.error(
               JSON.stringify({
                 event:
-                  "v14_processing_queue_publish_failed",
+                  "v14_discovery_queue_publish_failed",
                 error:
                   e instanceof Error
                     ? `${e.name}:${e.message}`
@@ -1824,19 +1825,18 @@ export default {
           }
 
           /*
-           * Priority #1:
-           * keep Amazon/Noon discovery alive.
+           * Priority #2:
+           * keep downstream processing alive.
            */
           try {
-            // Dispatch discovery separately so Cron does not run heavy scans.
-            await env.JOBS.send({type: "discover", scheduled_at: controller.scheduledTime});
-            console.log(JSON.stringify({event: "v14_discovery_queued"}));
+            // Dispatch downstream processing after discovery is queued.
+            await env.JOBS.send(job);
           } catch (e) {
 
             console.error(
               JSON.stringify({
                 event:
-                  "v14_direct_discovery_error",
+                  "v14_processing_queue_publish_failed",
                 error:
                   e instanceof Error
                     ? `${e.name}:${e.message}`
