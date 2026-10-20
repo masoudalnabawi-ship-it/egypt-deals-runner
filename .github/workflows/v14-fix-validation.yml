@@ -1,0 +1,39 @@
+name: V14 Fix Validation
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - v14-cron-queue-fix-20261020-071816
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout repair branch
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Install dependencies
+        working-directory: cloudflare_amazon_v14
+        run: npm install --no-audit --no-fund
+
+      - name: TypeScript validation
+        working-directory: cloudflare_amazon_v14
+        run: npm run typecheck
+
+      - name: V14 tests
+        working-directory: cloudflare_amazon_v14
+        run: npm test
+
+      - name: Cloudflare build validation only
+        working-directory: cloudflare_amazon_v14
+        run: npx wrangler deploy --dry-run --config wrangler.jsonc
