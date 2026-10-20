@@ -1131,6 +1131,24 @@ async function discoveryStep(
       true,
     );
 
+  // V14: prevent duplicate Amazon URL scans per discovery cycle.
+  const scannedAmazonUrls = new Set<string>();
+
+  const scanAmazonOnce = (
+    surface: Surface,
+  ): Promise<Record<string, unknown>> => {
+    if (scannedAmazonUrls.has(surface.url)) {
+      return Promise.resolve({
+        store: "amazon",
+        source: surface.name,
+        skipped_duplicate: true,
+      });
+    }
+
+    scannedAmazonUrls.add(surface.url);
+    return scanAmazonSurface(repo, settings, surface);
+  };
+
   const tasks:
     Promise<Record<string, unknown>>[] = [];
 
@@ -1139,10 +1157,7 @@ async function discoveryStep(
    */
   if (exceptionalSurface) {
     tasks.push(
-      scanAmazonSurface(
-        repo,
-        settings,
-        exceptionalSurface,
+      scanAmazonOnce(exceptionalSurface,
       ),
     );
   }
@@ -1162,10 +1177,7 @@ async function discoveryStep(
       exceptionalSurface?.name
   ) {
     tasks.push(
-      scanAmazonSurface(
-        repo,
-        settings,
-        ultraSurface,
+      scanAmazonOnce(ultraSurface,
       ),
     );
   }
@@ -1209,10 +1221,7 @@ async function discoveryStep(
       exceptionalWeight >= 2
     ) {
       tasks.push(
-        scanAmazonSurface(
-          repo,
-          settings,
-          amazonPagedSurface(
+        scanAmazonOnce(amazonPagedSurface(
             exceptionalSurface,
             2,
           ),
@@ -1226,10 +1235,7 @@ async function discoveryStep(
       exceptionalWeight >= 4
     ) {
       tasks.push(
-        scanAmazonSurface(
-          repo,
-          settings,
-          amazonPagedSurface(
+        scanAmazonOnce(amazonPagedSurface(
             exceptionalSurface,
             3,
           ),
@@ -1243,10 +1249,7 @@ async function discoveryStep(
    */
   if (aSurface) {
     tasks.push(
-      scanAmazonSurface(
-        repo,
-        settings,
-        aSurface,
+      scanAmazonOnce(aSurface,
       ),
     );
   }
@@ -1278,10 +1281,7 @@ async function discoveryStep(
       departmentSurface.name !== ultraSurface?.name
     ) {
       tasks.push(
-        scanAmazonSurface(
-          repo,
-          settings,
-          departmentSurface,
+        scanAmazonOnce(departmentSurface,
         ),
       );
     }
@@ -1315,10 +1315,7 @@ async function discoveryStep(
       supermarketSurface.name !== ultraSurface?.name
     ) {
       tasks.push(
-        scanAmazonSurface(
-          repo,
-          settings,
-          supermarketSurface,
+        scanAmazonOnce(supermarketSurface,
         ),
       );
     }
@@ -1353,10 +1350,7 @@ async function discoveryStep(
 
     if (weight >= 3) {
       tasks.push(
-        scanAmazonSurface(
-          repo,
-          settings,
-          amazonPagedSurface(
+        scanAmazonOnce(amazonPagedSurface(
             aSurface,
             2,
           ),
@@ -1420,10 +1414,7 @@ async function discoveryStep(
       goldbox.name !== ultraSurface?.name
     ) {
       tasks.push(
-        scanAmazonSurface(
-          repo,
-          settings,
-          goldbox,
+        scanAmazonOnce(goldbox,
         ),
       );
     }
