@@ -84,5 +84,8 @@ jobs:
           echo "=== AMAZON EVENTS LAST 24 HOURS ==="
           npx wrangler d1 execute egypt-amazon-v14-db --remote --command "SELECT event,COUNT(*) AS total,MAX(ts) AS latest FROM events WHERE store='amazon' AND ts >= CAST(strftime('%s','now') AS INTEGER)-86400 GROUP BY event ORDER BY total DESC LIMIT 30;"
 
+          echo "=== AMAZON SOURCE HEALTH ==="
+          npx wrangler d1 execute egypt-amazon-v14-db --remote --command "SELECT source,scans,fetched,candidates,errors,consecutive_errors,last_error,last_attempt_at,last_success_at,ROUND(1.0*fetched/MAX(scans,1),2) AS avg_fetched_per_scan FROM source_health WHERE store='amazon' ORDER BY candidates ASC, fetched ASC LIMIT 40;"
+
           echo "=== ALL AMAZON DEAL STATES ==="
           npx wrangler d1 execute egypt-amazon-v14-db --remote --command "SELECT lane,state,COUNT(*) AS total FROM deals WHERE store='amazon' GROUP BY lane,state;"
