@@ -479,8 +479,9 @@ async function admitAmazon(repo: D1Repository, settings: Settings, surface: Surf
   if (deals.length && !['goldbox','limited_time','clearance'].includes(surface.name)) {
     const eligible = deals.filter(x => x.current_price > 0);
     if (eligible.length) {
-      const c = await repo.counterAdd(`coupon_probe:${surface.name}`, 1);
-      probeId = eligible[(c - 1) % eligible.length].external_id;
+      // Rotate coupon probes without a D1 counter read/write.
+      const probeCycle = Math.floor(Date.now() / 300000);
+      probeId = eligible[probeCycle % eligible.length].external_id;
     }
   }
 
