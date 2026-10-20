@@ -1251,20 +1251,38 @@ async def capture(
 
 
 def v14_excluded_product(job, obs=None):
-    """Exclude books, educational print, and sofa items at every delivery boundary."""
+    """Exclude books, educational print, and sofas without blocking laptops."""
     import re
+
     obs = obs or {}
-    values = [job.get('title'), job.get('category'), obs.get('title'), obs.get('category')]
-    text = ' '.join(str(x or '') for x in values).casefold()
-    english = (r'\b(?:books?|textbooks?|workbooks?|paperbacks?|hardcovers?|'
-               r'novels?|notebooks?|book\s*covers?|book\s*sleeves?|'
-               r'exercise\s*books?|study\s*guides?|exam\s*(?:prep|preparation)|'
-               r'sofas?|couches?|loveseats?|sectional\s*sofas?|sofa\s*covers?|'
-               r'poems?|poetry|revision\s*guides?|school\s*books?)\b')
-    arabic = ('كتاب', 'كتب', 'مذكرة', 'مذكرات', 'رواية', 'روايات',
-              'كراسة', 'كشكول', 'تجليد', 'كنبة', 'كنب', 'أريكة',
-              'اريكة', 'انتريه', 'أنتريه', 'شعر', 'ملازم', 'ملزمة')
-    return bool(re.search(english, text)) or any(word in text for word in arabic)
+    values = [
+        job.get("title"), job.get("category"),
+        obs.get("title"), obs.get("category"),
+    ]
+    text = " ".join(str(x or "") for x in values).casefold()
+
+    english = (
+        r"\b(?:books?|textbooks?|workbooks?|paperbacks?|hardcovers?|"
+        r"novels?|book\s*covers?|book\s*sleeves?|"
+        r"exercise\s*books?|study\s*guides?|"
+        r"exam\s*(?:prep|preparation)|"
+        r"sofas?|couches?|loveseats?|sectional\s*sofas?|"
+        r"sofa\s*covers?|poems?|poetry|revision\s*guides?|"
+        r"school\s*books?)\b"
+    )
+
+    arabic = (
+        "كتاب", "كتب", "مذكرة", "مذكرات",
+        "رواية", "روايات", "كراسة", "كشكول",
+        "تجليد", "كنبة", "كنب", "أريكة",
+        "اريكة", "انتريه", "أنتريه",
+        "ملازم", "ملزمة",
+    )
+
+    return bool(re.search(english, text)) or any(
+        word in text for word in arabic
+    )
+
 
 async def send_telegram(
     client: httpx.AsyncClient,
