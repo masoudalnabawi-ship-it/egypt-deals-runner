@@ -8,6 +8,7 @@ import shutil
 import sys
 import tempfile
 import time
+from urllib.parse import urlsplit, urlunsplit, parse_qsl, urlencode
 from pathlib import Path
 from typing import Any
 
@@ -434,8 +435,7 @@ def build_caption(job: dict[str, Any], live_discount: float) -> str:
     if old > current > 0:
         lines.append(f"🏷 <b>السعر السابق:</b> <s>{old:,.2f}</s> ج.م")
     lines.extend([
-        (f"📉 <b>خصم معلن عند الاكتشاف (غير موثق):</b> {live_discount:.1f}%"
-         if lane == "ultra" else f"📉 <b>الخصم الحي:</b> {live_discount:.1f}%"),
+        f"📉 <b>الخصم المرصود على صفحة المنتج:</b> {live_discount:.1f}%",
         f"🧠 <b>التقييم:</b> {score:.1f}/100",
         f"🛡 <b>الثقة:</b> {confidence:.0f}%",
     ])
@@ -488,6 +488,24 @@ def v14_excluded_product(job, obs=None):
         word in text for word in arabic
     )
 
+# V14_QUALITY_GATE_V2: validate product destination; never silently invent an affiliate tag.
+def safe_amazon_url(raw: str, asin: str) -> str:
+    """Keep existing Amazon affiliate parameters while rejecting unsafe/mismatched URLs."""
+    u = urlsplit(str(raw or "").strip())
+    host = (u.hostname or "").lower()
+    if u.scheme != "https" or host not in ("amazon.eg", "www.amazon.eg"):
+        raise RuntimeError("v14_invalid_amazon_destination")
+    expected = str(asin or "").strip().upper()
+    match = re.search(r"/(?:dp|gp/product)/([A-Z0-9]{10})(?:[/?]|$)", u.path.upper())
+    if not expected or not match or match.group(1) != expected:
+        raise RuntimeError("v14_destination_asin_mismatch")
+    # Retain a valid existing tag; no guessed tracking ID is ever injected.
+    params = parse_qsl(u.query, keep_blank_values=True)
+    tags = [v for k, v in params if k.lower() == "tag"]
+    if len(tags) > 1 or (tags and not re.fullmatch(r"[A-Za-z0-9_-]{3,80}", tags[0])):
+        raise RuntimeError("v14_invalid_affiliate_tag")
+    return urlunsplit(("https", "www.amazon.eg", u.path, urlencode(params), ""))
+
 def send_review_photo(job: dict[str, Any], photo: Path, live_discount: float) -> dict[str, Any]:
     if v14_excluded_product(job):
         raise RuntimeError("blocked_excluded_at_telegram_boundary")
@@ -498,7 +516,7 @@ def send_review_photo(job: dict[str, Any], photo: Path, live_discount: float) ->
     if not destination:
         raise RuntimeError("telegram_review_chat_missing")
     short = str(job.get("deal_key") or "")[:16]
-    url = str(job.get("url") or "")
+    url = safe_amazon_url(str(job.get("url") or ""), str(job.get("external_id") or ""))
     keyboard = {
         "inline_keyboard": [
             [
@@ -637,7 +655,8 @@ def deliver_one(page, lane: str, ultra_min: float) -> bool:
             shot = Path(td) / "deal.jpg"
             capture_product_screenshot(page, shot)
             live_job = {**job, "current_price": obs["current_price"],
-                        "old_price": (0 if lane == "ultra" else obs["old_price"])}
+                        "old_price": obs["old_price"]}
+            live_job["title"] = obs.get("title") or live_job.get("title")
             telegram_result = send_review_photo(live_job, shot, live_discount)
             message_id = telegram_result["message_id"]
 
