@@ -268,7 +268,22 @@ def inspect_amazon(page, url: str, expected_asin: str = "") -> dict[str, Any]:
             if product_title:
                 break
     if not product_title:
-        raise RuntimeError("amazon_product_page_missing")
+        # V14_SAFE_RETRY_UPGRADE_20261021: one bounded reload for transient Amazon shells.
+        # Never bypass product/ASIN/price verification.
+        print("V14_AMAZON_PRODUCT_RELOAD", "http_status=", status, flush=True)
+        page.reload(wait_until="domcontentloaded", timeout=30000)
+        page.wait_for_timeout(1800)
+        if page_blocked(page):
+            raise RuntimeError("amazon_blocked")
+        product_title = first_text(page, title_selectors)
+        if not product_title:
+            for _ in range(2):
+                page.wait_for_timeout(1300)
+                product_title = first_text(page, title_selectors)
+                if product_title:
+                    break
+        if not product_title:
+            raise RuntimeError("amazon_product_page_missing")
 
     current_text = first_price_text(page, PRICE_SELECTORS)
     if not parse_number(current_text):
