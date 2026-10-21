@@ -496,7 +496,7 @@ def safe_amazon_url(raw: str, asin: str) -> str:
     if u.scheme != "https" or host not in ("amazon.eg", "www.amazon.eg"):
         raise RuntimeError("v14_invalid_amazon_destination")
     expected = str(asin or "").strip().upper()
-    match = re.search(r"/(?:dp|gp/product)/([A-Z0-9]{10})(?:[/?]|$)", u.path.upper())
+    match = re.search(r"/(?:dp|gp/product)/([A-Z0-9]{10})(?:[/?]|$)", u.path, re.IGNORECASE)
     if not expected or not match or match.group(1) != expected:
         raise RuntimeError("v14_destination_asin_mismatch")
     # Retain a valid existing tag; no guessed tracking ID is ever injected.
