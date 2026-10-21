@@ -594,7 +594,24 @@ def deliver_one(page, lane: str, ultra_min: float) -> bool:
                 }, retries=10)
                 print("ULTRA CURRENT PRODUCT/PRICE CHECK FAILED", key[:12], flush=True)
                 return True
-            live_discount = advertised  # Advertised at discovery, not historical proof.
+            # Discovery claims are not verified live discounts.
+            # Require a reference price observed on this Amazon product page.
+            if float(obs.get("old_price") or 0) <= current:
+                api_post("/admin/screenshot/complete", {
+                    "deal_key": key, "status": "invalid_ultra",
+                    "reason": "ultra_missing_live_reference_price",
+                    "live_discount": 0, "proof": obs,
+                }, retries=10)
+                print("ULTRA LIVE REFERENCE PRICE MISSING", key[:12], flush=True)
+                return True
+            print(
+                "V14_ULTRA_LIVE_AUDIT", key[:12],
+                "advertised=", advertised,
+                "observed=", live_discount,
+                "current=", current,
+                "old=", obs.get("old_price"),
+                flush=True,
+            )
 
         if lane == "normal" and not (10 <= live_discount < ultra_min):
             api_post("/admin/screenshot/complete", {"deal_key": key, "status": "invalid_normal", "reason": f"live_discount_{live_discount}_outside_normal_range", "live_discount": live_discount, "proof": obs}, retries=10)
@@ -741,6 +758,8 @@ def main() -> int:
     )
 
     worked = 0
+    verified_count = 0
+    delivered_count = 0
 
     with sync_playwright() as p:
         chrome_path = (
@@ -792,6 +811,7 @@ def main() -> int:
             try:
                 if deliver_one(page, "ultra", ultra_min):
                     worked += 1
+                    delivered_count += 1
                     remaining -= 1
             finally:
                 page.close()
@@ -800,8 +820,10 @@ def main() -> int:
             page = context.new_page()
             try:
                 if not verify_one(page):
+                    print("V14_VERIFY_QUEUE_EMPTY", flush=True)
                     break
                 worked += 1
+                verified_count += 1
             finally:
                 page.close()
 
@@ -816,17 +838,23 @@ def main() -> int:
                 try:
                     if deliver_one(page, lane, ultra_min):
                         worked += 1
+                        delivered_count += 1
                         remaining -= 1
                         progressed = True
                 finally:
                     page.close()
             if not progressed:
+                print("V14_DELIVERY_QUEUES_EMPTY", flush=True)
                 break
 
         context.close()
         browser.close()
 
-    print(f"V14_PIPELINE_DONE worked={worked}", flush=True)
+    print(
+        f"V14_PIPELINE_DONE worked={worked} "
+        f"verification_claims={verified_count} delivery_claims={delivered_count}",
+        flush=True,
+    )
     return 0
 
 if __name__ == "__main__":
