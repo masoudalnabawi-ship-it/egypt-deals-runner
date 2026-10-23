@@ -90,5 +90,11 @@ jobs:
           echo "=== ULTRA REJECTION REASONS LAST 7 DAYS ==="
           npx wrangler d1 execute egypt-amazon-v14-db --remote --command "SELECT last_error AS reason, COUNT(*) AS total FROM deals WHERE store='amazon' AND lane='ultra' AND state='rejected' AND updated_at >= CAST(strftime('%s','now') AS INTEGER)-604800 GROUP BY last_error ORDER BY total DESC LIMIT 25;"
 
+          echo "=== ULTRA FLASH ALERTS TABLE SCHEMA ==="
+          npx wrangler d1 execute egypt-amazon-v14-db --remote --command "PRAGMA table_info(v14_ultra_flash_alerts);"
+
+          echo "=== ULTRA FLASH ALERTS SUMMARY ==="
+          npx wrangler d1 execute egypt-amazon-v14-db --remote --command "SELECT COUNT(*) AS recorded_flash_alerts FROM v14_ultra_flash_alerts;"
+
           echo "=== ALL AMAZON DEAL STATES ==="
           npx wrangler d1 execute egypt-amazon-v14-db --remote --command "SELECT lane,state,COUNT(*) AS total FROM deals WHERE store='amazon' GROUP BY lane,state;"
