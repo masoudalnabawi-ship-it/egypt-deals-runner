@@ -10,6 +10,25 @@ export class D1Repository {
     ).bind(nowTs(), event, store, dealKeyValue, JSON.stringify(payload || {})).run();
   }
 
+  // V14_ULTRA_FLASH_75_V1: durable atomic claim for unverified alerts.
+  async claimUltraFlash(key: string, price: number): Promise<boolean> {
+    await this.db.prepare(`CREATE TABLE IF NOT EXISTS v14_ultra_flash_alerts (
+      deal_key TEXT NOT NULL, price_cents INTEGER NOT NULL,
+      claimed_at INTEGER NOT NULL,
+      PRIMARY KEY (deal_key, price_cents)
+    )`).run();
+    const cents = Math.round(price * 100);
+    const result = await this.db.prepare(`INSERT OR IGNORE INTO v14_ultra_flash_alerts
+      (deal_key,price_cents,claimed_at) VALUES (?,?,?)`)
+      .bind(key,cents,nowTs()).run();
+    return Number(result.meta?.changes || 0) === 1;
+  }
+
+  async releaseUltraFlash(key: string, price: number): Promise<void> {
+    await this.db.prepare(`DELETE FROM v14_ultra_flash_alerts WHERE deal_key=? AND price_cents=?`)
+      .bind(key,Math.round(price * 100)).run();
+  }
+
   async upsertCandidate(input: DealCandidate, preliminary: DealDecision): Promise<{new_or_reopened: boolean; deal_key: string}> {
     const deal = normalizeCandidate(input);
     const key = await dealKey(deal);

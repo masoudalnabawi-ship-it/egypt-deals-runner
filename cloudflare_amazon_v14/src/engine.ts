@@ -8,6 +8,7 @@ import { titleSimilarity, compatibility, signature } from './identity';
 import { discountPercent, safeJsonParse } from './util';
 import { VerificationRejected, verifyRow } from './verifier';
 import { answerCallback, clearButtons, sendPublic, sendReview, tokenForWebhook } from './telegram';
+import { ultraChatId } from './config';
 import { nearDuplicateGuard } from './quality';
 
 function workerId(prefix: string): string {
@@ -443,7 +444,38 @@ function bestCrossStoreMatch(deal: DealCandidate, rows: DealRow[]): { row: DealR
   return { row: best, similarity: bestSim };
 }
 
-async function admitAmazon(repo: D1Repository, settings: Settings, surface: Surface, deals: DealCandidate[]): Promise<number> {
+// V14_ULTRA_FLASH_75_V1: notification only, NOT a verified discount or public post.
+async function sendUltraFlashAlert(env: V14Env, repo: D1Repository, deal: DealCandidate, key: string, pct: number): Promise<void> {
+  const chat = ultraChatId(env);
+  const token = String(env.TELEGRAM_BOT_TOKEN || '').trim();
+  if (!chat || !token) { console.warn('V14_ULTRA_FLASH_MISSING_TELEGRAM_CONFIG'); return; }
+  const url = String(deal.url || '');
+  let u: URL;
+  try { u = new URL(url); } catch { return; }
+  if (u.protocol !== 'https:' || !['amazon.eg','www.amazon.eg'].includes(u.hostname.toLowerCase())) return;
+  const asin = String(deal.external_id || '').toUpperCase();
+  if (!/^[A-Z0-9]{10}$/.test(asin)) return;
+  if (!(deal.current_price > 0 && (deal.old_price || 0) > deal.current_price)) return;
+  if (!await repo.claimUltraFlash(key, deal.current_price)) return;
+  const title = String(deal.title || 'Amazon Egypt').slice(0,180);
+  const text = `🚨 عرض خاطف محتمل — ${pct.toFixed(1)}% خصم معلن\n⚠️ غير متحقق منه: السعر والخصم من نتائج البحث، وليس من صفحة المنتج.\n🛒 ${title}\n💰 ${deal.current_price.toFixed(2)} ج.م\n🏷️ السعر السابق المعلن: ${Number(deal.old_price).toFixed(2)} ج.م\n🔎 ASIN: ${asin}\n🔗 ${url}`;
+  try {
+    const response = await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
+      method: 'POST', headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({chat_id:chat,text,disable_web_page_preview:true}),
+      signal: AbortSignal.timeout(6000),
+    });
+    if (!response.ok) throw new Error(`telegram_http_${response.status}`);
+    const body: {ok?: boolean} = await response.json();
+    if (!body.ok) throw new Error('telegram_api_rejected');
+    console.log(JSON.stringify({event:'v14_ultra_flash_alert_sent',asin,discount:pct}));
+  } catch (error) {
+    await repo.releaseUltraFlash(key,deal.current_price);
+    console.warn('V14_ULTRA_FLASH_SEND_FAILED',asin,String(error));
+  }
+}
+
+async function admitAmazon(env: V14Env, repo: D1Repository, settings: Settings, surface: Surface, deals: DealCandidate[]): Promise<number> {
   let queued = 0;
 
   const topPrioritySource =
@@ -537,6 +569,10 @@ async function admitAmazon(repo: D1Repository, settings: Settings, surface: Surf
     }
     const result = await repo.upsertCandidate(deal, prelim);
     if (result.new_or_reopened) queued++;
+    // Alert immediately from discovery; normal verification remains unchanged.
+    if (visiblePct >= 75 && result.new_or_reopened) {
+      await sendUltraFlashAlert(env, repo, deal, result.deal_key, visiblePct);
+    }
     if (queued >= sourceLimit) break;
   }
   return queued;
@@ -560,7 +596,7 @@ async function admitNoon(repo: D1Repository, settings: Settings, deals: DealCand
   return queued;
 }
 
-async function scanAmazonSurface(repo: D1Repository, settings: Settings, surface: Surface): Promise<Record<string, unknown>> {
+async function scanAmazonSurface(env: V14Env, repo: D1Repository, settings: Settings, surface: Surface): Promise<Record<string, unknown>> {
   let fetched = 0, queued = 0, latency = 0, error = '';
   try {
     const result = await fetchAmazonSurface(surface); latency = result.latency;
@@ -586,7 +622,7 @@ async function scanAmazonSurface(repo: D1Repository, settings: Settings, surface
       }));
     }
 
-    queued = await admitAmazon(repo, settings, surface, deals);
+    queued = await admitAmazon(env, repo, settings, surface, deals);
   } catch (e) { error = `${e instanceof Error ? e.name : 'Error'}:${e instanceof Error ? e.message : String(e)}`; }
   await repo.sourceResult('amazon', surface.name, surface.category, fetched, queued, latency, error);
   return { store: 'amazon', source: surface.name, fetched, queued, error: Boolean(error) };
@@ -1157,7 +1193,7 @@ async function discoveryStep(
     }
 
     scannedAmazonUrls.add(surface.url);
-    return scanAmazonSurface(repo, settings, surface);
+    return scanAmazonSurface(env, repo, settings, surface);
   };
 
   const tasks:
