@@ -489,6 +489,7 @@ async function sendUltraFlashAlert(env: V14Env, repo: D1Repository, deal: DealCa
   if (!await repo.claimUltraFlash(key, deal.current_price)) return;
   const title = String(deal.title || 'Amazon Egypt').slice(0,180);
   const text = `🚨 عرض خاطف محتمل — ${pct.toFixed(1)}% خصم معلن\n⚠️ غير متحقق منه: السعر والخصم من نتائج البحث، وليس من صفحة المنتج.\n🛒 ${title}\n💰 ${deal.current_price.toFixed(2)} ج.م\n🏷️ السعر السابق المعلن: ${Number(deal.old_price).toFixed(2)} ج.م\n🔎 ASIN: ${asin}\n🔗 ${url}`;
+  const flashSendStartedAt = Date.now();
   try {
     const response = await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
       method: 'POST', headers: {'Content-Type':'application/json'},
@@ -498,10 +499,10 @@ async function sendUltraFlashAlert(env: V14Env, repo: D1Repository, deal: DealCa
     if (!response.ok) throw new Error(`telegram_http_${response.status}`);
     const body: {ok?: boolean} = await response.json();
     if (!body.ok) throw new Error('telegram_api_rejected');
-    console.log(JSON.stringify({event:'v14_ultra_flash_alert_sent',asin,discount:pct}));
+    console.log(JSON.stringify({event:'v14_ultra_flash_alert_sent',asin,discount:pct,telegram_latency_ms:Date.now()-flashSendStartedAt}));
   } catch (error) {
     await repo.releaseUltraFlash(key,deal.current_price);
-    console.warn('V14_ULTRA_FLASH_SEND_FAILED',asin,String(error));
+    console.warn('V14_ULTRA_FLASH_SEND_FAILED',asin,String(error),'telegram_latency_ms',Date.now()-flashSendStartedAt);
   }
 }
 
@@ -600,7 +601,7 @@ async function admitAmazon(env: V14Env, repo: D1Repository, settings: Settings, 
     const result = await repo.upsertCandidate(deal, prelim);
     if (result.new_or_reopened) queued++;
     // Alert immediately from discovery; normal verification remains unchanged.
-    if (visiblePct >= 70 && visiblePct < 100 && result.new_or_reopened) {
+    if (visiblePct >= 70 && visiblePct < 100) {
       await sendUltraFlashAlert(env, repo, deal, result.deal_key, visiblePct);
     }
     if (queued >= sourceLimit) break;
