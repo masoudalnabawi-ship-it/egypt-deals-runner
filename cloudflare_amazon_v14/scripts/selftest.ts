@@ -152,3 +152,13 @@ assert.equal(
 );
 
 console.log('V14_CLOUDFLARE_CORE_SELFTEST_PASS');
+
+// V14_ULTRA_ALL_70_99_V1: ensure 70%+ coverage and 95% source availability.
+import { AMAZON_SURFACES as allUltraSurfaces, parseAmazon as parseAmazonForUltra } from "../src/amazon";
+assert.ok(allUltraSurfaces.some(s => s.name === "70flashfilter"));
+assert.ok(allUltraSurfaces.some(s => s.name === "ultra70_air_conditioners"));
+assert.ok(allUltraSurfaces.some(s => s.name === "ultra70_grocery"));
+const ninetyFiveCard = `<div data-component-type="s-search-result" data-asin="B012345678"><h2><span>Ultra test</span></h2><span class="a-price"><span class="a-offscreen">50.00</span></span><span class="savingsPercentage">-95%</span></div>`;
+const ultraParsed = parseAmazonForUltra(ninetyFiveCard, allUltraSurfaces.find(s=>s.name==="70flashfilter")!);
+assert.equal(ultraParsed.length,1);
+assert.ok(Number(ultraParsed[0].old_price) > ultraParsed[0].current_price);

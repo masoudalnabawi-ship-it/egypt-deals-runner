@@ -33,10 +33,40 @@ const pf = (
 });
 
 export const AMAZON_SURFACES: Surface[] = [
+  /* V14_ULTRA_ALL_70_99_V1: 70%+ category-wide Amazon discount radar. */
+  pf("ultra70_electronics","electronics","electronics",70,4.8),
+  pf("ultra70_computers","computers","computer accessories",70,4.8),
+  pf("ultra70_appliances","appliances","home appliances",70,4.8),
+  pf("ultra70_mobiles","mobiles","mobile phones",70,4.8),
+  pf("ultra70_home","home","home products",70,4.8),
+  pf("ultra70_kitchen","kitchen","kitchen appliances",70,4.8),
+  pf("ultra70_beauty","beauty","beauty",70,4.8),
+  pf("ultra70_fashion","fashion","fashion",70,4.8),
+  pf("ultra70_sports","sports","sports fitness",70,4.8),
+  pf("ultra70_baby","baby","baby products",70,4.8),
+  pf("ultra70_grocery","grocery","grocery",70,4.8),
+  pf("ultra70_pets","pets","pet supplies",70,4.8),
+  pf("ultra70_office","office","office products",70,4.8),
+  pf("ultra70_books","books","books",70,4.8),
+  pf("ultra70_automotive","automotive","automotive accessories",70,4.8),
+  pf("ultra70_toys","toys","toys",70,4.8),
+  pf("ultra70_health","health","health personal care",70,4.8),
+  pf("ultra70_tools","tools","tools home improvement",70,4.8),
+  pf("ultra70_music","music","musical instruments",70,4.8),
+  pf("ultra70_air_conditioners","appliances","air conditioners",70,5.0),
+  pf("ultra70_televisions","electronics","televisions",70,5.0),
+  pf("ultra70_refrigerators","appliances","refrigerators",70,5.0),
+  pf("ultra70_washing_machines","appliances","washing machines",70,5.0),
+  pf("ultra70_laptops","computers","laptops",70,5.0),
+  pf("ultra70_perfumes","beauty","perfumes",70,5.0),
+  pf("ultra70_supermarket","grocery","supermarket",70,5.0),
+  pf("ultra70_snacks","grocery","snacks",70,5.0),
+
   { name: "goldbox", category: "global", url: `${BASE}/gp/goldbox/`, priority: 3.5 },
   q("limited_time","global","limited time deals",1.8), q("clearance","global","clearance deals",1.5),
   q("90off","global","90% off deals",2.2), q("75off","global","75% off deals",2.1),
   q("70off","global","70% off deals",2.0), q("65off","global","65% off deals",2.0), q("50off","global","50% off deals",1.0),
+  d("70flashfilter",70,5.2),
   d("65filter",65,2.6), d("70filter",70,2.7), d("75filter",75,2.9), d("90filter",90,3.0), d("50filter",50,1.0),
 
   /*
@@ -313,9 +343,9 @@ function parseSearch(html: string, surface: Surface): DealCandidate[] {
     if (!(old > current)) {
       const pctMatch = card.match(/(?:savingsPercentage[^>]*>|class=["'][^"']*savingsPercentage[^"']*["'][^>]*>)[^<]{0,50}-?\s*(\d+(?:\.\d+)?)\s*%/i);
       const pct = pctMatch ? Number(pctMatch[1]) : 0;
-      if (pct >= 5 && pct <= 90) {
+      if (pct >= 5 && pct <= 99) {
         const derived = current / (1 - pct / 100);
-        if (derived > current && derived <= current * 10) old = Math.round(derived * 100) / 100;
+        if (derived > current && derived <= current * 100) old = Math.round(derived * 100) / 100;
       }
     }
     if (!(old > current)) old = 0;

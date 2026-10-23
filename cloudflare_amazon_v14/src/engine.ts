@@ -154,11 +154,41 @@ const AMAZON_ULTRA_HUNTER_ORDER: string[] = [
  * Final qualification still requires rendered live proof.
  */
 const AMAZON_EXCEPTIONAL_HUNTER_ORDER = [
+  // V14_ULTRA_ALL_70_99_V1: highest discount first, then 70% category-wide discovery.
   "95filter",
   "90filter",
   "85filter",
   "80filter",
   "75filter",
+  "70flashfilter",
+  "ultra70_electronics",
+  "ultra70_computers",
+  "ultra70_appliances",
+  "ultra70_mobiles",
+  "ultra70_home",
+  "ultra70_kitchen",
+  "ultra70_beauty",
+  "ultra70_fashion",
+  "ultra70_sports",
+  "ultra70_baby",
+  "ultra70_grocery",
+  "ultra70_pets",
+  "ultra70_office",
+  "ultra70_books",
+  "ultra70_automotive",
+  "ultra70_toys",
+  "ultra70_health",
+  "ultra70_tools",
+  "ultra70_music",
+  "ultra70_air_conditioners",
+  "ultra70_televisions",
+  "ultra70_refrigerators",
+  "ultra70_washing_machines",
+  "ultra70_laptops",
+  "ultra70_perfumes",
+  "ultra70_supermarket",
+  "ultra70_snacks",
+
 
   "95off",
   "90off",
@@ -570,7 +600,7 @@ async function admitAmazon(env: V14Env, repo: D1Repository, settings: Settings, 
     const result = await repo.upsertCandidate(deal, prelim);
     if (result.new_or_reopened) queued++;
     // Alert immediately from discovery; normal verification remains unchanged.
-    if (visiblePct >= 75 && result.new_or_reopened) {
+    if (visiblePct >= 70 && visiblePct < 100 && result.new_or_reopened) {
       await sendUltraFlashAlert(env, repo, deal, result.deal_key, visiblePct);
     }
     if (queued >= sourceLimit) break;
