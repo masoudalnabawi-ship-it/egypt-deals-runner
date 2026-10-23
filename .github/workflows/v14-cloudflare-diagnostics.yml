@@ -30,7 +30,7 @@ jobs:
           V14_GITHUB_PIPELINE_KEY: ${{ secrets.AMAZON_V14_PIPELINE_KEY }}
         run: |
           set -eu
-          timeout 390s npx wrangler tail egypt-amazon-v14 --format json > /tmp/v14-tail.log 2>&1 &
+          timeout 75s npx wrangler tail egypt-amazon-v14 --format json > /tmp/v14-tail.log 2>&1 &
           TAIL_PID=$!
           trap 'kill "$TAIL_PID" 2>/dev/null || true' EXIT
           sleep 15
@@ -41,7 +41,7 @@ jobs:
             -H "Authorization: Bearer $V14_GITHUB_PIPELINE_KEY" \
             -H 'Content-Type: application/json' \
             --data '{"worker_id":"v14-diagnostic-once"}' || true
-          sleep 360
+          sleep 35
           echo '=== CLOUDFLARE DISCOVERY LOGS ==='
           cat /tmp/v14-tail.log
 
@@ -78,6 +78,16 @@ jobs:
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUD_API_KEY }}
         run: |
+          echo "=== V14 NORMAL REPAIR AUDIT ==="
+          npx wrangler d1 execute egypt-amazon-v14-db --remote --command "SELECT state,COUNT(*) AS total,datetime(MAX(discovered_at),'unixepoch','+3 hours') AS last_discovered_egypt,datetime(MAX(updated_at),'unixepoch','+3 hours') AS last_updated_egypt,datetime(MAX(sent_at),'unixepoch','+3 hours') AS last_sent_egypt FROM deals WHERE store='amazon' AND lane='normal' GROUP BY state;"
+          echo "=== V14 NORMAL REJECTION REASONS 6H ==="
+          npx wrangler d1 execute egypt-amazon-v14-db --remote --command "SELECT last_error AS reason,COUNT(*) AS total,datetime(MAX(updated_at),'unixepoch','+3 hours') AS latest_egypt FROM deals WHERE store='amazon' AND lane='normal' AND state='rejected' AND updated_at>=CAST(strftime('%s','now') AS INTEGER)-21600 GROUP BY last_error ORDER BY total DESC LIMIT 25;"
+          echo "=== V14 NORMAL HOURLY STATES 8H ==="
+          npx wrangler d1 execute egypt-amazon-v14-db --remote --command "SELECT strftime('%Y-%m-%d %H:00',updated_at,'unixepoch','+3 hours') AS hour_egypt,state,COUNT(*) AS total FROM deals WHERE store='amazon' AND lane='normal' AND updated_at>=CAST(strftime('%s','now') AS INTEGER)-28800 GROUP BY hour_egypt,state ORDER BY hour_egypt DESC,state;"
+          echo "=== V14 NORMAL RECENT SENT ==="
+          npx wrangler d1 execute egypt-amazon-v14-db --remote --command "SELECT external_id,title,source,datetime(sent_at,'unixepoch','+3 hours') AS sent_egypt FROM deals WHERE store='amazon' AND lane='normal' AND sent_at IS NOT NULL ORDER BY sent_at DESC LIMIT 8;"
+          echo "=== V14 NORMAL RECENT REJECTED ==="
+          npx wrangler d1 execute egypt-amazon-v14-db --remote --command "SELECT external_id,substr(title,1,85) AS title,last_error,datetime(updated_at,'unixepoch','+3 hours') AS updated_egypt FROM deals WHERE store='amazon' AND lane='normal' AND state='rejected' ORDER BY updated_at DESC LIMIT 15;"
           echo "=== AMAZON DEALS LAST 24 HOURS ==="
           npx wrangler d1 execute egypt-amazon-v14-db --remote --command "SELECT lane,state,COUNT(*) AS total,MAX(discovered_at) AS latest FROM deals WHERE store='amazon' AND discovered_at >= CAST(strftime('%s','now') AS INTEGER)-86400 GROUP BY lane,state;"
 
