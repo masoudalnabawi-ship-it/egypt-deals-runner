@@ -562,6 +562,15 @@ async function admitAmazon(env: V14Env, repo: D1Repository, settings: Settings, 
 
   for (const base of selected) {
     if (!(base.current_price > 0)) continue;
+    // V14_BLOCK_BOOKS_V1: exclude books and printed publications from Amazon admission.
+    // "hardcover"/"paperback" are book formats, not protective device cases.
+    const bookCategory = String(base.category || surface.category || '').toLowerCase();
+    const bookSource = String(base.source || surface.name || '').toLowerCase();
+    const bookTitle = String(base.title || '');
+    if (bookCategory === 'books' || /(^|[_-])books?([_-]|$)/.test(bookSource)
+      || /\b(hardcover|paperback|kindle edition|board book|mass market paperback)\b/i.test(bookTitle)
+      || /(?:^|\s)(?:رواية|كتاب|كتب|غلاف صلب|غلاف ورقي)(?:\s|$)/.test(bookTitle)) continue;
+
     const deal: DealCandidate = { ...base, metadata: { ...(base.metadata || {}) } };
     const isProbe = Boolean(probeId && deal.external_id === probeId);
     if (isProbe) Object.assign(deal.metadata!, { coupon_probe: true, coupon_probe_surface: surface.name });
