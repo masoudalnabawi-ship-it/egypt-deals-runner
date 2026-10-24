@@ -650,6 +650,12 @@ async function scanAmazonSurface(env: V14Env, repo: D1Repository, settings: Sett
   try {
     const result = await fetchAmazonSurface(surface); latency = result.latency;
     const deals = parseAmazon(result.text, surface); fetched = deals.length;
+    if (
+      fetched === 0 &&
+      /data-component-type=["']s-search-result["']/.test(result.text)
+    ) {
+      throw new Error("amazon_parser_zero_with_product_markers");
+    }
 
     // V14_ULTRA_ZERO_RESULTS_DIAGNOSTIC: logging only; no extra requests.
     if (
