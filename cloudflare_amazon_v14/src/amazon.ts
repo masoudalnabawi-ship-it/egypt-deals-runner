@@ -47,7 +47,6 @@ export const AMAZON_SURFACES: Surface[] = [
   pf("ultra70_grocery","grocery","grocery",70,4.8),
   pf("ultra70_pets","pets","pet supplies",70,4.8),
   pf("ultra70_office","office","office products",70,4.8),
-  pf("ultra70_books","books","books",70,4.8),
   pf("ultra70_automotive","automotive","automotive accessories",70,4.8),
   pf("ultra70_toys","toys","toys",70,4.8),
   pf("ultra70_health","health","health personal care",70,4.8),
@@ -112,7 +111,6 @@ export const AMAZON_SURFACES: Surface[] = [
 
   pf("office_80filter","office","office products",80,3.4),
 
-  pf("books_80filter","books","books",80,3.8),
   q("electronics_65hot","electronics","electronics 65% off",1.8), q("appliances_65hot","appliances","home appliances 65% off",1.8),
   q("beauty_65hot","beauty","beauty 65% off",1.6), q("fashion_65hot","fashion","fashion 65% off",1.5),
   q("mobiles_65hot","mobiles","mobile phones 65% off",2.0), q("laptops_65hot","computers","laptops 65% off",2.0),
@@ -143,7 +141,6 @@ export const AMAZON_SURFACES: Surface[] = [
   q("watches","fashion","watches deals"), q("sports","sports","sports fitness deals"), q("toys","toys","toys games deals"),
   q("baby","baby","baby products deals"), q("grocery","grocery","grocery food deals"), q("coffee","grocery","coffee tea deals"),
   q("cleaning","grocery","detergent cleaning products deals"), q("automotive","automotive","car accessories deals"), q("office","office","office supplies deals"),
-  q("books","books","books deals"), q("pets","pets","pet supplies deals"), q("outdoor","sports","outdoor camping deals"),
   q("luggage","fashion","luggage travel accessories deals"), q("jewelry","fashion","jewelry deals"), q("health","health","health personal care deals"),
   q("perfumes","beauty","perfumes fragrances deals"), q("musical_instruments","music","musical instruments deals"),
   q("printers","office","printers scanners deals"), q("networking","electronics","routers networking deals"), q("smart_home","electronics","smart home devices deals"),
@@ -395,5 +392,6 @@ export async function fetchAmazonSurface(surface: Surface): Promise<{text: strin
   const text = await res.text();
   if (!res.ok) throw new Error(`amazon_http_${res.status}`);
   if (isProtectedPage(text)) throw new Error("amazon_protection");
+  if (text.length < 1000) throw new Error("amazon_short_response");
   return { text, latency: Date.now() - started };
 }
