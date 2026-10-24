@@ -1,0 +1,57 @@
+name: V14 Cloudflare Cron Audit
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Inspect deployed V14 cron schedules
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUD_API_KEY }}
+        run: |
+          python3 - <<'PY'
+          import json, os, urllib.request
+
+          token = os.environ["CLOUDFLARE_API_TOKEN"]
+          headers = {
+              "Authorization": f"Bearer {token}",
+              "Content-Type": "application/json"
+          }
+
+          def get(path):
+              req = urllib.request.Request(
+                  "https://api.cloudflare.com/client/v4" + path,
+                  headers=headers
+              )
+              with urllib.request.urlopen(req, timeout=30) as response:
+                  return json.load(response)
+
+          accounts = get("/accounts?per_page=50")
+          if not accounts.get("success"):
+              raise RuntimeError("Could not list Cloudflare accounts")
+
+          found = False
+          for account in accounts.get("result", []):
+              account_id = account["id"]
+              for worker in ("egypt-amazon-v14", "egypt-deals-v14"):
+                  path = f"/accounts/{account_id}/workers/scripts/{worker}/schedules"
+                  try:
+                      result = get(path)
+                      if result.get("success"):
+                          print(json.dumps({
+                              "worker": worker,
+                              "account": account.get("name"),
+                              "schedules": result.get("result", [])
+                          }, ensure_ascii=False))
+                          found = True
+                  except Exception as exc:
+                      print(f"CHECK_FAILED {worker}: {type(exc).__name__}")
+
+          if not found:
+              raise RuntimeError("No worker schedules could be inspected")
+          PY
