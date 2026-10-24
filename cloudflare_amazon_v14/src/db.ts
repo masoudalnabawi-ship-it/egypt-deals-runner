@@ -24,6 +24,34 @@ export class D1Repository {
     return Number(result.meta?.changes || 0) === 1;
   }
 
+  // Phase 1: record the Telegram alert ID for safe, future in-place updates.
+  // Additive migration; existing claims and deduplication remain unchanged.
+  async saveUltraFlashMessage(key: string, price: number, chatId: string, messageId: number): Promise<void> {
+    if (!Number.isSafeInteger(messageId) || messageId <= 0 || !chatId) return;
+    await this.db.prepare(`CREATE TABLE IF NOT EXISTS v14_ultra_flash_messages (
+      deal_key TEXT NOT NULL, price_cents INTEGER NOT NULL,
+      chat_id TEXT NOT NULL, message_id INTEGER NOT NULL,
+      created_at INTEGER NOT NULL,
+      PRIMARY KEY (deal_key, price_cents)
+    )`).run();
+    await this.db.prepare(`INSERT OR IGNORE INTO v14_ultra_flash_messages
+      (deal_key,price_cents,chat_id,message_id,created_at) VALUES (?,?,?,?,?)`)
+      .bind(key,Math.round(price * 100),chatId,messageId,nowTs()).run();
+  }
+
+  async getUltraFlashMessage(key: string, price: number): Promise<{chat_id: string; message_id: number} | null> {
+    await this.db.prepare(`CREATE TABLE IF NOT EXISTS v14_ultra_flash_messages (
+      deal_key TEXT NOT NULL, price_cents INTEGER NOT NULL,
+      chat_id TEXT NOT NULL, message_id INTEGER NOT NULL,
+      created_at INTEGER NOT NULL,
+      PRIMARY KEY (deal_key, price_cents)
+    )`).run();
+    const row = await this.db.prepare(`SELECT chat_id, message_id FROM v14_ultra_flash_messages
+      WHERE deal_key=? AND price_cents=? LIMIT 1`)
+      .bind(key, Math.round(price * 100)).first<{chat_id: string; message_id: number}>();
+    return row || null;
+  }
+
   async releaseUltraFlash(key: string, price: number): Promise<void> {
     await this.db.prepare(`DELETE FROM v14_ultra_flash_alerts WHERE deal_key=? AND price_cents=?`)
       .bind(key,Math.round(price * 100)).run();

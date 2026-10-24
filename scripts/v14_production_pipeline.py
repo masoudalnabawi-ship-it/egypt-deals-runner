@@ -674,6 +674,22 @@ def deliver_one(page, lane: str, ultra_min: float) -> bool:
             live_job["title"] = obs.get("title") or live_job.get("title")
             telegram_result = send_review_photo(live_job, shot, live_discount)
             message_id = telegram_result["message_id"]
+            # Telegram cannot convert an existing text message into a photo.
+            # Once the verified photo is safely delivered to the SAME chat,
+            # remove the old unverified flash alert to leave one message.
+            flash = job.get("flash_message") if lane == "ultra" else None
+            if isinstance(flash, dict) and str(flash.get("chat_id") or "") == str(REVIEW_CHAT):
+                old_id = int(flash.get("message_id") or 0)
+                if old_id > 0 and old_id != message_id:
+                    try:
+                        cleanup = requests.post(
+                            f"https://api.telegram.org/bot{BOT_TOKEN}/deleteMessage",
+                            json={"chat_id": REVIEW_CHAT, "message_id": old_id}, timeout=12,
+                        )
+                        if not cleanup.ok or not cleanup.json().get("ok"):
+                            print("V14_FLASH_CLEANUP_FAILED", key[:12], cleanup.status_code, flush=True)
+                    except Exception as exc:
+                        print("V14_FLASH_CLEANUP_FAILED", key[:12], str(exc)[:150], flush=True)
 
         proof = {
             **obs,

@@ -497,8 +497,17 @@ async function sendUltraFlashAlert(env: V14Env, repo: D1Repository, deal: DealCa
       signal: AbortSignal.timeout(6000),
     });
     if (!response.ok) throw new Error(`telegram_http_${response.status}`);
-    const body: {ok?: boolean} = await response.json();
+    const body: {ok?: boolean; result?: {message_id?: number}} = await response.json();
     if (!body.ok) throw new Error('telegram_api_rejected');
+    const messageId = Number(body.result?.message_id || 0);
+    if (Number.isSafeInteger(messageId) && messageId > 0) {
+      try {
+        await repo.saveUltraFlashMessage(key, deal.current_price, chat, messageId);
+      } catch (saveError) {
+        // Telegram already accepted the alert: never release the dedupe claim.
+        console.warn('V14_ULTRA_FLASH_MESSAGE_ID_SAVE_FAILED', asin, String(saveError));
+      }
+    }
     console.log(JSON.stringify({event:'v14_ultra_flash_alert_sent',asin,discount:pct,telegram_latency_ms:Date.now()-flashSendStartedAt}));
   } catch (error) {
     await repo.releaseUltraFlash(key,deal.current_price);

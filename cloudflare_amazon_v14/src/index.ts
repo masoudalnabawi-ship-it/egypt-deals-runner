@@ -1160,6 +1160,9 @@ async function claimScreenshotJob(
       score: row.score,
       confidence: row.confidence,
       category: row.category,
+      flash_message: row.lane === "ultra"
+        ? await repo.getUltraFlashMessage(row.deal_key, Number(row.current_price || 0))
+        : null,
     },
   });
 }
