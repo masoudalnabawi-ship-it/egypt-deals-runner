@@ -475,6 +475,18 @@ def v14_excluded_product(job, obs=None):
     import re
 
     obs = obs or {}
+
+    # V14: reject valid ISBN-10 identifiers even when categorized as toys.
+    for candidate in (job.get("external_id"), obs.get("page_asin")):
+        code = str(candidate or "").strip().upper()
+        if len(code) == 10 and code[:9].isdigit() and (code[9].isdigit() or code[9] == "X"):
+            total = sum(
+                (10 if digit == "X" else int(digit)) * (10 - i)
+                for i, digit in enumerate(code)
+            )
+            if total % 11 == 0:
+                return True
+
     values = [
         job.get("title"), job.get("category"),
         obs.get("title"), obs.get("category"),
@@ -570,6 +582,96 @@ def send_review_photo(job: dict[str, Any], photo: Path, live_discount: float) ->
     return {"message_id": int(result.get("message_id") or 0), "file_id": file_id}
 
 
+
+
+def reject_flash_photo(job, reason):
+    """Mark an unverified Telegram photo as rejected."""
+    flash = job.get("flash_message")
+    if not isinstance(flash, dict):
+        return False
+
+    chat_id = str(flash.get("chat_id") or "")
+    message_id = int(flash.get("message_id") or 0)
+
+    if chat_id != str(REVIEW_CHAT) or message_id <= 0:
+        return False
+
+    caption = (
+        "❌ العرض مرفوض بعد فحص صفحة أمازون\n"
+        "⚠️ الخصم المعلن لم يتم تأكيده.\n"
+        f"🔎 ASIN: {str(job.get('external_id') or '')[:10]}"
+    )
+
+    try:
+        r = requests.post(
+            f"https://api.telegram.org/bot{BOT_TOKEN}/editMessageCaption",
+            json={
+                "chat_id": chat_id,
+                "message_id": message_id,
+                "caption": caption,
+                "reply_markup": {"inline_keyboard": []},
+            },
+            timeout=20,
+        )
+        data = r.json()
+        if not r.ok or not data.get("ok"):
+            raise RuntimeError(str(data)[:250])
+        return True
+    except Exception as exc:
+        print("V14_FLASH_REJECT_UPDATE_FAILED", str(exc)[:200], flush=True)
+        return False
+
+def update_flash_photo(job, live_discount):
+    """Update the original Telegram photo after live verification."""
+    flash = job.get("flash_message")
+    if not isinstance(flash, dict):
+        return None
+
+    chat_id = str(flash.get("chat_id") or "")
+    message_id = int(flash.get("message_id") or 0)
+
+    if chat_id != str(REVIEW_CHAT) or message_id <= 0:
+        return None
+
+    short = str(job.get("deal_key") or "")[:16]
+    url = safe_amazon_url(job.get("url"), job.get("external_id"))
+
+    keyboard = {
+        "inline_keyboard": [
+            [
+                {"text": "🚀 نشر عاجل", "callback_data": f"v14:u:{short}"},
+                {"text": "✅ نشر عادي", "callback_data": f"v14:p:{short}"},
+            ],
+            [
+                {"text": "🔗 فتح المنتج", "url": url},
+                {"text": "❌ رفض", "callback_data": f"v14:r:{short}"},
+            ],
+        ]
+    }
+
+    r = requests.post(
+        f"https://api.telegram.org/bot{BOT_TOKEN}/editMessageCaption",
+        json={
+            "chat_id": chat_id,
+            "message_id": message_id,
+            "caption": build_caption(job, live_discount),
+            "parse_mode": "HTML",
+            "reply_markup": keyboard,
+        },
+        timeout=20,
+    )
+    data = r.json()
+    if not r.ok or not data.get("ok"):
+        raise RuntimeError(f"telegram_edit_failed:{str(data)[:300]}")
+
+    result = data.get("result") or {}
+    photos = result.get("photo") or []
+    file_id = str(photos[-1].get("file_id") or "") if photos else ""
+    if not file_id:
+        raise RuntimeError("edited_photo_file_id_missing")
+
+    return {"message_id": message_id, "file_id": file_id}
+
 def unwanted_product_v14(job, obs):
     return v14_excluded_product(job, obs)
 
@@ -606,6 +708,7 @@ def deliver_one(page, lane: str, ultra_min: float) -> bool:
                 },
                 retries=10,
             )
+            reject_flash_photo(job, "blocked_unwanted_product_v14")
             print("BLOCKED UNWANTED PRODUCT", key[:12], flush=True)
             return True
 
@@ -635,6 +738,7 @@ def deliver_one(page, lane: str, ultra_min: float) -> bool:
                     "reason": "ultra_missing_live_reference_price",
                     "live_discount": 0, "proof": obs,
                 }, retries=10)
+                reject_flash_photo(job, "ultra_missing_live_reference_price")
                 print("ULTRA LIVE REFERENCE PRICE MISSING", key[:12], flush=True)
                 return True
             print(
@@ -663,6 +767,7 @@ def deliver_one(page, lane: str, ultra_min: float) -> bool:
                 },
                 retries=10,
             )
+            reject_flash_photo(job, "live_discount_below_threshold")
             print("🛑 ULTRA EXPIRED", key[:12], live_discount, flush=True)
             return True
 
@@ -672,7 +777,9 @@ def deliver_one(page, lane: str, ultra_min: float) -> bool:
             live_job = {**job, "current_price": obs["current_price"],
                         "old_price": obs["old_price"]}
             live_job["title"] = obs.get("title") or live_job.get("title")
-            telegram_result = send_review_photo(live_job, shot, live_discount)
+            telegram_result = update_flash_photo(live_job, live_discount)
+            if telegram_result is None:
+                telegram_result = send_review_photo(live_job, shot, live_discount)
             message_id = telegram_result["message_id"]
             # Telegram cannot convert an existing text message into a photo.
             # Once the verified photo is safely delivered to the SAME chat,

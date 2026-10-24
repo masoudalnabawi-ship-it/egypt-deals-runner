@@ -164,11 +164,11 @@ async function telegramCall(token: string, method: string, body: Record<string, 
   return data.result;
 }
 
-async function amazonScreenshot(
+export async function amazonScreenshot(
   env: V14Env,
   repo: D1Repository,
   settings: Settings,
-  row: DealRow,
+  row: Pick<DealRow, "store" | "lane" | "url">,
 ): Promise<ArrayBuffer | null> {
 
   if (

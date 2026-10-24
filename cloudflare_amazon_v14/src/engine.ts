@@ -7,7 +7,7 @@ import { inspectDeal } from './shield';
 import { titleSimilarity, compatibility, signature } from './identity';
 import { discountPercent, safeJsonParse } from './util';
 import { VerificationRejected, verifyRow } from './verifier';
-import { answerCallback, clearButtons, sendPublic, sendReview, tokenForWebhook } from './telegram';
+import { amazonScreenshot, answerCallback, clearButtons, sendPublic, sendReview, tokenForWebhook } from './telegram';
 import { ultraChatId } from './config';
 import { nearDuplicateGuard } from './quality';
 
@@ -43,9 +43,6 @@ const AMAZON_ULTRA_HUNTER_ORDER: string[] = [
    * product-page Ultra proof.
    */
 
-  "books",
-  "books",
-  "books",
 
   "tvs",
   "tvs",
@@ -474,8 +471,20 @@ function bestCrossStoreMatch(deal: DealCandidate, rows: DealRow[]): { row: DealR
   return { row: best, similarity: bestSim };
 }
 
+// V14_ISBN10_BOOK_GUARD: reject valid ISBN-10 identifiers even if Amazon miscategorizes a book.
+function isValidIsbn10(value: string): boolean {
+  const id = String(value || '').toUpperCase();
+  if (!/^[0-9]{9}[0-9X]$/.test(id)) return false;
+  let sum = 0;
+  for (let i = 0; i < 10; i++) {
+    const digit = id[i] === 'X' ? 10 : Number(id[i]);
+    sum += digit * (10 - i);
+  }
+  return sum % 11 === 0;
+}
+
 // V14_ULTRA_FLASH_75_V1: notification only, NOT a verified discount or public post.
-async function sendUltraFlashAlert(env: V14Env, repo: D1Repository, deal: DealCandidate, key: string, pct: number): Promise<void> {
+async function sendUltraFlashAlert(env: V14Env, repo: D1Repository, settings: Settings, deal: DealCandidate, key: string, pct: number): Promise<void> {
   const chat = ultraChatId(env);
   const token = String(env.TELEGRAM_BOT_TOKEN || '').trim();
   if (!chat || !token) { console.warn('V14_ULTRA_FLASH_MISSING_TELEGRAM_CONFIG'); return; }
@@ -491,27 +500,38 @@ async function sendUltraFlashAlert(env: V14Env, repo: D1Repository, deal: DealCa
   const text = `🚨 عرض خاطف محتمل — ${pct.toFixed(1)}% خصم معلن\n⚠️ غير متحقق منه: السعر والخصم من نتائج البحث، وليس من صفحة المنتج.\n🛒 ${title}\n💰 ${deal.current_price.toFixed(2)} ج.م\n🏷️ السعر السابق المعلن: ${Number(deal.old_price).toFixed(2)} ج.م\n🔎 ASIN: ${asin}\n🔗 ${url}`;
   const flashSendStartedAt = Date.now();
   try {
-    const response = await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
-      method: 'POST', headers: {'Content-Type':'application/json'},
-      body: JSON.stringify({chat_id:chat,text,disable_web_page_preview:true}),
-      signal: AbortSignal.timeout(6000),
+    const screenshot = await amazonScreenshot(
+      env, repo, settings,
+      {store: 'amazon', lane: 'ultra', url},
+    );
+    if (!screenshot) throw new Error('real_screenshot_unavailable');
+
+    const form = new FormData();
+    form.append('chat_id', chat);
+    form.append('photo', new Blob([screenshot], {type: 'image/png'}), 'amazon-page.png');
+    form.append('caption', text.slice(0, 1024));
+
+    const response = await fetch(`https://api.telegram.org/bot${token}/sendPhoto`, {
+      method: 'POST',
+      body: form,
+      signal: AbortSignal.timeout(30000),
     });
     if (!response.ok) throw new Error(`telegram_http_${response.status}`);
     const body: {ok?: boolean; result?: {message_id?: number}} = await response.json();
     if (!body.ok) throw new Error('telegram_api_rejected');
+
     const messageId = Number(body.result?.message_id || 0);
     if (Number.isSafeInteger(messageId) && messageId > 0) {
       try {
         await repo.saveUltraFlashMessage(key, deal.current_price, chat, messageId);
       } catch (saveError) {
-        // Telegram already accepted the alert: never release the dedupe claim.
         console.warn('V14_ULTRA_FLASH_MESSAGE_ID_SAVE_FAILED', asin, String(saveError));
       }
     }
-    console.log(JSON.stringify({event:'v14_ultra_flash_alert_sent',asin,discount:pct,telegram_latency_ms:Date.now()-flashSendStartedAt}));
+    console.log(JSON.stringify({event:'v14_ultra_flash_photo_sent',asin,discount:pct,telegram_latency_ms:Date.now()-flashSendStartedAt}));
   } catch (error) {
-    await repo.releaseUltraFlash(key,deal.current_price);
-    console.warn('V14_ULTRA_FLASH_SEND_FAILED',asin,String(error),'telegram_latency_ms',Date.now()-flashSendStartedAt);
+    await repo.releaseUltraFlash(key, deal.current_price);
+    console.warn('V14_ULTRA_FLASH_PHOTO_FAILED',asin,String(error));
   }
 }
 
@@ -576,7 +596,7 @@ async function admitAmazon(env: V14Env, repo: D1Repository, settings: Settings, 
     const bookCategory = String(base.category || surface.category || '').toLowerCase();
     const bookSource = String(base.source || surface.name || '').toLowerCase();
     const bookTitle = String(base.title || '');
-    if (bookCategory === 'books' || /(^|[_-])books?([_-]|$)/.test(bookSource)
+    if (isValidIsbn10(String(base.external_id || '')) || bookCategory === 'books' || /(^|[_-])books?([_-]|$)/.test(bookSource)
       || /\b(hardcover|paperback|kindle edition|board book|mass market paperback)\b/i.test(bookTitle)
       || /(?:^|\s)(?:رواية|كتاب|كتب|غلاف صلب|غلاف ورقي)(?:\s|$)/.test(bookTitle)) continue;
 
@@ -622,7 +642,7 @@ async function admitAmazon(env: V14Env, repo: D1Repository, settings: Settings, 
     if (result.new_or_reopened) queued++;
     // Alert immediately from discovery; normal verification remains unchanged.
     if (visiblePct >= 70 && visiblePct < 100) {
-      await sendUltraFlashAlert(env, repo, deal, result.deal_key, visiblePct);
+      await sendUltraFlashAlert(env, repo, settings, deal, result.deal_key, visiblePct);
     }
     if (queued >= sourceLimit) break;
   }
@@ -2047,6 +2067,10 @@ export async function handleTelegramUpdate(env: V14Env, route: 'main'|'noon', up
       'تم رفض العرض ❌',
     );
   } else if (action === 'p' || action === 'u') {
+    if (row.state === 'rejected' || row.state === 'sent') {
+      await answerCallback(token, cbId, 'العرض مرفوض أو منشور سابقًا؛ لا يمكن نشره', true);
+      return new Response('ok');
+    }
     if (await repo.hasEvent(row.deal_key, 'manual_publish')) { await answerCallback(token, cbId, 'تم نشر العرض بالفعل'); return new Response('ok'); }
     try {
       const settings = (await import('./config')).getSettings(env);
