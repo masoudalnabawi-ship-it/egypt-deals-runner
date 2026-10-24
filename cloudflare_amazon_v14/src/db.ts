@@ -121,10 +121,25 @@ export class D1Repository {
         priceImproved &&
         !confirmedFalseDiscount;
 
+      // V14 Flash Recovery: retry transient verification failures.
+      // Never automatically reopen confirmed false discounts.
+      const transientFailure =
+        old.state === "rejected" &&
+        !confirmedFalseDiscount &&
+        /^(strong_candidate_max_attempts:playwright_verify:(no_live_price|amazon_product_page_missing)|.*(?:timeout|network_error|amazon_protection|amazon_short_response))/.test(
+          String(old.last_error || "")
+        );
+
+      // Cooldown prevents repeated verification of the same failed deal.
+      const recoveryReady =
+        transientFailure &&
+        now - Number(old.updated_at || 0) >= 1800;
+
       let shouldReopen =
         quarantineBreak ||
         laneUpgrade ||
-        staleSent;
+        staleSent ||
+        recoveryReady;
 
       let state =
         shouldReopen
