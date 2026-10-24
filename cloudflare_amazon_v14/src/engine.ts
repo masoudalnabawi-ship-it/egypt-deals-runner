@@ -606,6 +606,8 @@ async function admitAmazon(env: V14Env, repo: D1Repository, settings: Settings, 
         settings.ultra_min_discount
       &&
       !promo
+      &&
+      !isProbe
     ) {
       continue;
     }
