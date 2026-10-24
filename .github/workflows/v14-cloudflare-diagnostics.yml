@@ -41,7 +41,7 @@ jobs:
                                 json.dumps(result.get("result", [])))
                           found = True
                   except Exception as exc:
-                      print("CHECK_FAILED", worker, type(exc).__name__)
+                      print("CHECK_FAILED", worker, type(exc).__name__, getattr(exc, "code", "unknown"))
           if not found:
               raise RuntimeError("No worker schedules inspected")
           AUDIT
