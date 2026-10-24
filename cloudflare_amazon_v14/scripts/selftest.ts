@@ -5,6 +5,14 @@ import { dealQualityBand, nearDuplicateGuard } from '../src/quality';
 import { rankVerifiedDeal } from '../src/ranking';
 import type { DealCandidate, DealRow, Settings } from '../src/types';
 
+// Regression test: rediscovery must not reset rejected-deal cooldown.
+import { readFileSync } from 'node:fs';
+const dbSource = readFileSync(new URL('../src/db.ts', import.meta.url), 'utf8');
+assert.match(
+  dbSource,
+  /old\.state === 'rejected' && !shouldReopen \? Number\(old\.updated_at \|\| now\) : now/
+);
+
 const settings: Settings = {
   ultra_min_discount:65, ultra_hot_discount:75, normal_min_discount:10,
   min_confidence_normal:0.62, min_confidence_ultra:0.76,

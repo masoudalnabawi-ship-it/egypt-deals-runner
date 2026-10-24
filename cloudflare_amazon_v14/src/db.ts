@@ -158,15 +158,15 @@ export class D1Repository {
         UPDATE deals SET
           external_id=?, title=?, url=?, image_url=?, category=?, source=?,
           current_price=?, old_price=?, visible_discount=?, lane=?, score=?,
-          confidence=?, state=?, updated_at=?, next_attempt_at=?,
+          confidence=?, state=?, updated_at=?, next_attempt_at=?, attempts=CASE WHEN ? THEN 0 ELSE attempts END,
           last_error=CASE WHEN ? THEN '' ELSE last_error END,
           metadata_json=?
         WHERE deal_key=?
       `).bind(
         deal.external_id, deal.title, deal.url, deal.image_url || "", deal.category || "unknown", deal.source || "",
         deal.current_price, deal.old_price ?? null, discountPercent(deal), storedLane, storedScore,
-        preliminary.confidence, state, now, shouldReopen ? 0 : Number(old.next_attempt_at || 0),
-        shouldReopen ? 1 : 0, JSON.stringify(metadata), key,
+        preliminary.confidence, state, (old.state === 'rejected' && !shouldReopen ? Number(old.updated_at || now) : now), shouldReopen ? 0 : Number(old.next_attempt_at || 0),
+        shouldReopen ? 1 : 0, shouldReopen ? 1 : 0, JSON.stringify(metadata), key,
       ).run();
       return { new_or_reopened: shouldReopen, deal_key: key };
     }
