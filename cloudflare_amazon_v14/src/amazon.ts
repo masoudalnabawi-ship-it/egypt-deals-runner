@@ -320,9 +320,12 @@ function parseGoldbox(html: string, surface: Surface): DealCandidate[] {
 
 function parseSearch(html: string, surface: Surface): DealCandidate[] {
   const starts: Array<{index: number; asin: string}> = [];
-  const tagRe = /<div\b[^>]*(?=[^>]*data-component-type=["']s-search-result["'])(?=[^>]*data-asin=["']([A-Z0-9]{10})["'])[^>]*>/gi;
+  const tagRe = /<div\b[^>]*data-component-type=["']s-search-result["'][^>]*>|<div\b[^>]*data-asin=["'][A-Z0-9]{10}["'][^>]*data-component-type=["']s-search-result["'][^>]*>/gi;
   let m: RegExpExecArray | null;
-  while ((m = tagRe.exec(html)) !== null && starts.length < 80) starts.push({ index: m.index, asin: m[1].toUpperCase() });
+  while ((m = tagRe.exec(html)) !== null && starts.length < 80) {
+    const asin = m[0].match(/data-asin=["']([A-Z0-9]{10})["']/i)?.[1];
+    if (asin) starts.push({ index: m.index, asin: asin.toUpperCase() });
+  }
   const unique = new Map<string, DealCandidate>();
   for (let i = 0; i < starts.length; i++) {
     const start = starts[i];
