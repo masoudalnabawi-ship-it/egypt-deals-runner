@@ -249,8 +249,8 @@ def inspect_amazon(page, url: str, expected_asin: str = "") -> dict[str, Any]:
         wait_until="domcontentloaded",
         timeout=30000,
     )
-    page.wait_for_timeout(1600)
-
+    # DOM readiness already awaited above; avoid a fixed 1.6-second stall.
+    # Existing bounded title/price retries remain in place.
     status = response.status if response else 0
     if status >= 400:
         raise RuntimeError(f"http_{status}")

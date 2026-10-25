@@ -765,10 +765,9 @@ async function admitAmazon(env: V14Env, repo: D1Repository, settings: Settings, 
     }
     const result = await repo.upsertCandidate(deal, prelim);
     if (result.new_or_reopened) queued++;
-    // Alert immediately from discovery; normal verification remains unchanged.
-    if (visiblePct >= 70 && visiblePct < 100) {
-      await sendUltraFlashAlert(env, repo, settings, deal, result.deal_key, visiblePct);
-    }
+    // SECURITY: no discovery-only Telegram messages. Ultra is verified by
+    // GitHub Playwright before any screenshot/review notification.
+
     if (queued >= sourceLimit) break;
   }
   return queued;
