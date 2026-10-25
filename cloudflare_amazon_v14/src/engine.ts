@@ -510,6 +510,7 @@ async function sendUltraFlashAlert(env: V14Env, repo: D1Repository, settings: Se
     form.append('chat_id', chat);
     form.append('photo', new Blob([screenshot], {type: 'image/png'}), 'amazon-page.png');
     form.append('caption', text.slice(0, 1024));
+    form.append('reply_markup', JSON.stringify({inline_keyboard:[[{text:'🚀 نشر عاجل',callback_data:`v14:u:${key.slice(0,16)}`},{text:'✅ نشر عادي',callback_data:`v14:p:${key.slice(0,16)}`}],[{text:'🔗 فتح المنتج',url},{text:'❌ رفض',callback_data:`v14:r:${key.slice(0,16)}`}]]}));
 
     const response = await fetch(`https://api.telegram.org/bot${token}/sendPhoto`, {
       method: 'POST',
@@ -2072,20 +2073,18 @@ export async function handleTelegramUpdate(env: V14Env, route: 'main'|'noon', up
       return new Response('ok');
     }
     if (await repo.hasEvent(row.deal_key, 'manual_publish')) { await answerCallback(token, cbId, 'تم نشر العرض بالفعل'); return new Response('ok'); }
+    if (!await repo.claimManualPublish(row.deal_key)) { await answerCallback(token, cbId, 'جارٍ النشر أو تم نشر العرض بالفعل'); return new Response('ok'); }
     try {
-      const settings = (await import('./config')).getSettings(env);
-      const { deal: fresh } = await verifyRow(env, repo, settings, row);
-      const reviewed = Number(row.current_price || 0), freshPrice = Number(fresh.current_price || 0);
-      if (reviewed > 0 && freshPrice > reviewed * 1.02) { await answerCallback(token, cbId, 'السعر ارتفع منذ المراجعة؛ لم يتم النشر', true); return new Response('ok'); }
-      const publicRow: DealRow = { ...row, title: fresh.title || row.title, url: fresh.url || row.url, image_url: fresh.image_url || row.image_url,
-        current_price: freshPrice || reviewed, old_price: fresh.old_price ?? row.old_price };
+      // Explicit manual override: user can publish before background verification.
+      const publicRow: DealRow = { ...row, old_price: null, real_discount: 0 };
       const photoList = Array.isArray(message.photo) ? message.photo : [];
-      const reviewScreenshotFileId = String(photoList[photoList.length - 1]?.file_id || "");
+      const reviewScreenshotFileId = String(photoList[photoList.length - 1]?.file_id || '');
       await sendPublic(env, publicRow, action === 'u', repo, reviewScreenshotFileId);
       await repo.event('manual_publish', row.store, row.deal_key, {urgent: action === 'u'});
       await answerCallback(token, cbId, action === 'u' ? 'تم النشر العاجل 🚀' : 'تم النشر ✅');
     } catch (e) {
-      await answerCallback(token, cbId, e instanceof VerificationRejected ? 'العرض لم يعد يحقق شروط التحقق' : 'تعذر إعادة التحقق الآن، جرّب مرة أخرى', true);
+      await repo.releaseManualPublish(row.deal_key);
+      await answerCallback(token, cbId, 'تعذر النشر الآن، جرّب مرة أخرى', true);
       return new Response('ok');
     }
   } else return new Response('ok');

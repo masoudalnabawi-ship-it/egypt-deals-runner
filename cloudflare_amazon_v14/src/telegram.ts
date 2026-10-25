@@ -237,6 +237,7 @@ export async function amazonScreenshot(
 
           screenshotOptions: {
             fullPage: false,
+            clip: { x: 0, y: 95, width: 1280, height: 805 },
           },
         },
       );
@@ -530,7 +531,7 @@ export async function sendPublic(
   }
   if (!token) throw new Error("TELEGRAM_BOT_TOKEN_missing");
   if (!chatId) throw new Error(`telegram_public_chat_missing:${row.store}`);
-  const prefix = urgent ? "🚀 <b>نشر عاجل</b>\n\n" : "✅ <b>عرض معتمد</b>\n\n";
+  const prefix = urgent ? "🚀 <b>عرض عاجل</b>\n\n" : "🛒 <b>عرض أمازون</b>\n\n";
   const cap = prefix + caption(row);
   const keys = row.store === "amazon" ? { inline_keyboard: [] } : { inline_keyboard: [[{ text: "🔗 فتح المنتج", url: row.url }]] };
   // Amazon publication must reuse the actual screenshot from the reviewed Telegram photo.
