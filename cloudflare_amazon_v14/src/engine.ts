@@ -31,6 +31,43 @@ function workerId(prefix: string): string {
  * product-page verifier confirms >=65% REAL discount.
  */
 const AMAZON_ULTRA_HUNTER_ORDER: string[] = [
+  /* V14_ULTRA65_KEYWORD_EXPANSION_2026 */
+  "ultra65_kw_phone_accessories",
+  "ultra65_kw_usb_c_cables",
+  "ultra65_kw_phone_holders",
+  "ultra65_kw_kitchen_gadgets",
+  "ultra65_kw_storage_organizers",
+  "ultra65_kw_air_fryer_accessories",
+  "ultra65_kw_hair_trimmers",
+  "ultra65_kw_electric_toothbrush",
+  "ultra65_kw_skin_care",
+  "ultra65_kw_mens_shoes",
+  "ultra65_kw_womens_bags",
+  "ultra65_kw_sportswear",
+  "ultra65_kw_building_blocks",
+  "ultra65_kw_remote_control_cars",
+  "ultra65_kw_educational_toys",
+  "ultra65_kw_wireless_earbuds",
+  "ultra65_kw_smart_watches",
+  "ultra65_kw_bluetooth_speakers",
+  "ultra65_kw_led_lights",
+  "ultra65_kw_extension_cords",
+  "ultra65_kw_cleaning_tools",
+  "ultra65_kw_fitness_accessories",
+  "ultra65_kw_yoga_mats",
+  "ultra65_kw_resistance_bands",
+  "ultra65_kw_car_accessories",
+  "ultra65_kw_car_organizers",
+  "ultra65_kw_car_phone_holders",
+  "ultra65_kw_laptop_stands",
+  "ultra65_kw_computer_mice",
+  "ultra65_kw_usb_hubs",
+  "ultra65_kw_vacuum_cleaners",
+  "ultra65_kw_coffee_makers",
+  "ultra65_kw_blenders",
+  "ultra65_kw_pet_toys",
+  "ultra65_kw_pet_grooming",
+  "ultra65_kw_pet_accessories",
   /*
    * Weighted from real V14 source performance.
    *
@@ -120,7 +157,6 @@ const AMAZON_ULTRA_HUNTER_ORDER: string[] = [
   "office_65hot",
   "stationery_65hot",
   "printers_65hot",
-  "books_65hot",
 
   "automotive_65hot",
   "car_care_65hot",
@@ -171,7 +207,7 @@ const AMAZON_EXCEPTIONAL_HUNTER_ORDER = [
   "ultra70_grocery",
   "ultra70_pets",
   "ultra70_office",
-  "ultra70_books",
+
   "ultra70_automotive",
   "ultra70_toys",
   "ultra70_health",
@@ -216,7 +252,6 @@ const AMAZON_EXCEPTIONAL_HUNTER_ORDER = [
   "appliances_80filter",
   "home_80filter",
 
-  "books_80filter",
   "baby_80filter",
   "grocery_80filter",
   "shoes_80filter",
@@ -334,7 +369,6 @@ const AMAZON_DEPARTMENT_SWEEP_ORDER = [
   "arts_crafts",
   "printers",
 
-  "books",
   "musical_instruments",
 
   "automotive",
