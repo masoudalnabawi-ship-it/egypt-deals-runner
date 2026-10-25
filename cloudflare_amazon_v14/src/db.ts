@@ -65,6 +65,18 @@ export class D1Repository {
     return row || null;
   }
 
+  // V14_FLASH_FINAL_SAFETY: one-shot claim prevents duplicate screenshot deliveries.
+  async claimFlashScreenshot(key: string, price: number): Promise<boolean> {
+    await this.db.prepare(`CREATE TABLE IF NOT EXISTS v14_flash_screenshot_claims (
+      deal_key TEXT NOT NULL, price_cents INTEGER NOT NULL, claimed_at INTEGER NOT NULL,
+      PRIMARY KEY (deal_key, price_cents)
+    )`).run();
+    const result = await this.db.prepare(`INSERT OR IGNORE INTO v14_flash_screenshot_claims
+      (deal_key,price_cents,claimed_at) VALUES (?,?,?)`)
+      .bind(key, Math.round(price * 100), nowTs()).run();
+    return Number(result.meta?.changes || 0) === 1;
+  }
+
   async releaseUltraFlash(key: string, price: number): Promise<void> {
     await this.db.prepare(`DELETE FROM v14_ultra_flash_alerts WHERE deal_key=? AND price_cents=?`)
       .bind(key,Math.round(price * 100)).run();
