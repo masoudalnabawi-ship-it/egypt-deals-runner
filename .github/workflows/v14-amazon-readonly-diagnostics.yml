@@ -1,0 +1,45 @@
+name: V14 Amazon Read-Only Diagnostics
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout V14
+        uses: actions/checkout@v4
+        with:
+          ref: v14-cloudflare
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Install Wrangler
+        run: npm install --no-save wrangler@4
+
+      - name: Read Amazon source health
+        working-directory: cloudflare_amazon_v14
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUD_API_KEY }}
+        run: |
+          set -eu
+
+          echo "=== AMAZON SOURCE HEALTH ==="
+          npx wrangler d1 execute egypt-amazon-v14-db --remote --command \
+            "SELECT source,scans,fetched,candidates,errors,consecutive_errors,last_error,last_attempt_at,last_success_at FROM source_health WHERE store='amazon' ORDER BY errors DESC LIMIT 40;"
+
+          echo "=== AMAZON DEALS LAST 24 HOURS ==="
+          npx wrangler d1 execute egypt-amazon-v14-db --remote --command \
+            "SELECT lane,state,COUNT(*) AS total,MAX(discovered_at) AS latest FROM deals WHERE store='amazon' AND discovered_at >= CAST(strftime('%s','now') AS INTEGER)-86400 GROUP BY lane,state;"
+
+          echo "=== AMAZON EVENTS LAST 24 HOURS ==="
+          npx wrangler d1 execute egypt-amazon-v14-db --remote --command \
+            "SELECT event,COUNT(*) AS total,MAX(ts) AS latest FROM events WHERE store='amazon' AND ts >= CAST(strftime('%s','now') AS INTEGER)-86400 GROUP BY event ORDER BY total DESC LIMIT 30;"
