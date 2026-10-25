@@ -221,7 +221,8 @@ export function acceptable(settings: Settings, decision: DealDecision): [boolean
     if (decision.confidence < settings.min_confidence_ultra) return [false, "ultra_confidence_low"];
     return [true, "ok"];
   }
-  if (decision.real_discount < settings.normal_min_discount) return [false, "discount_below_normal_threshold"];
+  // V14_DUAL_LANE_SAFE: strict 20% minimum for Normal; Ultra remains independent.
+  if (decision.real_discount < Math.max(20, settings.normal_min_discount)) return [false, "normal_discount_outside_20_to_64"];
   if (decision.confidence < settings.min_confidence_normal) return [false, "normal_confidence_low"];
   return [true, "ok"];
 }

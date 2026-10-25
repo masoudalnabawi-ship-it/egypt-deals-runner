@@ -738,7 +738,8 @@ async function admitNoon(repo: D1Repository, settings: Settings, deals: DealCand
     const visible = discountPercent(deal);
     // Normal Noon path only. We still allow one no-discount candidate per scan so
     // trusted history can mature, but never route it to Ultra.
-    if (visible < settings.normal_min_discount && queued > 0) continue;
+    // v14_normal_floor_20: allow one low-discount Noon history probe only.
+    if (visible < Math.max(20, settings.normal_min_discount) && queued > 0) continue;
     const prelim = preliminaryDecision(settings, deal);
     prelim.lane = 'normal';
     const result = await repo.upsertCandidate(deal, prelim);
