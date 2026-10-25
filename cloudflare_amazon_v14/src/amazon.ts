@@ -401,12 +401,55 @@ function parseGoldbox(html: string, surface: Surface): DealCandidate[] {
   return [...unique.values()];
 }
 
+// Amazon-only price parsing: avoid changing Noon or shared utility semantics.
+// Reject ambiguous/malformed values rather than manufacturing a discount.
+function parseAmazonPrice(raw: string): number {
+  const value = stripTags(raw).replace(/[٠-٩]/g, d => String("٠١٢٣٤٥٦٧٨٩".indexOf(d)))
+    .replace(/[۰-۹]/g, d => String("۰۱۲۳۴۵۶۷۸۹".indexOf(d)))
+    .replace(/٫/g, ".").replace(/٬/g, ",").replace(/[\u00a0\u202f\s]/g, "");
+  const m = value.match(/\d[\d.,]*/);
+  if (!m) return 0;
+  const token = m[0];
+  if (/[.,]$/.test(token)) return 0;
+  let n = token;
+  const dots = (n.match(/\./g) || []).length;
+  const commas = (n.match(/,/g) || []).length;
+  if (dots && commas) {
+    const decimal = n.lastIndexOf(".") > n.lastIndexOf(",") ? "." : ",";
+    const grouping = decimal === "." ? "," : ".";
+    const parts = n.split(decimal);
+    if (parts.length !== 2 || !/^\d{1,2}$/.test(parts[1])) return 0;
+    const groups = parts[0].split(grouping);
+    if (groups.length < 2 || !/^\d{1,3}$/.test(groups[0]) ||
+        !groups.slice(1).every(g => /^\d{3}$/.test(g))) return 0;
+    n = groups.join("") + "." + parts[1];
+  } else if (commas) {
+    const parts = n.split(",");
+    if (parts.length > 2) {
+      if (!/^\d{1,3}$/.test(parts[0]) ||
+          !parts.slice(1).every(g => /^\d{3}$/.test(g))) return 0;
+      n = parts.join("");
+    } else if (parts.length === 2) {
+      if (!parts[1]) return 0;
+      n = parts[1].length === 3 ? parts.join("") : parts.join(".");
+    }
+  } else if (dots > 1) {
+    const parts = n.split(".");
+    if (!/^\d{1,3}$/.test(parts[0]) ||
+        !parts.slice(1).every(g => /^\d{3}$/.test(g))) return 0;
+    n = parts.join("");
+  }
+  if (!/^\d+(?:\.\d+)?$/.test(n)) return 0;
+  const price = Number(n);
+  return Number.isFinite(price) && price > 0 ? price : 0;
+}
+
 function parseSearch(html: string, surface: Surface): DealCandidate[] {
   const starts: Array<{index: number; asin: string}> = [];
-  const tagRe = /<div\b[^>]*data-component-type=["']s-search-result["'][^>]*>|<div\b[^>]*data-asin=["'][A-Z0-9]{10}["'][^>]*data-component-type=["']s-search-result["'][^>]*>/gi;
+  const tagRe = /<div\b[^>]*\bdata-component-type=["']s-search-result["'][^>]*>/gi;
   let m: RegExpExecArray | null;
   while ((m = tagRe.exec(html)) !== null && starts.length < 80) {
-    const asin = m[0].match(/data-asin=["']([A-Z0-9]{10})["']/i)?.[1];
+    const asin = m[0].match(/\bdata-asin=["']([A-Z0-9]{10})["']/i)?.[1];
     if (asin) starts.push({ index: m.index, asin: asin.toUpperCase() });
   }
   const unique = new Map<string, DealCandidate>();
@@ -418,11 +461,11 @@ function parseSearch(html: string, surface: Surface): DealCandidate[] {
       || extractTextAround(card, /<h2\b[^>]*>([\s\S]{0,2500}?)<\/h2>/i);
     const currentMatch = card.match(/<span\b[^>]*class=["'][^"']*\ba-price\b[^"']*["'][^>]*>[\s\S]{0,1000}?<span\b[^>]*class=["'][^"']*\ba-offscreen\b[^"']*["'][^>]*>([\s\S]{0,250}?)<\/span>/i)
       || card.match(/<span\b[^>]*class=["'][^"']*\ba-offscreen\b[^"']*["'][^>]*>([^<]{1,120})<\/span>/i);
-    const current = parseNumber(currentMatch ? stripTags(currentMatch[1]) : "");
+    const current = parseAmazonPrice(currentMatch ? currentMatch[1] : "");
     if (!title || !(current > 0)) continue;
     let old = 0;
     const oldRegion = card.match(/<span\b[^>]*class=["'][^"']*\ba-text-price\b[^"']*["'][^>]*>([\s\S]{0,1600}?)<\/span>/i);
-    if (oldRegion) old = parseNumber(stripTags(oldRegion[1]));
+    if (oldRegion) old = parseAmazonPrice(oldRegion[1]);
     if (!(old > current)) {
       const pctMatch = card.match(/(?:savingsPercentage[^>]*>|class=["'][^"']*savingsPercentage[^"']*["'][^>]*>)[^<]{0,50}-?\s*(\d+(?:\.\d+)?)\s*%/i);
       const pct = pctMatch ? Number(pctMatch[1]) : 0;

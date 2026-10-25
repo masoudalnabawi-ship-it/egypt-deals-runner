@@ -181,3 +181,26 @@ for (const attrs of [
 }
 
 assert.ok(Number(ultraParsed[0].old_price) > ultraParsed[0].current_price);
+
+// V14_AMAZON_PARSER_SAFE_REGRESSION
+const amazonSurface = allUltraSurfaces.find(s => s.name === "70flashfilter")!;
+for (const [formatted, expected] of [
+  ["EGP 1,299.50", 1299.5],
+  ["EGP 1.299,50", 1299.5],
+  ["١٬٢٩٩٫٥٠ ج.م.", 1299.5],
+  ["1,299", 1299],
+] as const) {
+  const card = `<div data-asin="B012345678" data-component-type="s-search-result"><h2><span>Sample</span></h2><span class="a-price"><span class="a-offscreen">${formatted}</span></span></div>`;
+  const parsed = parseAmazonForUltra(card, amazonSurface);
+  assert.equal(parsed.length, 1, `Could not parse ${formatted}`);
+  assert.equal(parsed[0].current_price, expected, `Incorrect price for ${formatted}`);
+}
+const missingPriceCard = `<div data-asin="B012345678" data-component-type="s-search-result"><h2><span>Sample</span></h2></div>`;
+assert.equal(parseAmazonForUltra(missingPriceCard, amazonSurface).length, 0);
+console.log("V14_AMAZON_PARSER_SAFE_REGRESSION_PASS");
+
+// V14_AMAZON_MALFORMED_PRICE_REGRESSION
+for (const malformed of ["1,29,9.50", "1,299,50", "1299,"]) {
+  const card = `<div data-component-type="s-search-result" data-asin="B012345678"><h2><span>Test</span></h2><span class="a-price"><span class="a-offscreen">${malformed}</span></span></div>`;
+  assert.equal(parseAmazonForUltra(card, amazonSurface).length, 0, `Malformed price accepted: ${malformed}`);
+}
