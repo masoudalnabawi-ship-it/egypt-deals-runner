@@ -580,22 +580,14 @@ async function sendUltraFlashAlert(env: V14Env, repo: D1Repository, settings: Se
   const text = `🚨 عرض خاطف محتمل — ${pct.toFixed(1)}% خصم معلن\n⚠️ غير متحقق منه: السعر والخصم من نتائج البحث، وليس من صفحة المنتج.\n🛒 ${title}\n💰 ${deal.current_price.toFixed(2)} ج.م\n🏷️ السعر السابق المعلن: ${Number(deal.old_price).toFixed(2)} ج.م\n🔎 ASIN: ${asin}\n🔗 ${url}`;
   const flashSendStartedAt = Date.now();
   try {
-    const screenshot = await amazonScreenshot(
-      env, repo, settings,
-      {store: 'amazon', lane: 'ultra', url},
-    );
-    if (!screenshot) throw new Error('real_screenshot_unavailable');
-
-    const form = new FormData();
-    form.append('chat_id', chat);
-    form.append('photo', new Blob([screenshot], {type: 'image/png'}), 'amazon-page.png');
-    form.append('caption', text.slice(0, 1024));
-    form.append('reply_markup', JSON.stringify({inline_keyboard:[[{text:'🚀 نشر عاجل',callback_data:`v14:u:${key.slice(0,16)}`},{text:'✅ نشر عادي',callback_data:`v14:p:${key.slice(0,16)}`}],[{text:'🔗 فتح المنتج',url},{text:'❌ رفض',callback_data:`v14:r:${key.slice(0,16)}`}]]}));
-
-    const response = await fetch(`https://api.telegram.org/bot${token}/sendPhoto`, {
+    // V14_FLASH_TEXT_FIRST_20261025: send an explicitly UNVERIFIED review alert
+    // without waiting for product-page screenshots. No public verified post.
+    const replyMarkup = {inline_keyboard:[[{text:'🔗 فتح المنتج',url},{text:'❌ رفض',callback_data:`v14:r:${key.slice(0,16)}`}]]};
+    const response = await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
       method: 'POST',
-      body: form,
-      signal: AbortSignal.timeout(30000),
+      headers: {'content-type':'application/json'},
+      body: JSON.stringify({chat_id:chat,text,reply_markup:replyMarkup,disable_web_page_preview:true}),
+      signal: AbortSignal.timeout(8000),
     });
     if (!response.ok) throw new Error(`telegram_http_${response.status}`);
     const body: {ok?: boolean; result?: {message_id?: number}} = await response.json();
@@ -605,15 +597,67 @@ async function sendUltraFlashAlert(env: V14Env, repo: D1Repository, settings: Se
     if (Number.isSafeInteger(messageId) && messageId > 0) {
       try {
         await repo.saveUltraFlashMessage(key, deal.current_price, chat, messageId);
+        // V14_FLASH_SCREENSHOT_QUEUE_20261025: enqueue only after text message exists.
+        try {
+          await env.JOBS.send({type:'flash_screenshot',deal_key:key,price:deal.current_price,scheduled_at:Date.now()} as any);
+        } catch (queueError) {
+          console.warn('V14_FLASH_SCREENSHOT_ENQUEUE_FAILED',asin,String(queueError));
+        }
       } catch (saveError) {
         console.warn('V14_ULTRA_FLASH_MESSAGE_ID_SAVE_FAILED', asin, String(saveError));
       }
     }
-    console.log(JSON.stringify({event:'v14_ultra_flash_photo_sent',asin,discount:pct,telegram_latency_ms:Date.now()-flashSendStartedAt}));
+    console.log(JSON.stringify({event:'v14_ultra_flash_text_sent',asin,discount:pct,telegram_latency_ms:Date.now()-flashSendStartedAt}));
   } catch (error) {
     await repo.releaseUltraFlash(key, deal.current_price);
-    console.warn('V14_ULTRA_FLASH_PHOTO_FAILED',asin,String(error));
+    console.warn('V14_ULTRA_FLASH_TEXT_FAILED',asin,String(error));
   }
+}
+
+// V14_FLASH_SCREENSHOT_QUEUE_20261025: separate, best-effort review screenshot job.
+// Never changes verification state or publishes publicly.
+export async function processFlashScreenshotJob(env: V14Env, settings: Settings, key: string, price: number): Promise<void> {
+  if (!key || !Number.isFinite(price) || price <= 0) return;
+  const repo = new D1Repository(env.egypt_deals_v14_db);
+  const saved = await repo.getUltraFlashMessage(key, price);
+  if (!saved || !Number.isSafeInteger(saved.message_id) || saved.message_id <= 0) return;
+  // Verify the original text message was recorded for precisely this price.
+  const exact = await env.egypt_deals_v14_db.prepare(
+    'SELECT message_id FROM v14_ultra_flash_messages WHERE deal_key=? AND price_cents=?'
+  ).bind(key, Math.round(price * 100)).first<{message_id:number}>();
+  if (Number(exact?.message_id) !== saved.message_id) return;
+  const row = await repo.findByPrefix(key);
+  if (!row || row.deal_key !== key || row.store !== 'amazon' || row.lane !== 'ultra') return;
+  if (Math.abs(Number(row.current_price) - price) > 0.01) return;
+  const url = String(row.url || '');
+  let parsed: URL;
+  try { parsed = new URL(url); } catch { return; }
+  if (parsed.protocol !== 'https:' || !['amazon.eg','www.amazon.eg'].includes(parsed.hostname.toLowerCase())) return;
+  const token = String(env.TELEGRAM_BOT_TOKEN || '').trim();
+  if (!token) return;
+  if (!await repo.claimFlashScreenshot(key, price)) return;
+  const screenshot = await amazonScreenshot(env, repo, settings, {store:'amazon',lane:'ultra',url});
+  if (!screenshot) { console.warn('V14_FLASH_SCREENSHOT_UNAVAILABLE',key); return; }
+  const pct = Number(row.old_price) > price ? (1 - price/Number(row.old_price))*100 : 0;
+  const caption = `🚨 عرض خاطف محتمل — ${pct.toFixed(1)}% خصم معلن\n⚠️ غير متحقق منه: السعر والخصم من نتائج البحث، وليس من صفحة المنتج.\n🛒 ${String(row.title || 'Amazon Egypt').slice(0,150)}\n💰 ${price.toFixed(2)} ج.م\n🏷️ السعر السابق المعلن: ${Number(row.old_price || 0).toFixed(2)} ج.م\n🔗 ${url}`;
+  const form = new FormData();
+  form.append('chat_id',saved.chat_id);
+  form.append('photo',new Blob([screenshot],{type:'image/png'}),'amazon-page.png');
+  form.append('caption',caption.slice(0,1024));
+  form.append('reply_markup',JSON.stringify({inline_keyboard:[[{text:'🔗 فتح المنتج',url},{text:'❌ رفض',callback_data:`v14:r:${key.slice(0,16)}`}]]}));
+  const sent = await fetch(`https://api.telegram.org/bot${token}/sendPhoto`,{method:'POST',body:form,signal:AbortSignal.timeout(12000)});
+  if (!sent.ok) { console.warn('V14_FLASH_SCREENSHOT_SEND_FAILED',key,sent.status); return; }
+  const payload: {ok?:boolean;result?:{message_id?:number}} = await sent.json();
+  if (!payload.ok || !payload.result?.message_id) return;
+  // Only delete the original AFTER photo has been confirmed by Telegram.
+  try {
+    await fetch(`https://api.telegram.org/bot${token}/deleteMessage`,{
+      method:'POST',headers:{'content-type':'application/json'},
+      body:JSON.stringify({chat_id:saved.chat_id,message_id:saved.message_id}),
+      signal:AbortSignal.timeout(5000),
+    });
+  } catch (error) { console.warn('V14_FLASH_TEXT_DELETE_FAILED',key,String(error)); }
+  console.log('V14_FLASH_SCREENSHOT_SENT',key);
 }
 
 async function admitAmazon(env: V14Env, repo: D1Repository, settings: Settings, surface: Surface, deals: DealCandidate[]): Promise<number> {
@@ -2149,6 +2193,15 @@ export async function handleTelegramUpdate(env: V14Env, route: 'main'|'noon', up
       'تم رفض العرض ❌',
     );
   } else if (action === 'p' || action === 'u') {
+    // V14_FLASH_UNVERIFIED_PUBLICATION_GUARD_20261025:
+    // Block legacy flash-review buttons too (text or photo-caption messages).
+    // These provisional alerts are NOT verified product-page evidence.
+    const reviewText = String(message.text || message.caption || '');
+    if (reviewText.includes('عرض خاطف محتمل') || reviewText.includes('غير متحقق منه')) {
+      await answerCallback(token, cbId, 'تنبيه أولي غير متحقق منه؛ لا يمكن نشره', true);
+      return new Response('ok');
+    }
+
     if (row.state === 'rejected' || row.state === 'sent') {
       await answerCallback(token, cbId, 'العرض مرفوض أو منشور سابقًا؛ لا يمكن نشره', true);
       return new Response('ok');

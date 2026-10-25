@@ -1,7 +1,7 @@
 import type { DealCandidate, JobMessage, V14Env } from './types';
 import { getSettings } from './config';
 import { D1Repository } from './db';
-import { handleTelegramUpdate, runCycle, runDiscoveryOnly, runProcessingCycle } from './engine';
+import { handleTelegramUpdate, runCycle, runDiscoveryOnly, runProcessingCycle, processFlashScreenshotJob } from './engine';
 import { setWebhook } from './telegram';
 import { acceptable, buildPriceProfile, evaluateDeal, preliminaryDecision } from './intelligence';
 import { inspectDeal } from './shield';
@@ -1874,6 +1874,23 @@ export default {
       of batch.messages
     ) {
 
+      // V14_FLASH_SCREENSHOT_QUEUE_20261025: independent screenshot queue job.
+      if ((message.body as any)?.type === 'flash_screenshot') {
+        // Discovery always wins when both job types share a batch.
+        if (batch.messages.some(m => m.body?.type === 'discover')) {
+          message.retry({delaySeconds:30});
+          continue;
+        }
+        try {
+          const job = message.body as any;
+          await processFlashScreenshotJob(env,settings,String(job.deal_key || ''),Number(job.price || 0));
+        } catch (error) {
+          console.warn('V14_FLASH_SCREENSHOT_JOB_FAILED',String(error));
+        }
+        // Best effort: do not retry after an uncertain Telegram response (avoids duplicate photos).
+        message.ack();
+        continue;
+      }
       if (
         message.body?.type !== "cycle" &&
         message.body?.type !== "discover"

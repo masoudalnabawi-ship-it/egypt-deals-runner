@@ -180,7 +180,16 @@ for (const attrs of [
   assert.equal(parsed.length, 1, `Failed attribute order: ${attrs}`);
 }
 
-assert.ok(Number(ultraParsed[0].old_price) > ultraParsed[0].current_price);
+// A discount badge alone must never manufacture an old price.
+assert.equal(ultraParsed[0].current_price, 50);
+assert.equal(ultraParsed[0].old_price, null);
+
+// An explicitly displayed old price is valid card evidence.
+const explicitOldPriceCard = `<div data-component-type="s-search-result" data-asin="B012345678"><h2><span>Verified price example</span></h2><span class="a-price"><span class="a-offscreen">50.00</span></span><span class="a-text-price"><span class="a-offscreen">200.00</span></span></div>`;
+const explicitOldPriceParsed = parseAmazonForUltra(explicitOldPriceCard, allUltraSurfaces.find(s => s.name === "70flashfilter")!);
+assert.equal(explicitOldPriceParsed.length, 1);
+assert.equal(explicitOldPriceParsed[0].current_price, 50);
+assert.equal(explicitOldPriceParsed[0].old_price, 200);
 
 // V14_AMAZON_PARSER_SAFE_REGRESSION
 const amazonSurface = allUltraSurfaces.find(s => s.name === "70flashfilter")!;
@@ -204,3 +213,155 @@ for (const malformed of ["1,29,9.50", "1,299,50", "1299,"]) {
   const card = `<div data-component-type="s-search-result" data-asin="B012345678"><h2><span>Test</span></h2><span class="a-price"><span class="a-offscreen">${malformed}</span></span></div>`;
   assert.equal(parseAmazonForUltra(card, amazonSurface).length, 0, `Malformed price accepted: ${malformed}`);
 }
+
+
+// V14_AMAZON_GOLDBOX_PRICE_REGRESSION_V1
+const goldboxSurface = { name: "goldbox", category: "global", priority: 1, url: "https://www.amazon.eg/gp/goldbox" };
+
+for (const [formatted, expected] of [
+  ["EGP 1,299.50", 1299.5],
+  ["EGP 1.299,50", 1299.5],
+  ["١٬٢٩٩٫٥٠ ج.م.", 1299.5],
+  ["۱۲۹۹٫۵۰", 1299.5],
+] as const) {
+  const payload = {
+    productSearchResponse: {
+      products: [{
+        asin: "B012345678",
+        title: "Goldbox regression product",
+        price: {
+          priceToPay: { price: formatted },
+          basisPrice: { price: "EGP 2,000.00" },
+        },
+      }],
+    },
+  };
+  const html = JSON.stringify(payload);
+  const parsed = parseAmazonForUltra(html, goldboxSurface);
+  assert.equal(parsed.length, 1, `Goldbox failed: ${formatted}`);
+  assert.equal(parsed[0].current_price, expected);
+  assert.equal(parsed[0].old_price, 2000);
+}
+
+for (const malformed of ["1,29,9.50", "1,299,50", "1299,"]) {
+  const html = JSON.stringify({
+    productSearchResponse: {
+      products: [{
+        asin: "B012345678",
+        title: "Malformed Goldbox price",
+        price: { priceToPay: { price: malformed } },
+      }],
+    },
+  });
+  assert.equal(parseAmazonForUltra(html, goldboxSurface).length, 0, `Goldbox accepted malformed price: ${malformed}`);
+}
+
+console.log("V14_AMAZON_GOLDBOX_PRICE_REGRESSION_PASS");
+
+
+// V14_AMAZON_STRICT_PRICE_REGRESSION_V2
+// Ambiguous prices must never become verified price evidence.
+for (const malformed of [
+  "1,29",
+  "1.299",
+  "EGP 100 xyz 200",
+  "EGP 1,299.50 extra 999",
+  "12,34,567",
+  "1.2.3",
+]) {
+  const card = `<div data-component-type="s-search-result" data-asin="B012345678"><h2><span>Strict price test</span></h2><span class="a-price"><span class="a-offscreen">${malformed}</span></span></div>`;
+  assert.equal(
+    parseAmazonForUltra(card, amazonSurface).length,
+    0,
+    `Ambiguous Amazon price accepted: ${malformed}`,
+  );
+}
+console.log("V14_AMAZON_STRICT_PRICE_REGRESSION_PASS");
+
+// V14_AMAZON_RTL_PRICE_REGRESSION
+for (const [raw, expected] of [
+  ["‏249.00 جنيه", 249],
+  ["‎1,299.50 جنيه", 1299.5],
+  ["؜249abc جنيه", 0],
+  ["‏249 349 جنيه", 0],
+] as const) {
+  const card = `<div data-component-type="s-search-result" data-asin="B012345678"><h2><span>RTL price test</span></h2><span class="a-price"><span class="a-offscreen">${raw}</span></span></div>`;
+  const deals = parseAmazonForUltra(card, amazonSurface);
+  assert.equal(deals[0]?.current_price ?? 0, expected, `RTL price regression: ${JSON.stringify(raw)}`);
+}
+console.log("V14_AMAZON_RTL_PRICE_REGRESSION_PASS");
+
+
+
+// V14_AMAZON_CARD_ISOLATION_REGRESSION
+const isolatedCardsHtml = `
+<div data-component-type="s-search-result" data-asin="B012345678">
+  <h2><span>Product One</span></h2>
+  <span class="a-price"><span class="a-offscreen">100.00</span></span>
+  <span class="a-text-price"><span class="a-offscreen">400.00</span></span>
+</div>
+<div data-component-type="s-search-result" data-asin="B087654321">
+  <h2><span>Product Two</span></h2>
+  <span class="a-price"><span class="a-offscreen">250.00</span></span>
+  <span class="a-text-price"><span class="a-offscreen">500.00</span></span>
+</div>`;
+
+const isolatedCards = parseAmazonForUltra(isolatedCardsHtml, amazonSurface);
+
+assert.equal(isolatedCards.length, 2);
+
+const firstCard = isolatedCards.find(x => x.external_id === "B012345678");
+const secondCard = isolatedCards.find(x => x.external_id === "B087654321");
+
+assert.ok(firstCard);
+assert.ok(secondCard);
+
+assert.equal(firstCard.current_price, 100);
+assert.equal(firstCard.old_price, 400);
+
+assert.equal(secondCard.current_price, 250);
+assert.equal(secondCard.old_price, 500);
+
+console.log("V14_AMAZON_CARD_ISOLATION_REGRESSION_PASS");
+
+
+// V14_AMAZON_MISSING_PRICE_ISOLATION
+const missingPriceHtml = `
+<div data-component-type="s-search-result" data-asin="B012345678">
+  <h2><span>Product Without Price</span></h2>
+</div>
+<div data-component-type="s-search-result" data-asin="B087654321">
+  <h2><span>Product With Price</span></h2>
+  <span class="a-price"><span class="a-offscreen">250.00</span></span>
+  <span class="a-text-price"><span class="a-offscreen">500.00</span></span>
+</div>`;
+
+const missingPriceResults = parseAmazonForUltra(missingPriceHtml, amazonSurface);
+
+assert.equal(missingPriceResults.length, 1);
+assert.equal(missingPriceResults[0].external_id, "B087654321");
+assert.equal(missingPriceResults[0].current_price, 250);
+assert.equal(missingPriceResults[0].old_price, 500);
+
+console.log("V14_AMAZON_MISSING_PRICE_ISOLATION_PASS");
+
+
+// V14_AMAZON_OLD_PRICE_ONLY_REGRESSION
+// A crossed-out old price alone is not a valid current price.
+const oldPriceOnlyHtml = `
+<div data-component-type="s-search-result" data-asin="B012345678">
+  <h2><span>Old Price Only Product</span></h2>
+  <span class="a-text-price">
+    <span class="a-offscreen">500.00</span>
+  </span>
+</div>`;
+
+const oldPriceOnlyResults = parseAmazonForUltra(oldPriceOnlyHtml, amazonSurface);
+
+assert.equal(
+  oldPriceOnlyResults.length,
+  0,
+  "Amazon parser incorrectly accepted an old price as the current price",
+);
+
+console.log("V14_AMAZON_OLD_PRICE_ONLY_REGRESSION_PASS");

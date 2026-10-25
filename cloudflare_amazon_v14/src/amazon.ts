@@ -366,8 +366,9 @@ function parseGoldbox(html: string, surface: Surface): DealCandidate[] {
     if (!/^[A-Z0-9]{10}$/.test(asin)) continue;
     const title = cleanText(p?.title || asin);
     const price = p?.price && typeof p.price === "object" ? p.price : {};
-    const current = parseNumber(price?.priceToPay?.price);
-    let old = parseNumber(price?.basisPrice?.price);
+    // Amazon-specific parsing for consistent Arabic/English price handling.
+    const current = parseAmazonPrice(String(price?.priceToPay?.price ?? ""));
+    let old = parseAmazonPrice(String(price?.basisPrice?.price ?? ""));
     if (!(current > 0)) continue;
     if (!(old > current)) old = 0;
     const link = String(p?.link || `/dp/${asin}`).split("?")[0];
@@ -404,44 +405,45 @@ function parseGoldbox(html: string, surface: Surface): DealCandidate[] {
 // Amazon-only price parsing: avoid changing Noon or shared utility semantics.
 // Reject ambiguous/malformed values rather than manufacturing a discount.
 function parseAmazonPrice(raw: string): number {
-  const value = stripTags(raw).replace(/[٠-٩]/g, d => String("٠١٢٣٤٥٦٧٨٩".indexOf(d)))
+  // Amazon-only parser. Never infer prices from arbitrary numeric substrings.
+  const value = stripTags(raw)
+    .replace(/[٠-٩]/g, d => String("٠١٢٣٤٥٦٧٨٩".indexOf(d)))
     .replace(/[۰-۹]/g, d => String("۰۱۲۳۴۵۶۷۸۹".indexOf(d)))
-    .replace(/٫/g, ".").replace(/٬/g, ",").replace(/[\u00a0\u202f\s]/g, "");
-  const m = value.match(/\d[\d.,]*/);
-  if (!m) return 0;
-  const token = m[0];
-  if (/[.,]$/.test(token)) return 0;
-  let n = token;
-  const dots = (n.match(/\./g) || []).length;
-  const commas = (n.match(/,/g) || []).length;
-  if (dots && commas) {
-    const decimal = n.lastIndexOf(".") > n.lastIndexOf(",") ? "." : ",";
-    const grouping = decimal === "." ? "," : ".";
-    const parts = n.split(decimal);
-    if (parts.length !== 2 || !/^\d{1,2}$/.test(parts[1])) return 0;
-    const groups = parts[0].split(grouping);
-    if (groups.length < 2 || !/^\d{1,3}$/.test(groups[0]) ||
-        !groups.slice(1).every(g => /^\d{3}$/.test(g))) return 0;
-    n = groups.join("") + "." + parts[1];
-  } else if (commas) {
-    const parts = n.split(",");
-    if (parts.length > 2) {
-      if (!/^\d{1,3}$/.test(parts[0]) ||
-          !parts.slice(1).every(g => /^\d{3}$/.test(g))) return 0;
-      n = parts.join("");
-    } else if (parts.length === 2) {
-      if (!parts[1]) return 0;
-      n = parts[1].length === 3 ? parts.join("") : parts.join(".");
-    }
-  } else if (dots > 1) {
-    const parts = n.split(".");
-    if (!/^\d{1,3}$/.test(parts[0]) ||
-        !parts.slice(1).every(g => /^\d{3}$/.test(g))) return 0;
-    n = parts.join("");
+    .replace(/٫/g, ".")
+    .replace(/٬/g, ",")
+    .replace(/[\u200e\u200f\u061c\u00a0\u202f]/g, " ")
+    .trim();
+
+  // Accept only known Egyptian currency markers surrounding one price.
+  const token = value
+    .replace(/^(?:EGP|LE|E\.G\.P\.|ج\.?\s*م\.?|جنيه(?:اً|ا|ات)?(?:\s+مصري(?:ة)?)?)\s*/i, "")
+    .replace(/\s*(?:EGP|LE|E\.G\.P\.|ج\.?\s*م\.?|جنيه(?:اً|ا|ات)?(?:\s+مصري(?:ة)?)?)$/i, "")
+    .trim();
+
+  if (!/^\d[\d.,]*$/.test(token)) return 0;
+
+  let normalized = "";
+
+  if (/^\d+$/.test(token)) {
+    normalized = token;
+  } else if (/^\d+\.\d{1,2}$/.test(token)) {
+    normalized = token;
+  } else if (/^\d{1,3}(?:,\d{3})+$/.test(token)) {
+    normalized = token.replace(/,/g, "");
+  } else if (/^\d{1,3}(?:,\d{3})+\.\d{1,2}$/.test(token)) {
+    normalized = token.replace(/,/g, "");
+  } else if (/^\d{1,3}(?:\.\d{3})+,\d{1,2}$/.test(token)) {
+    normalized = token.replace(/\./g, "").replace(",", ".");
+  } else {
+    // Reject single-dot three-digit ambiguity, malformed grouping,
+    // comma decimals, and any unrecognized numeric layout.
+    return 0;
   }
-  if (!/^\d+(?:\.\d+)?$/.test(n)) return 0;
-  const price = Number(n);
-  return Number.isFinite(price) && price > 0 ? price : 0;
+
+  const price = Number(normalized);
+  return Number.isFinite(price) && price > 0 && price <= 1_000_000_000
+    ? price
+    : 0;
 }
 
 function parseSearch(html: string, surface: Surface): DealCandidate[] {
@@ -459,21 +461,16 @@ function parseSearch(html: string, surface: Surface): DealCandidate[] {
     const card = html.slice(start.index, end);
     const title = extractTextAround(card, /<h2\b[^>]*>[\s\S]{0,3000}?<span\b[^>]*>([\s\S]{0,2000}?)<\/span>/i)
       || extractTextAround(card, /<h2\b[^>]*>([\s\S]{0,2500}?)<\/h2>/i);
-    const currentMatch = card.match(/<span\b[^>]*class=["'][^"']*\ba-price\b[^"']*["'][^>]*>[\s\S]{0,1000}?<span\b[^>]*class=["'][^"']*\ba-offscreen\b[^"']*["'][^>]*>([\s\S]{0,250}?)<\/span>/i)
-      || card.match(/<span\b[^>]*class=["'][^"']*\ba-offscreen\b[^"']*["'][^>]*>([^<]{1,120})<\/span>/i);
+    const currentMatch = card.match(/<span\b[^>]*class=["'][^"']*\ba-price\b[^"']*["'][^>]*>[\s\S]{0,1000}?<span\b[^>]*class=["'][^"']*\ba-offscreen\b[^"']*["'][^>]*>([\s\S]{0,250}?)<\/span>/i);
     const current = parseAmazonPrice(currentMatch ? currentMatch[1] : "");
     if (!title || !(current > 0)) continue;
     let old = 0;
     const oldRegion = card.match(/<span\b[^>]*class=["'][^"']*\ba-text-price\b[^"']*["'][^>]*>([\s\S]{0,1600}?)<\/span>/i);
     if (oldRegion) old = parseAmazonPrice(oldRegion[1]);
-    if (!(old > current)) {
-      const pctMatch = card.match(/(?:savingsPercentage[^>]*>|class=["'][^"']*savingsPercentage[^"']*["'][^>]*>)[^<]{0,50}-?\s*(\d+(?:\.\d+)?)\s*%/i);
-      const pct = pctMatch ? Number(pctMatch[1]) : 0;
-      if (pct >= 5 && pct <= 99) {
-        const derived = current / (1 - pct / 100);
-        if (derived > current && derived <= current * 100) old = Math.round(derived * 100) / 100;
-      }
-    }
+    // V14_AMAZON_STRICT_DISCOUNT_EVIDENCE:
+    // Never manufacture an old price from a discount badge.
+    // Only explicitly extracted card prices may become price evidence.
+    // Product-page verification remains mandatory before delivery.
     if (!(old > current)) old = 0;
     const imgTag = card.match(/<img\b[^>]*(?:class=["'][^"']*s-image[^"']*["'])[^>]*>/i)?.[0] || card.match(/<img\b[^>]*>/i)?.[0] || "";
     const image = attr(imgTag, "src") || attr(imgTag, "data-src");
