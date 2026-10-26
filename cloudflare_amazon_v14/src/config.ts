@@ -13,7 +13,7 @@ export function getSettings(env: V14Env): Settings {
     min_confidence_normal: num(env.V14_MIN_CONFIDENCE_NORMAL, 0.62),
     min_confidence_ultra: num(env.V14_MIN_CONFIDENCE_ULTRA, 0.76),
     browser_daily_budget_ms: Math.max(0, num(env.V14_BROWSER_DAILY_BUDGET_MS, 540000)),
-    amazon_discovery_limit: Math.max(1, Math.min(20, Math.floor(num(env.V14_AMAZON_DISCOVERY_LIMIT, 10)))),
+    amazon_discovery_limit: Math.max(1, Math.min(20, Math.floor(num(env.V14_AMAZON_DISCOVERY_LIMIT, 14)))),
     noon_discovery_limit: Math.max(1, Math.min(20, Math.floor(num(env.V14_NOON_DISCOVERY_LIMIT, 8)))),
     max_attempts: 5,
     retry_base_seconds: 30,
