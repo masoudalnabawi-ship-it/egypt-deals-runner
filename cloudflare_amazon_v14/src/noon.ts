@@ -316,13 +316,16 @@ export async function fetchNoonSurface(
    * Noon currently rejects the internal /_vs API
    * from Cloudflare, so V14 no longer depends on it.
    */
+  // Allow public Noon Egypt search and category pages.
+  // Internal API endpoints remain prohibited.
+  const target = new URL(surface.url);
   if (
-    surface.url.includes("/search/") ||
-    surface.url.includes("/_vs/")
+    target.protocol !== "https:" ||
+    target.hostname !== "www.noon.com" ||
+    !target.pathname.startsWith("/egypt-en/") ||
+    target.pathname.includes("/_vs/")
   ) {
-    throw new Error(
-      "noon_public_catalog_surface_required"
-    );
+    throw new Error("noon_invalid_public_egypt_surface");
   }
 
   const res = await fetch(

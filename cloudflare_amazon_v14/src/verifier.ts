@@ -855,11 +855,22 @@ async function verifyNoon(
     );
   }
 
-  let signals = 2;
+  // NOON: require a genuine 65%+ discount from live product prices.
+  const realDiscount =
+    old > current
+      ? ((old - current) / old) * 100
+      : 0;
 
-  if (old > current) {
-    signals = 3;
+  if (
+    !Number.isFinite(realDiscount) ||
+    realDiscount < 65
+  ) {
+    throw new VerificationRejected(
+      "noon_live_discount_below_65"
+    );
   }
+
+  let signals = 3;
 
   const deal: DealCandidate = {
     ...incoming,

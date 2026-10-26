@@ -46,7 +46,7 @@ function historicalLabelAr(
 }
 
 function reviewToken(env: V14Env, row: DealRow): string {
-  if (row.store === "noon") return String(env.NOON_REVIEW_BOT_TOKEN || env.TELEGRAM_BOT_TOKEN || "").trim();
+  if (row.store === "noon") return String(env.NOON_REVIEW_BOT_TOKEN || "").trim();
   return String(env.TELEGRAM_BOT_TOKEN || "").trim();
 }
 
@@ -57,10 +57,11 @@ function reviewChat(env: V14Env, row: DealRow): string {
 
 function publicChat(env: V14Env, row: DealRow): string {
   if (row.store === "noon") {
-    // Noon can never fall back to an Amazon destination.
+    // Noon uses its own bot to publish to the existing shared channel.
     return String(
       env.NOON_CHANNEL_ID ||
-      noonReviewChatId(env) ||
+      env.AMAZON_CHANNEL_ID ||
+      env.TELEGRAM_CHANNEL_ID ||
       ""
     ).trim();
   }
@@ -384,6 +385,17 @@ export async function sendReview(
     }
   }
 
+  // NOON HARD SAFETY GATE: verified real discount >=65%.
+  if (
+    row.store === "noon" &&
+    (
+      !Number.isFinite(Number(row.real_discount)) ||
+      Number(row.real_discount) < 65
+    )
+  ) {
+    throw new Error("HARD_ROUTE_BLOCK:noon_verified_discount_below_65");
+  }
+
   const token = reviewToken(env, row);
   let chatId = reviewChat(env, row);
 
@@ -494,7 +506,9 @@ export async function sendReview(
           reply_markup: keys,
         },
       );
-    } catch {}
+    } catch (error) {
+      if (row.store === "noon") throw error;
+    }
   }
 
   return telegramCall(
@@ -518,20 +532,32 @@ export async function sendPublic(
   repo?: D1Repository,
   reviewScreenshotFileId = "",
 ): Promise<any> {
-  const token = String(env.TELEGRAM_BOT_TOKEN || "").trim();
+  const token = String(
+    row.store === "noon"
+      ? env.NOON_REVIEW_BOT_TOKEN || ""
+      : env.TELEGRAM_BOT_TOKEN || ""
+  ).trim();
   let chatId = publicChat(env, row);
 
-  if (row.store === "noon" && !chatId && repo) {
-    const runtimeNoonChat =
-      await repo.counterGet("noon_review_chat_id");
+  if (row.store === "noon") {
+    if (!chatId) {
+      throw new Error("NOON_CHANNEL_ID_missing");
+    }
 
-    if (runtimeNoonChat) {
-      chatId = String(runtimeNoonChat);
+    const runtimeReviewChat = repo
+      ? String(await repo.counterGet("noon_review_chat_id") || "")
+      : "";
+
+    if (
+      chatId === noonReviewChatId(env) ||
+      (runtimeReviewChat && chatId === runtimeReviewChat)
+    ) {
+      throw new Error("HARD_ROUTE_BLOCK:noon_channel_equals_review");
     }
   }
   if (!token) throw new Error("TELEGRAM_BOT_TOKEN_missing");
   if (!chatId) throw new Error(`telegram_public_chat_missing:${row.store}`);
-  const prefix = urgent ? "🚀 <b>عرض عاجل</b>\n\n" : "🛒 <b>عرض أمازون</b>\n\n";
+  const prefix = urgent ? "🚀 <b>عرض عاجل</b>\n\n" : row.store === "noon" ? "🛒 <b>عرض نون</b>\n\n" : "🛒 <b>عرض أمازون</b>\n\n";
   const cap = prefix + caption(row);
   const keys = row.store === "amazon" ? { inline_keyboard: [] } : { inline_keyboard: [[{ text: "🔗 فتح المنتج", url: row.url }]] };
   // Amazon publication must reuse the actual screenshot from the reviewed Telegram photo.
@@ -540,8 +566,8 @@ export async function sendPublic(
     : String(row.image_url || "").trim();
   if (row.store === "amazon" && !image) throw new Error("amazon_review_screenshot_missing");
   if (image) {
-    try { return await telegramCall(token, "sendPhoto", { chat_id: chatId, photo: image, caption: `${cap.slice(0, Math.max(0, 950 - row.url.length))}\n\n🛒 <a href="${htmlEscape(row.url)}">اضغط هنا لشراء المنتج من أمازون 🔗</a>`, parse_mode: "HTML", reply_markup: keys }); }
-    catch (error) { if (row.store === "amazon") throw error; }
+    try { return await telegramCall(token, "sendPhoto", { chat_id: chatId, photo: image, caption: `${cap.slice(0, Math.max(0, 950 - row.url.length))}\n\n🛒 <a href="${htmlEscape(row.url)}">${row.store === "noon" ? "اضغط هنا لشراء المنتج من نون 🔗" : "اضغط هنا لشراء المنتج من أمازون 🔗"}</a>`, parse_mode: "HTML", reply_markup: keys }); }
+    catch (error) { if (row.store === "amazon" || row.store === "noon") throw error; }
   }
   return telegramCall(token, "sendMessage", { chat_id: chatId, text: `${cap}\n\n🔗 ${htmlEscape(row.url)}`, parse_mode: "HTML", disable_web_page_preview: false, reply_markup: keys });
 }
@@ -559,5 +585,5 @@ export async function setWebhook(token: string, url: string, secret: string): Pr
 }
 
 export function tokenForWebhook(env: V14Env, route: "main" | "noon"): string {
-  return route === "noon" ? String(env.NOON_REVIEW_BOT_TOKEN || env.TELEGRAM_BOT_TOKEN || "").trim() : String(env.TELEGRAM_BOT_TOKEN || "").trim();
+  return route === "noon" ? String(env.NOON_REVIEW_BOT_TOKEN || "").trim() : String(env.TELEGRAM_BOT_TOKEN || "").trim();
 }

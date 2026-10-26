@@ -779,10 +779,9 @@ async function admitNoon(repo: D1Repository, settings: Settings, deals: DealCand
   for (const deal of ranked) {
     if (!(deal.current_price > 0)) continue;
     const visible = discountPercent(deal);
-    // Normal Noon path only. We still allow one no-discount candidate per scan so
-    // trusted history can mature, but never route it to Ultra.
-    // v14_normal_floor_20: allow one low-discount Noon history probe only.
-    if (visible < Math.max(20, settings.normal_min_discount) && queued > 0) continue;
+    // Noon-only discovery gate: 65% minimum.
+    // Never admit offers without sufficient visible discount evidence.
+    if (!Number.isFinite(visible) || visible < 65) continue;
     const prelim = preliminaryDecision(settings, deal);
     prelim.lane = 'normal';
     const result = await repo.upsertCandidate(deal, prelim);
@@ -1670,7 +1669,7 @@ async function discoveryStep(
   return Promise.all(tasks);
 }
 
-async function verifyOne(env: V14Env, repo: D1Repository, settings: Settings): Promise<Record<string, unknown> | null> {
+async function verifyOne(env: V14Env, repo: D1Repository, settings: Settings, store: 'amazon' | 'noon' = 'amazon'): Promise<Record<string, unknown> | null> {
   /*
    * HYBRID V14:
    * Cloudflare verifies Amazon Normal.
@@ -1683,9 +1682,9 @@ async function verifyOne(env: V14Env, repo: D1Repository, settings: Settings): P
    * Neither queue can permanently starve the other.
    */
   const row = await repo.claimForVerification(
-    "amazon",
+    store,
     "normal",
-    workerId("verify-amazon-normal"),
+    workerId(store === "noon" ? "verify-noon-normal" : "verify-amazon-normal"),
     settings.lease_seconds,
   );
     if (!row) return null;
@@ -1722,6 +1721,18 @@ async function verifyOne(env: V14Env, repo: D1Repository, settings: Settings): P
       cross_store_store: cross.row?.store || null,
       cross_store_similarity: cross.similarity,
     });
+    // Noon 65% must be from live old/current prices, not coupon inference.
+    if (verified.store === 'noon') {
+      const current = Number(verified.current_price);
+      const old = Number(verified.old_price);
+      const liveDiscount = old > current && current > 0
+        ? ((old - current) / old) * 100 : 0;
+      if (!Number.isFinite(liveDiscount) || liveDiscount < 65) {
+        await repo.markRejected(row.deal_key, 'noon_live_discount_below_65');
+        return {deal: row.deal_key.slice(0,10), state:'rejected', reason:'noon_live_discount_below_65'};
+      }
+      decision.real_discount = Math.round(liveDiscount * 100) / 100;
+    }
     const [ok, reason] =
       acceptable(settings, decision);
 
@@ -1902,13 +1913,95 @@ async function verifyOne(env: V14Env, repo: D1Repository, settings: Settings): P
 }
 
 async function deliveryStep(
-  _env: V14Env,
-  _repo: D1Repository,
-  _settings: Settings,
+  env: V14Env,
+  repo: D1Repository,
+  settings: Settings,
 ): Promise<Record<string, unknown>[]> {
-  // Amazon screenshots and delivery are handled by GitHub.
-  // Never send Noon deals from the Amazon Worker.
-  return [];
+  // Amazon screenshots and delivery remain GitHub-only.
+  // This Worker delivers verified Noon deals for manual review.
+  const results: Record<string, unknown>[] = [];
+
+  const row = await repo.claimNoonForDelivery(
+    workerId("deliver-noon-review"),
+    settings.lease_seconds,
+  );
+
+  if (!row) return results;
+
+  try {
+    if (
+      !Number.isFinite(Number(row.real_discount)) ||
+      Number(row.real_discount) < 65
+    ) {
+      await repo.markRejected(
+        row.deal_key,
+        "noon_verified_discount_below_65",
+      );
+      return [{state:"rejected", store:"noon", reason:"discount_below_65"}];
+    }
+
+    // Reserve the Noon review send before calling Telegram.
+    // Never automatically resend after an uncertain outcome.
+    if (!await repo.claimNoonReview(row.deal_key)) {
+      await repo.markSent(row.deal_key);
+      return [{
+        state: "review_already_claimed",
+        store: "noon",
+        deal: row.deal_key.slice(0, 10),
+      }];
+    }
+
+    try {
+      await sendReview(env, row, repo, settings);
+    } catch (error) {
+      const reason = error instanceof Error ? error.message : String(error);
+      await repo.markSent(row.deal_key);
+      await repo.event("noon_review_send_uncertain", "noon", row.deal_key, {reason});
+      return [{
+        state: "review_send_uncertain",
+        store: "noon",
+        deal: row.deal_key.slice(0, 10),
+      }];
+    }
+
+    await repo.markSent(row.deal_key);
+    await repo.event("noon_review_sent", "noon", row.deal_key);
+
+    results.push({
+      state:"sent_to_review",
+      store:"noon",
+      deal:row.deal_key.slice(0,10),
+    });
+  } catch (e) {
+    const reason = e instanceof Error ? e.message : String(e);
+
+    // If Telegram delivery was already claimed, never requeue it.
+    // The outcome may be uncertain and requires reconciliation.
+    if (await repo.hasNoonReviewClaim(row.deal_key)) {
+      results.push({
+        state: "review_requires_reconciliation",
+        store: "noon",
+        deal: row.deal_key.slice(0, 10),
+        reason,
+      });
+      return results;
+    }
+
+    await repo.deliveryRetry(
+      row.deal_key,
+      reason,
+      settings.retry_base_seconds,
+      settings.max_attempts,
+    );
+
+    results.push({
+      state:"retry",
+      store:"noon",
+      reason,
+    });
+  }
+
+  return results;
 }
 
 
@@ -2038,6 +2131,9 @@ export async function runProcessingCycle(
     verified.push(item);
   }
 
+  const noonVerified = await verifyOne(env, repo, settings, 'noon');
+  if (noonVerified) verified.push(noonVerified);
+
   const delivered =
     await deliveryStep(
       env,
@@ -2087,6 +2183,8 @@ export async function runCycle(env: V14Env, settings: Settings): Promise<Record<
   const discovery = await discoveryStep(env, repo, settings);
   const verified: Record<string, unknown>[] = [];
   for (let i=0;i<3;i++) { const x = await verifyOne(env, repo, settings); if (!x) break; verified.push(x); }
+  const noonVerified = await verifyOne(env, repo, settings, 'noon');
+  if (noonVerified) verified.push(noonVerified);
   const delivered = await deliveryStep(env, repo, settings);
   const stats = await repo.stats();
   const result = { event:'v14_cycle', stale_released: stale, discovery, verified, delivered, stats };
@@ -2173,6 +2271,33 @@ export async function handleTelegramUpdate(env: V14Env, route: 'main'|'noon', up
   const row = await repo.findByPrefix(shortKey);
   if (!row) { await answerCallback(token, cbId, 'العرض غير موجود في قاعدة V14', true); return new Response('ok'); }
 
+  // NOON: callbacks must arrive through the Noon bot route.
+  if (row.store === 'noon' && route !== 'noon') {
+    await answerCallback(token, cbId, 'استخدم بوت مراجعة نون', true);
+    return new Response('ok');
+  }
+
+  // Never allow Noon publication before verified 65%+ discount.
+  if (
+    row.store === 'noon' &&
+    (action === 'p' || action === 'u') &&
+    (
+      !['verified', 'delivering', 'sent'].includes(row.state) ||
+      !Number.isFinite(Number(row.real_discount)) ||
+      Number(row.real_discount) < 65
+    )
+  ) {
+    await answerCallback(token, cbId, 'عرض نون غير متحقق منه بخصم 65% فأكثر', true);
+    return new Response('ok');
+  }
+
+  // Only Noon offers that were actually reserved for review may be approved.
+  if (row.store === 'noon' && (action === 'p' || action === 'u') &&
+      !(await repo.hasNoonReviewClaim(row.deal_key))) {
+    await answerCallback(token, cbId, 'عرض نون لم يُرسل للمراجعة', true);
+    return new Response('ok');
+  }
+
   if (action === 'r') {
     await repo.event(
       'manual_reject',
@@ -2199,7 +2324,7 @@ export async function handleTelegramUpdate(env: V14Env, route: 'main'|'noon', up
       return new Response('ok');
     }
 
-    if (row.state === 'rejected' || row.state === 'sent') {
+    if (row.state === 'rejected' || (row.store !== 'noon' && row.state === 'sent')) {
       await answerCallback(token, cbId, 'العرض مرفوض أو منشور سابقًا؛ لا يمكن نشره', true);
       return new Response('ok');
     }
@@ -2207,13 +2332,24 @@ export async function handleTelegramUpdate(env: V14Env, route: 'main'|'noon', up
     if (!await repo.claimManualPublish(row.deal_key)) { await answerCallback(token, cbId, 'جارٍ النشر أو تم نشر العرض بالفعل'); return new Response('ok'); }
     try {
       // Explicit manual override: user can publish before background verification.
-      const publicRow: DealRow = { ...row, old_price: null, real_discount: 0 };
+      const publicRow: DealRow = row.store === 'noon' ? row : { ...row, old_price: null, real_discount: 0 };
       const photoList = Array.isArray(message.photo) ? message.photo : [];
       const reviewScreenshotFileId = String(photoList[photoList.length - 1]?.file_id || '');
       await sendPublic(env, publicRow, action === 'u', repo, reviewScreenshotFileId);
       await repo.event('manual_publish', row.store, row.deal_key, {urgent: action === 'u'});
       await answerCallback(token, cbId, action === 'u' ? 'تم النشر العاجل 🚀' : 'تم النشر ✅');
     } catch (e) {
+      if (row.store === 'noon') {
+        // Fail closed: Telegram may have accepted the publication already.
+        // Keep the atomic claim until a human reconciles the channel.
+        try {
+          await repo.event('noon_publication_uncertain', 'noon', row.deal_key, {
+            error: e instanceof Error ? e.message : String(e),
+          });
+        } catch {}
+        await answerCallback(token, cbId, 'نتيجة النشر غير مؤكدة؛ افحص القناة المشتركة قبل أي محاولة جديدة', true);
+        return new Response('ok');
+      }
       await repo.releaseManualPublish(row.deal_key);
       await answerCallback(token, cbId, 'تعذر النشر الآن، جرّب مرة أخرى', true);
       return new Response('ok');

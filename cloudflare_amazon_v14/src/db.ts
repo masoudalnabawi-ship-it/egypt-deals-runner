@@ -26,6 +26,33 @@ export class D1Repository {
 
   // Phase 1: record the Telegram alert ID for safe, future in-place updates.
   // Additive migration; existing claims and deduplication remain unchanged.
+  // Noon review: atomic at-most-once automatic send claim.
+  // An uncertain Telegram outcome requires manual reconciliation.
+  async hasNoonReviewClaim(key: string): Promise<boolean> {
+    await this.db.prepare(`CREATE TABLE IF NOT EXISTS v14_noon_review_claims (
+      deal_key TEXT PRIMARY KEY,
+      claimed_at INTEGER NOT NULL
+    )`).run();
+    const row = await this.db.prepare(
+      "SELECT 1 AS ok FROM v14_noon_review_claims WHERE deal_key=?"
+    ).bind(key).first<{ok: number}>();
+    return Boolean(row);
+  }
+
+  async claimNoonReview(key: string): Promise<boolean> {
+    await this.db.prepare(`CREATE TABLE IF NOT EXISTS v14_noon_review_claims (
+      deal_key TEXT PRIMARY KEY,
+      claimed_at INTEGER NOT NULL
+    )`).run();
+
+    const result = await this.db.prepare(`
+      INSERT OR IGNORE INTO v14_noon_review_claims
+      (deal_key, claimed_at) VALUES (?,?)
+    `).bind(key, nowTs()).run();
+
+    return Number(result.meta?.changes || 0) === 1;
+  }
+
   async claimManualPublish(key: string): Promise<boolean> {
     await this.db.prepare(`CREATE TABLE IF NOT EXISTS v14_manual_publish_claims (
       deal_key TEXT PRIMARY KEY, claimed_at INTEGER NOT NULL

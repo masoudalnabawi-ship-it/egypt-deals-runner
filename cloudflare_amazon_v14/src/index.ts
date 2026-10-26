@@ -1533,10 +1533,10 @@ async function bootstrap(request: Request, env: V14Env): Promise<Response> {
   const base = new URL(request.url).origin;
 
   const mainToken = String(env.TELEGRAM_BOT_TOKEN || '').trim();
-  const noonToken = String(env.NOON_REVIEW_BOT_TOKEN || mainToken).trim();
+  const noonToken = String(env.NOON_REVIEW_BOT_TOKEN || '').trim();
 
   const mainSecret = String(env.TELEGRAM_WEBHOOK_SECRET || '').trim();
-  const noonSecret = String(env.NOON_TELEGRAM_WEBHOOK_SECRET || mainSecret).trim();
+  const noonSecret = String(env.NOON_TELEGRAM_WEBHOOK_SECRET || '').trim();
 
   if (!mainToken || !mainSecret) {
     return json({ok:false,error:'telegram_secrets_missing'}, 400);
@@ -1549,7 +1549,7 @@ async function bootstrap(request: Request, env: V14Env): Promise<Response> {
   );
 
   const separateNoonBot =
-    Boolean(noonToken && noonToken !== mainToken);
+    Boolean(noonToken && noonSecret && noonToken !== mainToken && noonSecret !== mainSecret);
 
   if (separateNoonBot) {
     await setWebhook(
@@ -1618,7 +1618,7 @@ export default {
       return handleTelegramUpdate(env,'main',await request.json());
     }
     if (request.method === 'POST' && url.pathname === '/telegram/noon') {
-      const expected = String(env.NOON_TELEGRAM_WEBHOOK_SECRET || env.TELEGRAM_WEBHOOK_SECRET || '');
+      const expected = String(env.NOON_TELEGRAM_WEBHOOK_SECRET || '');
       if (!expected || (request.headers.get('x-telegram-bot-api-secret-token') || '') !== expected) return new Response('forbidden',{status:403});
       return handleTelegramUpdate(env,'noon',await request.json());
     }
