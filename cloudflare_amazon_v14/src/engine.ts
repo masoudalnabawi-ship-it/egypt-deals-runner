@@ -1418,8 +1418,6 @@ async function discoveryStep(
    * the larger share of specialist search resources.
    */
   if (
-    cycle % 2 === 0
-    &&
     ultraSurface
     &&
     ultraSurface.name !==
