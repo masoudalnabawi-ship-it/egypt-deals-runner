@@ -587,3 +587,31 @@ export async function setWebhook(token: string, url: string, secret: string): Pr
 export function tokenForWebhook(env: V14Env, route: "main" | "noon"): string {
   return route === "noon" ? String(env.NOON_REVIEW_BOT_TOKEN || "").trim() : String(env.TELEGRAM_BOT_TOKEN || "").trim();
 }
+
+// Private product-watch messages. Never use the public channel.
+export async function sendWatchMessage(
+  env: V14Env,
+  route: "main" | "noon",
+  chatId: string,
+  text: string
+): Promise<void> {
+  if (!/^[1-9]\d*$/.test(chatId)) {
+    throw new Error("watch_private_chat_required");
+  }
+
+  if (!text.trim() || text.length > 4096) {
+    throw new Error("invalid_watch_message");
+  }
+
+  const token = tokenForWebhook(env, route);
+
+  if (!token) {
+    throw new Error("watch_bot_token_missing");
+  }
+
+  await telegramCall(token, "sendMessage", {
+    chat_id: chatId,
+    text,
+    disable_web_page_preview: true
+  });
+}

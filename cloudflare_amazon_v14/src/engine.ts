@@ -1,3 +1,4 @@
+import { handleWatchCommand } from "./watch_commands";
 import type { DealCandidate, DealDecision, DealRow, Settings, Surface, V14Env } from './types';
 import { AMAZON_SURFACES, fetchAmazonSurface, parseAmazon } from './amazon';
 import { NOON_SURFACES, fetchNoonSurface, parseNoon } from './noon';
@@ -2237,6 +2238,14 @@ async function callbackAllowed(
 }
 
 export async function handleTelegramUpdate(env: V14Env, route: 'main'|'noon', update: any): Promise<Response> {
+  const incoming = update?.message;
+  if (incoming) {
+    if (incoming.chat?.type === "private") {
+      await handleWatchCommand(env, route, incoming);
+    }
+    return new Response("ok");
+  }
+
   const cb = update?.callback_query;
   if (!cb) return new Response('ok');
   const message = cb.message || {};
