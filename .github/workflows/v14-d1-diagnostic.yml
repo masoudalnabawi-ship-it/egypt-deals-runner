@@ -1,0 +1,19 @@
+name: V14 D1 Diagnostic
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Read Amazon stats for last 24 hours
+        env:
+          V14_KEY: ${{ secrets.V14_GITHUB_PIPELINE_KEY }}
+        run: |
+          test -n "$V14_KEY" || exit 1
+          curl -fsS --max-time 30 -H "Authorization: Bearer $V14_KEY" "https://egypt-amazon-v14.masoud-amazon-eg.workers.dev/admin/ultra-health"
