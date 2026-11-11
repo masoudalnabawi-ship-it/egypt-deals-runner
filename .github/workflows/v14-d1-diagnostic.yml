@@ -11,9 +11,80 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
-      - name: Read Amazon stats for last 24 hours
+      - name: Read D1 Amazon statistics
         env:
-          V14_KEY: ${{ secrets.V14_GITHUB_PIPELINE_KEY }}
+          CF_TOKEN: ${{ secrets.CLOUD_API_KEY }}
+          DB_ID: 5b5a3a0b-8101-4fd0-a956-738f792ec32e
         run: |
-          test -n "$V14_KEY" || exit 1
-          curl -fsS --max-time 30 -H "Authorization: Bearer $V14_KEY" "https://egypt-amazon-v14.masoud-amazon-eg.workers.dev/admin/ultra-health"
+          python3 - <<'SCRIPT'
+          import os, json, time, urllib.request
+
+          token = os.environ.get("CF_TOKEN", "")
+          dbid = os.environ["DB_ID"]
+
+          if not token:
+              raise SystemExit("CLOUD_API_KEY_MISSING")
+
+          def request(url, sql=None):
+              headers = {"Authorization": "Bearer " + token}
+              data = None
+              if sql is not None:
+                  headers["Content-Type"] = "application/json"
+                  data = json.dumps({"sql": sql}).encode()
+              req = urllib.request.Request(
+                  url, data=data, headers=headers
+              )
+              with urllib.request.urlopen(req, timeout=25) as r:
+                  obj = json.load(r)
+              if not obj.get("success"):
+                  raise RuntimeError(str(obj.get("errors", [])))
+              return obj
+
+          accounts = request(
+              "https://api.cloudflare.com/client/v4/accounts"
+          )["result"]
+
+          since = int(time.time()) - 86400
+
+          queries = {
+              "DEALS": (
+                  "SELECT lane,state,COUNT(*) AS total,"
+                  "MAX(discovered_at) AS last_discovered,"
+                  "MAX(verified_at) AS last_verified,"
+                  "MAX(sent_at) AS last_sent "
+                  "FROM deals WHERE store='amazon' "
+                  f"AND discovered_at >= {since} "
+                  "GROUP BY lane,state"
+              ),
+              "EVENTS": (
+                  "SELECT event,COUNT(*) AS total "
+                  "FROM events WHERE store='amazon' "
+                  f"AND ts >= {since} "
+                  "GROUP BY event ORDER BY total DESC LIMIT 30"
+              )
+          }
+
+          for account in accounts:
+              url = (
+                  "https://api.cloudflare.com/client/v4/accounts/"
+                  + account["id"] + "/d1/database/"
+                  + dbid + "/query"
+              )
+              try:
+                  result = {}
+                  for name, sql in queries.items():
+                      obj = request(url, sql)
+                      result[name] = [
+                          row
+                          for item in obj.get("result", [])
+                          for row in item.get("results", [])
+                      ]
+                  print("V14_D1_LAST_24_HOURS")
+                  print(json.dumps(result, indent=2))
+                  print("D1_READ_ONLY_SUCCESS")
+                  break
+              except Exception as e:
+                  print("ACCOUNT_QUERY_FAILED:", type(e).__name__)
+          else:
+              raise SystemExit("D1_ACCESS_FAILED")
+          SCRIPT
