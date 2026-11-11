@@ -1551,7 +1551,16 @@ async function discoveryStep(
   const bigDiscountSurface = AMAZON_SURFACES.find(
     x => x.name === `v14_big_${bigDiscountTier}_${bigDiscountCategory}`,
   );
-  if (bigDiscountSurface) tasks.push(scanAmazonOnce(bigDiscountSurface));
+  if (bigDiscountSurface) {
+    const discoverySurface = Math.floor(cycle / (bigDiscountCategories.length * bigDiscountTiers.length)) % 5 !== 4
+      ? {
+          ...bigDiscountSurface,
+          name: `${bigDiscountSurface.name}_organic`,
+          url: bigDiscountSurface.url.replace(/([?&])rh=p_8%3A[0-9]+-(&|$)/, "$1").replace(/[?&]$/, ""),
+        }
+      : bigDiscountSurface;
+    tasks.push(scanAmazonOnce(discoverySurface));
+  }
 
   /*
    * AMAZON FULL-DEPARTMENT SWEEP
