@@ -666,7 +666,8 @@ async function admitAmazon(env: V14Env, repo: D1Repository, settings: Settings, 
 
   const topPrioritySource =
     (
-      surface.name.includes("75filter")
+      /^v14_big_(?:65|70|75|80|90)_/.test(surface.name)
+      || surface.name.includes("75filter")
       || surface.name.includes("80filter")
       || surface.name.includes("85filter")
       || surface.name.includes("90filter")
@@ -1541,9 +1542,12 @@ async function discoveryStep(
     "fitness", "bicycles", "baby_strollers", "school", "garden",
     "auto_parts", "health", "shoes", "bags", "furniture", "toys",
   ];
-  const bigDiscountIndex = Math.floor(cycle / bigDiscountTiers.length);
-  const bigDiscountTier = bigDiscountTiers[cycle % bigDiscountTiers.length];
-  const bigDiscountCategory = bigDiscountCategories[bigDiscountIndex % bigDiscountCategories.length];
+  const bigDiscountTier = bigDiscountTiers[
+    Math.floor(cycle / bigDiscountCategories.length) % bigDiscountTiers.length
+  ];
+  const bigDiscountCategory = bigDiscountCategories[
+    cycle % bigDiscountCategories.length
+  ];
   const bigDiscountSurface = AMAZON_SURFACES.find(
     x => x.name === `v14_big_${bigDiscountTier}_${bigDiscountCategory}`,
   );
