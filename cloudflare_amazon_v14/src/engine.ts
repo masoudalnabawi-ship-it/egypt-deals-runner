@@ -1502,6 +1502,54 @@ async function discoveryStep(
   }
 
   /*
+   * V14_BICYCLE_FAST_LANE_V1
+   * Scan one bicycle source every 2 minutes.
+   * Uses the existing per-cycle URL deduplication.
+   */
+  if (cycle % 2 === 0) {
+    const bicycleSources = [
+      "ultra65_kids_bicycles",
+      "ultra65_complete_bicycles",
+      "ultra65_training_bikes",
+      "ultra65_derby_a416",
+    ];
+
+    const bicycleName =
+      bicycleSources[
+        Math.floor(cycle / 2) % bicycleSources.length
+      ];
+
+    const bicycleSurface =
+      AMAZON_SURFACES.find(x => x.name === bicycleName);
+
+    if (bicycleSurface) {
+      tasks.push(scanAmazonOnce(bicycleSurface));
+    }
+  }
+
+  /*
+   * V14_BIG_DISCOUNT_ROTATION_V1
+   * One bounded extra scan per discovery cycle. Rotate all departments
+   * within a discount tier before moving to the next tier; visit 90%
+   * more frequently without starving the 65-80% discovery safety net.
+   * Reuse per-cycle URL deduplication and existing product verification.
+   */
+  const bigDiscountTiers = [90, 90, 80, 75, 70, 65];
+  const bigDiscountCategories = [
+    "appliances", "large_appliances", "refrigerators", "televisions",
+    "laptops", "monitors", "headphones", "cameras", "gaming_consoles",
+    "fitness", "bicycles", "baby_strollers", "school", "garden",
+    "auto_parts", "health", "shoes", "bags", "furniture", "toys",
+  ];
+  const bigDiscountIndex = Math.floor(cycle / bigDiscountTiers.length);
+  const bigDiscountTier = bigDiscountTiers[cycle % bigDiscountTiers.length];
+  const bigDiscountCategory = bigDiscountCategories[bigDiscountIndex % bigDiscountCategories.length];
+  const bigDiscountSurface = AMAZON_SURFACES.find(
+    x => x.name === `v14_big_${bigDiscountTier}_${bigDiscountCategory}`,
+  );
+  if (bigDiscountSurface) tasks.push(scanAmazonOnce(bigDiscountSurface));
+
+  /*
    * AMAZON FULL-DEPARTMENT SWEEP
    *
    * One extra category scan every 2 cycles.
