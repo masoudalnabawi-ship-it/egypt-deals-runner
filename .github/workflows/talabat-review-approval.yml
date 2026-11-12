@@ -1,0 +1,107 @@
+name: Talabat Safe Review Buttons
+
+on:
+  push:
+    branches: [used-probe-test]
+    paths:
+      - 'cloudflare_amazon_v14/talabat_review/**'
+      - '.github/workflows/talabat-review-approval.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: talabat-review-buttons
+  cancel-in-progress: false
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUD_API_KEY }}
+      TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+      AMAZON_CHANNEL_TARGET: ${{ secrets.AMAZON_CHANNEL_ID || secrets.TELEGRAM_CHANNEL_ID }}
+      REVIEW_WORKER_URL: https://egypt-talabat-review.masoud-amazon-eg.workers.dev
+      CI: 'true'
+
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Fail closed if channel configuration is missing
+        run: |
+          test -n "$CLOUDFLARE_API_TOKEN" || { echo CLOUD_TOKEN_MISSING; exit 1; }
+          test -n "$TELEGRAM_BOT_TOKEN" || { echo BOT_TOKEN_MISSING; exit 1; }
+          test -n "$AMAZON_CHANNEL_TARGET" || { echo AMAZON_CHANNEL_ID_NOT_CONFIGURED_IN_GITHUB; exit 1; }
+
+      - name: Install Wrangler
+        working-directory: cloudflare_amazon_v14
+        run: npm ci --no-audit --no-fund
+
+      - name: Provision dedicated Talabat D1 database
+        working-directory: cloudflare_amazon_v14
+        run: |
+          npx wrangler d1 list --json > /tmp/talabat_dbs.json
+          if ! python3 - <<'PY'
+          import json
+          d=json.load(open('/tmp/talabat_dbs.json'))
+          if isinstance(d,dict): d=d.get('result',[])
+          if not any(x.get('name')=='talabat-mart-review-db' for x in d): exit(1)
+          PY
+          then
+            npx wrangler d1 create talabat-mart-review-db
+          fi
+          npx wrangler d1 list --json > /tmp/talabat_dbs.json
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+          d=json.load(open('/tmp/talabat_dbs.json'))
+          if isinstance(d,dict): d=d.get('result',[])
+          db=next(x for x in d if x.get('name')=='talabat-mart-review-db')
+          uuid=db.get('uuid') or db.get('database_id') or db.get('id')
+          assert uuid
+          config={'name':'egypt-talabat-review','main':'worker.js','compatibility_date':'2026-10-06',
+                  'd1_databases':[{'binding':'DB','database_name':'talabat-mart-review-db',
+                                   'database_id':uuid,'remote':True}]}
+          Path('talabat_review/wrangler.jsonc').write_text(json.dumps(config,indent=2))
+          print('TALABAT_DB_CONFIG_READY')
+          PY
+          npx wrangler d1 execute talabat-mart-review-db --remote --yes --command "CREATE TABLE IF NOT EXISTS talabat_reviews(id TEXT PRIMARY KEY, status TEXT NOT NULL, title TEXT NOT NULL, area TEXT NOT NULL, sku TEXT NOT NULL, price REAL NOT NULL, discount REAL NOT NULL, product_url TEXT NOT NULL, source_url TEXT NOT NULL, proof_at INTEGER NOT NULL, review_message_id INTEGER, created_at INTEGER NOT NULL, published_at INTEGER);"
+
+      - name: Deploy separate approval Worker
+        working-directory: cloudflare_amazon_v14
+        run: |
+          npx wrangler deploy -c talabat_review/wrangler.jsonc
+          printf '%s' "$TELEGRAM_BOT_TOKEN" | npx wrangler secret put BOT_TOKEN -c talabat_review/wrangler.jsonc
+          printf '%s' "$AMAZON_CHANNEL_TARGET" | npx wrangler secret put CHANNEL_ID -c talabat_review/wrangler.jsonc
+          sleep 20
+          curl --retry 3 --retry-all-errors --retry-delay 5 -fsS "$REVIEW_WORKER_URL/health"
+
+      - name: Install real Chromium
+        run: |
+          pip install playwright requests
+          python -m playwright install --with-deps chromium
+
+      - name: Generate screenshot without sending original alert
+        env:
+          TALABAT_PROOF_ONLY: '1'
+        run: python3 cloudflare_amazon_v14/scripts/talabat_visual_proof.py
+
+      - name: Send private photo with working approval controls
+        run: python3 cloudflare_amazon_v14/talabat_review/send_review.py
+
+      - name: Store screenshot evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: talabat-review-screenshot
+          path: cloudflare_amazon_v14/talabat_alerts/talabat_live_proof.png
+          if-no-files-found: ignore
+          retention-days: 3

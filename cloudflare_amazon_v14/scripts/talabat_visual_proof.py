@@ -129,6 +129,10 @@ if not mode_used or not out.exists() or out.stat().st_size < 4000:
 print("SCREENSHOT_CAPTURED:", mode_used)
 print("MATCHED_PAGE_PRICE:", price_text)
 
+if os.getenv("TALABAT_PROOF_ONLY") == "1":
+    print("TALABAT_SCREENSHOT_ONLY: READY")
+    raise SystemExit(0)
+
 token = os.getenv("TELEGRAM_BOT_TOKEN", "").strip()
 
 if not token:
