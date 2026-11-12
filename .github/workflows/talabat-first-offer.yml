@@ -15,61 +15,56 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Send first verified-page offer
+
+      - name: Send photo offer
         env:
           BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           CHAT_ID: "-1004375874566"
         run: |
           python3 - <<'SENDPY'
-          import json, os, time
-          import urllib.request
+          import json, os, time, urllib.request
           from pathlib import Path
-          from urllib.parse import urlsplit
           from datetime import datetime, timezone, timedelta
 
           x = json.loads(Path(
               "cloudflare_amazon_v14/talabat_alerts/first_offer.json"
           ).read_text(encoding="utf-8"))
 
-          if not os.getenv("BOT_TOKEN"):
-              raise SystemExit("BOT_TOKEN_MISSING")
-
-          age = time.time() - int(x["checked_at"])
-          if age < 0 or age > 86400:
-              raise SystemExit("STALE_RECHECK: NO_MESSAGE_SENT")
-
-          u = urlsplit(x["source"])
-          if u.scheme != "https" or u.hostname != "www.talabat.com":
-              raise SystemExit("INVALID_TALABAT_LINK")
+          token = os.environ["BOT_TOKEN"]
+          chat_id = os.environ["CHAT_ID"]
 
           checked = datetime.fromtimestamp(
               int(x["checked_at"]),
               timezone(timedelta(hours=2))
-          ).strftime("%Y-%m-%d %H:%M")
+          ).strftime("%d-%m-%Y %H:%M")
 
-          message = (
-              "🛒 طلبات مارت | أول عرض للمراجعة\n\n"
-              f"📍 الفرع: {x['area']}\n"
-              f"📦 المنتج: {x['title']}\n"
-              f"💰 السعر المرصود: {x['price']} جنيه\n"
-              f"🔥 الخصم المحسوب: {x['discount']}%\n"
+          caption = (
+              f"🛒 طلبات مارت | {x['area']}\n\n"
+              f"📦 {x['title']}\n"
+              f"💰 {x['price']} جنيه\n"
+              f"🔥 خصم {x['discount']}%\n"
               f"📦 مخزون الصفحة: {x['stock']}\n"
-              f"🕒 آخر تحقق: {checked} بتوقيت مصر\n\n"
-              "✅ السعر والمخزون تطابقا مع صفحة الفرع وقت الفحص\n"
-              "⚠️ التوصيل والسعر النهائي غير مؤكدين\n"
-              "🔎 الرابط التالي لصفحة القسم وليس المنتج مباشرة:\n"
-              f"{x['source']}"
+              f"🕒 تحقق: {checked}\n\n"
+              "✅ السعر والمخزون مطابقان وقت الفحص\n"
+              "⚠️ التوصيل والسعر النهائي غير مؤكدين"
           )
 
           data = json.dumps({
-              "chat_id": os.environ["CHAT_ID"],
-              "text": message,
-              "disable_web_page_preview": True
+              "chat_id": chat_id,
+              "photo": x["image"],
+              "caption": caption,
+              "reply_markup": {
+                  "inline_keyboard": [
+                      [
+                          {"text": "فتح المنتج (تجريبي)", "url": x["product_link"]},
+                          {"text": "فتح القسم", "url": x["category_link"]}
+                      ]
+                  ]
+              }
           }, ensure_ascii=False).encode("utf-8")
 
           req = urllib.request.Request(
-              "https://api.telegram.org/bot"
-              + os.environ["BOT_TOKEN"] + "/sendMessage",
+              "https://api.telegram.org/bot" + token + "/sendPhoto",
               data=data,
               headers={"Content-Type": "application/json"},
               method="POST"
@@ -81,5 +76,5 @@ jobs:
           if not result.get("ok"):
               raise SystemExit("TELEGRAM_SEND_FAILED")
 
-          print("TALABAT_FIRST_OFFER: SUCCESS")
+          print("TALABAT_PHOTO_OFFER: SUCCESS")
           SENDPY
