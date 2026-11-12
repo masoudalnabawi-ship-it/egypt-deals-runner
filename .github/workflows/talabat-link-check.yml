@@ -73,5 +73,38 @@ jobs:
                       print(label,"ERROR:",type(e).__name__)
               else:
                   print("PRODUCT_LINK_NOT_VERIFIED")
+
+              print("=== REAL CARD LINK ===")
+              try:
+                  page.goto(
+                      x["category_link"],
+                      wait_until="domcontentloaded",
+                      timeout=25000
+                  )
+                  page.wait_for_timeout(1500)
+
+                  hits = page.get_by_text(
+                      "De Cecco Mezzi Rigatoni",
+                      exact=False
+                  )
+
+                  print("CARD_MATCHES:", hits.count())
+
+                  if hits.count():
+                      card = hits.first
+                      href = card.evaluate(
+                          "(el) => el.closest('a[href]')?.href || ''"
+                      )
+                      print("CARD_LINK:", href or "NONE")
+
+                      before = page.url
+                      card.click(timeout=8000)
+                      page.wait_for_timeout(1200)
+
+                      print("AFTER_CLICK:", page.url)
+                      print("URL_CHANGED:", page.url != before)
+              except Exception as e:
+                  print("CARD_ERROR:", type(e).__name__)
+
               browser.close()
           PY
