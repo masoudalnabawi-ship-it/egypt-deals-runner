@@ -1,0 +1,42 @@
+name: Talabat Real Screenshot Proof
+
+on:
+  push:
+    branches: [used-probe-test]
+    paths:
+      - 'cloudflare_amazon_v14/scripts/talabat_visual_proof.py'
+      - '.github/workflows/talabat-visual-proof.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  screenshot:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install real browser
+        run: |
+          pip install playwright requests
+          python -m playwright install --with-deps chromium
+
+      - name: Capture and send only genuine screenshot
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+        run: python cloudflare_amazon_v14/scripts/talabat_visual_proof.py
+
+      - name: Save screenshot evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: talabat-real-screenshot
+          path: cloudflare_amazon_v14/talabat_alerts/talabat_live_proof.png
+          if-no-files-found: ignore
+          retention-days: 3
