@@ -82,7 +82,6 @@ if not buttons.get('ok'):
 markup = {'inline_keyboard': [
     [{'text':'✅ نشر لقناة أمازون', 'url': buttons['publish_url']},
      {'text':'❌ رفض العرض', 'url': buttons['reject_url']}],
-    [{'text':'🛒 صفحة المنتج على الويب', 'url': x['product_link']}]
 ]}
 edit = sess.post(f'https://api.telegram.org/bot{bot_token}/editMessageReplyMarkup',
     json={'chat_id':'-1004375874566','message_id':message_id, 'reply_markup':markup},timeout=25)

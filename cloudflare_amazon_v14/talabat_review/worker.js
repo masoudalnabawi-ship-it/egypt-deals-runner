@@ -45,6 +45,11 @@ export default {async fetch(request,env){
       const form=`<form method="post" action="/review">${fields}<button class="${action==='reject'?'reject':''}" type="submit">${action==='publish'?'تأكيد النشر لقناة أمازون':'تأكيد رفض العرض'}</button></form>`;
       return documentPage(action==='publish'?'موافقة نشر طلبات مارت':'رفض عرض طلبات مارت',rec.title,`${rec.area} • ${rec.price} جنيه • خصم ${rec.discount}% • التوصيل والسعر النهائي غير مؤكدين`,form);
     }
+    if(action==='publish')
+      return documentPage('النشر متوقف مؤقتا',
+        rec.title,
+        'رابط المنتج غير صالح داخل التطبيق. لن يتم النشر حتى إصلاح الرابط وتأمين الموافقة.',
+        null);
     const next=action==='reject'?'rejected':'publishing';
     const q=await env.DB.prepare('UPDATE talabat_reviews SET status=? WHERE id=? AND status=\'pending\'').bind(next,id).run();
     if(!q.meta.changes)return documentPage('تمت المعالجة',rec.title,'سبق التعامل مع العرض.',null);
