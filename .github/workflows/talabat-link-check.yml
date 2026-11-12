@@ -1,0 +1,77 @@
+name: Talabat Product Link Check
+
+on:
+  push:
+    branches: [used-probe-test]
+    paths:
+      - '.github/workflows/talabat-link-check.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - run: |
+          pip install playwright
+          python -m playwright install --with-deps chromium
+
+      - name: Discover genuine product link
+        run: |
+          python3 - <<'PY'
+          import json, re
+          from pathlib import Path
+          from urllib.parse import urlsplit, parse_qs
+          from playwright.sync_api import sync_playwright
+
+          x = json.loads(Path(
+              "cloudflare_amazon_v14/talabat_alerts/first_offer.json"
+          ).read_text(encoding="utf-8"))
+
+          sku = "NOBI0A"
+          product_id = "3ecba0e9-69f8-4d52-8d23-cea38c9ef0e8"
+          slug = "de-cecco-mezzi-rigatoni-pasta-no26-500g-de-cecco-tomato-pelati-smarzano-400g-free"
+          aid = parse_qs(urlsplit(x["category_link"]).query)["aid"][0]
+
+          base = "https://www.talabat.com/egypt/talabat-mart/product/"
+          candidates = [
+              f"{base}{slug}/s/{sku}?aid={aid}",
+              f"{base}{slug}/s/{product_id}?aid={aid}"
+          ]
+
+          with sync_playwright() as p:
+              browser = p.chromium.launch(headless=True)
+              page = browser.new_page(viewport={"width":1080,"height":900})
+
+              for label, url in [("SKU",candidates[0]),("UUID",candidates[1])]:
+                  try:
+                      response = page.goto(url, wait_until="domcontentloaded", timeout=25000)
+                      page.wait_for_timeout(1200)
+                      headings = " ".join(page.locator("h1").all_text_contents())
+                      body = page.locator("body").inner_text(timeout=5000)
+                      valid = (
+                          "De Cecco" in headings
+                          and "Mezzi Rigatoni" in headings
+                          and "137.68" in body
+                          and "/product/" in page.url
+                      )
+                      print(label, "HTTP:",response.status if response else "NONE")
+                      print(label, "VALID:",valid)
+                      print(label, "URL:",page.url)
+                      if valid:
+                          print("VERIFIED_PRODUCT_LINK:",page.url)
+                          break
+                  except Exception as e:
+                      print(label,"ERROR:",type(e).__name__)
+              else:
+                  print("PRODUCT_LINK_NOT_VERIFIED")
+              browser.close()
+          PY
