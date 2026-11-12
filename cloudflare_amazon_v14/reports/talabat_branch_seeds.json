@@ -1,0 +1,23 @@
+[
+  {
+    "area": "المحلة الكبرى",
+    "branch_id": "1116707",
+    "branch_name": "talabat mart, Masaken El Sherka",
+    "source": "https://www.talabat.com/egypt/grocery/1116707/talabat-mart-masaken-el-sherka?aid=10768",
+    "prices_verified": false
+  },
+  {
+    "area": "طنطا",
+    "branch_id": "650264",
+    "branch_name": "talabat mart, El Helw Street",
+    "source": "https://www.talabat.com/egypt/grocery/650264/segn-tanta?aid=7079",
+    "prices_verified": false
+  },
+  {
+    "area": "مدينة نصر",
+    "branch_id": "619844",
+    "branch_name": "talabat mart, Nasr City - El Tayaran",
+    "source": "https://www.talabat.com/egypt/grocery/619844/talabat-mart-nasr-city-el-tayaran?aid=10541",
+    "prices_verified": false
+  }
+]
