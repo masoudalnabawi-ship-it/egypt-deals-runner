@@ -1,4 +1,4 @@
-import json, time, re
+import json, time, re, os
 import urllib.request, urllib.parse
 from pathlib import Path
 from collections import defaultdict
@@ -18,6 +18,13 @@ shortlist = [
     max(v, key=lambda x: float(x["discount"]))
     for v in groups.values()
 ]
+
+# FAST_RECHECK_WINDOW_V1: recheck a small rotating group, two pages per category.
+if os.getenv('TALABAT_FAST') == '1' and shortlist:
+    keep = min(4, len(shortlist))
+    start = int(time.time() // 300) % len(shortlist)
+    shortlist = [shortlist[(start + i) % len(shortlist)] for i in range(keep)]
+    print('FAST_RECHECK_GROUPS:', len(shortlist), flush=True)
 
 def fetch(url):
     p = urllib.parse.urlsplit(url)
@@ -68,7 +75,7 @@ for x in shortlist:
             continue
 
         meta = first.get("itemsData") or {}
-        total = min(max(int(meta.get("pageCount") or 1), 1), 100)
+        total = min(max(int(meta.get("pageCount") or 1), 1), 2 if os.getenv("TALABAT_FAST") == "1" else 100)
 
         for page in range(1, total + 1):
             if page == 1:

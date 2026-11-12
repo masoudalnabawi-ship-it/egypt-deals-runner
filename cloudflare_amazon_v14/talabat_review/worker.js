@@ -13,6 +13,14 @@ export default {async fetch(request,env){
   const u=new URL(request.url),path=u.pathname;
   if(path==='/health')return json({ok:true,service:'talabat-isolated-review',main_v14_untouched:true});
   if(!env.BOT_TOKEN || !env.CHANNEL_ID || !env.DB)return json({ok:false,error:'missing_secret_or_binding'},503);
+  if(path==='/seen' && request.method==='POST') {
+    if(!auth(request,env))return json({ok:false,error:'unauthorized'},401);
+    const o=await request.json().catch(()=>null);
+    const id=String(o?.id||'');
+    if(!/^[a-z0-9_-]{12,90}$/i.test(id))return json({ok:false,error:'invalid_id'},400);
+    const rec=await env.DB.prepare('SELECT status FROM talabat_reviews WHERE id=?').bind(id).first();
+    return json({ok:true,seen:!!rec,status:rec?.status||null});
+  }
   if(path==='/reserve' && request.method==='POST') {
     if(!auth(request,env))return json({ok:false,error:'unauthorized'},401);
     const o=await request.json().catch(()=>null);if(!o)return json({ok:false,error:'bad_json'},400);
