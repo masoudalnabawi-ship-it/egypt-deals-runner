@@ -62,6 +62,30 @@ jobs:
       - name: Recheck prices and stock
         run: python3 -u scripts/talabat_recheck.py
 
+      - name: Send new rechecked deals to Talabat private review
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          REVIEW_WORKER_URL: https://egypt-talabat-review.masoud-amazon-eg.workers.dev
+        run: |
+          python3 - <<'CHECK'
+          import json
+          from pathlib import Path
+          data=json.loads(Path('reports/talabat_rechecked.json').read_text())
+          good=[x for x in data if x.get('recheck_status')=='PRICE_STOCK_CONFIRMED'
+                and float(x.get('live_stock') or 0)>0
+                and float(x.get('live_discount') or 0)>=40]
+          print('RECHECKED_OFFERS:',len(good))
+          Path('reports/talabat_eligible.flag').write_text(str(len(good)))
+          CHECK
+          if [ "$(cat reports/talabat_eligible.flag)" = '0' ]; then
+            echo 'NO_ELIGIBLE_OFFERS'
+            exit 0
+          fi
+          test -n "$TELEGRAM_BOT_TOKEN" || { echo BOT_TOKEN_MISSING; exit 1; }
+          python3 -m pip install -q playwright requests
+          python3 -m playwright install --with-deps chromium >/dev/null
+          python3 -u scripts/talabat_dynamic_review.py
+
       - name: Save reports
         if: always()
         uses: actions/upload-artifact@v4
