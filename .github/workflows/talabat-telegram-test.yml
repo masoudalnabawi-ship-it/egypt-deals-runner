@@ -1,0 +1,55 @@
+name: Talabat Telegram Test
+
+on:
+  push:
+    branches: [used-probe-test]
+    paths:
+      - '.github/workflows/talabat-telegram-test.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Send one private test message
+        env:
+          BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          CHAT_ID: "-1004375874566"
+        run: |
+          python3 - <<'PY'
+          import os, json, urllib.request, urllib.error
+
+          token = os.getenv("BOT_TOKEN", "")
+          chat = os.getenv("CHAT_ID", "")
+
+          if not token:
+              raise SystemExit("BOT_TOKEN_NOT_CONFIGURED")
+
+          payload = json.dumps({
+              "chat_id": chat,
+              "text": "✅ اختبار طلبات مارت\nتم الاتصال بجروب المراجعة بنجاح.\nهذه رسالة اختبار فقط.",
+              "disable_notification": True
+          }).encode("utf-8")
+
+          req = urllib.request.Request(
+              f"https://api.telegram.org/bot{token}/sendMessage",
+              data=payload,
+              headers={"Content-Type": "application/json"},
+              method="POST"
+          )
+
+          try:
+              with urllib.request.urlopen(req, timeout=25) as r:
+                  result = json.load(r)
+              print("TALABAT_TELEGRAM:", "SUCCESS" if result.get("ok") else "FAILED")
+          except urllib.error.HTTPError as e:
+              print("TALABAT_TELEGRAM: FAILED")
+              print("HTTP_STATUS:", e.code)
+              try:
+                  print("REASON:", json.load(e).get("description", "unknown"))
+              except Exception:
+                  pass
+              raise SystemExit(1)
+          PY
