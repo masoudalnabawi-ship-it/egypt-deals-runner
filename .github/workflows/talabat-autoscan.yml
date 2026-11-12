@@ -1,0 +1,75 @@
+name: Talabat Mart Automatic Scanner
+
+on:
+  schedule:
+    - cron: '15 */6 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: talabat-mart-scanner
+  cancel-in-progress: false
+
+jobs:
+  scan:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    defaults:
+      run:
+        working-directory: cloudflare_amazon_v14
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: used-probe-test
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Scan all Talabat categories
+        run: |
+          set -o pipefail
+          python3 -u scripts/talabat_branch_scan.py \
+            | tee reports/talabat_auto_scan.log
+
+      - name: Validate scan coverage
+        run: |
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+
+          d = json.loads(Path(
+              "reports/talabat_multi_branch.json"
+          ).read_text(encoding="utf-8"))
+
+          branches = d.get("branches", [])
+          pages = sum(int(x.get("pages_checked", 0)) for x in branches)
+          offers = len(d.get("offers", []))
+
+          print("BRANCHES:", len(branches))
+          print("PAGES:", pages)
+          print("OFFERS_40_PLUS:", offers)
+
+          if len(branches) != 3 or pages < 600:
+              raise SystemExit("INCOMPLETE_SCAN")
+
+          print("SCAN_VALIDATED")
+          PY
+
+      - name: Recheck prices and stock
+        run: python3 -u scripts/talabat_recheck.py
+
+      - name: Save reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: talabat-scan-${{ github.run_id }}
+          path: |
+            cloudflare_amazon_v14/reports/talabat_multi_branch.json
+            cloudflare_amazon_v14/reports/talabat_rechecked.json
+            cloudflare_amazon_v14/reports/talabat_auto_scan.log
+          retention-days: 7
+          if-no-files-found: warn
