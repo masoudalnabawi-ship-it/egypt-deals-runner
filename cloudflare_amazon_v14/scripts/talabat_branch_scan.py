@@ -1,4 +1,4 @@
-import json, re, urllib.request, urllib.parse, time
+import json, re, urllib.request, urllib.parse, time, os
 from pathlib import Path
 from html import unescape
 
@@ -97,6 +97,16 @@ for branch in seeds:
         existing = set(links)
         links.extend(sorted(extra_links - existing))
 
+        # FAST_ROTATING_WINDOW_V1
+        if os.getenv("TALABAT_FAST") == "1" and links:
+            size = 6
+            cursor = (int(time.time() // 300) * size) % len(links)
+            links = [
+                links[(cursor + i) % len(links)]
+                for i in range(min(size, len(links)))
+            ]
+            print("FAST_WINDOW:", len(links), "START:", cursor)
+
         print("MAIN_CATEGORIES:", len(catalog))
         print("NEW_CATEGORY_LINKS:", len(links) - before)
         print("TOTAL_PAGES_TO_SCAN:", len(links))
@@ -129,7 +139,7 @@ for branch in seeds:
                 if total_pages > 100:
                     print("PAGE_LIMIT_WARNING:", total_pages)
 
-                for page_number in range(2, min(total_pages, 100) + 1):
+                for page_number in range(2, min(total_pages, 2 if os.getenv("TALABAT_FAST") == "1" else 100) + 1):
                     parsed_page = urllib.parse.urlsplit(url)
                     params = urllib.parse.parse_qsl(
                         parsed_page.query, keep_blank_values=True
