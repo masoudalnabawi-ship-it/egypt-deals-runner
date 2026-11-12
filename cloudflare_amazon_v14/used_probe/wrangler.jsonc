@@ -1,0 +1,9 @@
+{
+  "name": "egypt-amazon-used-probe",
+  "main": "worker.ts",
+  "compatibility_date": "2026-10-06",
+  "browser": {
+    "binding": "BROWSER",
+    "remote": true
+  }
+}

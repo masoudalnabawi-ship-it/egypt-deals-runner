@@ -1,0 +1,44 @@
+name: Amazon Used Isolated Probe
+
+on:
+  push:
+    branches: [used-probe-test]
+    paths:
+      - 'cloudflare_amazon_v14/used_probe/**'
+      - '.github/workflows/amazon-used-probe.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    defaults:
+      run:
+        working-directory: cloudflare_amazon_v14
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUD_API_KEY }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Install dependencies
+        run: npm ci --no-audit --no-fund
+
+      - name: Deploy isolated probe
+        run: npx wrangler deploy -c used_probe/wrangler.jsonc
+
+      - name: Test browser and report
+        run: |
+          set -eu
+          KEY="$(openssl rand -hex 24)"
+          printf '%s' "$KEY" | npx wrangler secret put PROBE_KEY -c used_probe/wrangler.jsonc
+          curl -fsS --max-time 70 \
+            -H "Authorization: Bearer $KEY" \
+            "https://egypt-amazon-used-probe.masoud-amazon-eg.workers.dev/?asin=B0DYGHH7CY" \
+            | python3 -m json.tool
