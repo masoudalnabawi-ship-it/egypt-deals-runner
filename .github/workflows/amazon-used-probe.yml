@@ -38,7 +38,9 @@ jobs:
           set -eu
           KEY="$(openssl rand -hex 24)"
           printf '%s' "$KEY" | npx wrangler secret put PROBE_KEY -c used_probe/wrangler.jsonc
-          curl -fsS --max-time 70 \
+          echo "Waiting for secret propagation"
+          sleep 25
+          curl --retry 6 --retry-all-errors --retry-delay 10 -fsS --max-time 70 \
             -H "Authorization: Bearer $KEY" \
             "https://egypt-amazon-used-probe.masoud-amazon-eg.workers.dev/?asin=B0DYGHH7CY" \
             | python3 -m json.tool
