@@ -78,6 +78,26 @@
     ]
   },
   {
+    "area": "El Esawy",
+    "branch_id": "650265",
+    "branch_name": "talabat mart, El Magzar",
+    "source": "https://www.talabat.com/egypt/grocery/650265/el-esawy?aid=8695",
+    "prices_verified": false,
+    "discovered_via": "talabat_public_grocery_directory",
+    "service_area_id": "8695",
+    "first_seen": 1794571304,
+    "last_seen": 1794571304,
+    "service_area_ids": [
+      "8695",
+      "8696",
+      "8701",
+      "8707",
+      "8708",
+      "8711",
+      "8712"
+    ]
+  },
+  {
     "area": "Moharam Bek Qesm Bab Sharq",
     "branch_id": "650267",
     "branch_name": "talabat mart, Ibrahimia",
@@ -263,6 +283,20 @@
     ]
   },
   {
+    "area": "El Magzar",
+    "branch_id": "742729",
+    "branch_name": "tKiosk by tMart, El Magzar",
+    "source": "https://www.talabat.com/egypt/grocery/742729/tkiosk-by-tmart-el-magzar?aid=8698",
+    "prices_verified": false,
+    "discovered_via": "talabat_public_grocery_directory",
+    "service_area_id": "8698",
+    "first_seen": 1794571304,
+    "last_seen": 1794571304,
+    "service_area_ids": [
+      "8698"
+    ]
+  },
+  {
     "area": "Masaken El Tagned",
     "branch_id": "742731",
     "branch_name": "tKiosk by tMart, El Helw Street",
@@ -314,6 +348,29 @@
       "8327",
       "8328",
       "8329"
+    ]
+  },
+  {
+    "area": "Edaret Moror Ismailia",
+    "branch_id": "743115",
+    "branch_name": "tKiosk by tMart, Downtown - Champollion",
+    "source": "https://www.talabat.com/egypt/grocery/743115/tkiosk-by-tmart-downtown-champollion?aid=8565",
+    "prices_verified": false,
+    "discovered_via": "talabat_public_grocery_directory",
+    "service_area_id": "8565",
+    "first_seen": 1794571304,
+    "last_seen": 1794571304,
+    "service_area_ids": [
+      "8560",
+      "8561",
+      "8562",
+      "8563",
+      "8564",
+      "8565",
+      "8566",
+      "8567",
+      "8568",
+      "8569"
     ]
   },
   {
@@ -416,6 +473,25 @@
     ]
   },
   {
+    "area": "El Mashaya",
+    "branch_id": "752616",
+    "branch_name": "Tmart, El Mokhtalat",
+    "source": "https://www.talabat.com/egypt/grocery/752616/el-mashaya?aid=8699",
+    "prices_verified": false,
+    "discovered_via": "talabat_public_grocery_directory",
+    "service_area_id": "8699",
+    "first_seen": 1794571304,
+    "last_seen": 1794571304,
+    "service_area_ids": [
+      "8699",
+      "8703",
+      "8704",
+      "8705",
+      "8706",
+      "8710"
+    ]
+  },
+  {
     "area": "Talkha",
     "branch_id": "752683",
     "branch_name": "tKiosk by tMart, El Mokhtalat",
@@ -424,9 +500,14 @@
     "discovered_via": "talabat_public_grocery_directory",
     "service_area_id": "8387",
     "first_seen": 1794564096,
-    "last_seen": 1794564096,
+    "last_seen": 1794571304,
     "service_area_ids": [
-      "8387"
+      "8387",
+      "8697",
+      "8700",
+      "8702",
+      "8709",
+      "8713"
     ]
   },
   {
