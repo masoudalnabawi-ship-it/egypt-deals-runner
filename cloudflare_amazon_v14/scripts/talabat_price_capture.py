@@ -4,6 +4,7 @@ This is a display-price archive, NOT proof of stock, cart total or market value.
 """
 import math
 import re
+from talabat_availability import reported_stock
 
 _TOKEN = re.compile(r'[A-Za-z0-9_-]{1,90}\Z')
 
@@ -73,7 +74,7 @@ def capture_price_observation(item, branch_id, timestamp, stats=None):
             stats['missing_positive_price'] += 1
         return None
 
-    stock = _first_number(item, ('stockAmount', 'availableStock', 'stockQuantity', 'quantityAvailable'))
+    stock, _ = reported_stock(item)
     if stock is None:
         availability = 'unknown'
     elif stock > 0:

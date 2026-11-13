@@ -14,6 +14,7 @@ from pathlib import Path
 from html import unescape
 from collections import Counter
 from talabat_price_capture import capture_price_observation
+from talabat_availability import reported_stock
 
 base = "https://www.talabat.com"
 seeds = json.loads(Path("reports/talabat_branch_seeds.json").read_text())
@@ -248,8 +249,7 @@ for branch in seeds:
                     try:
                         old = float(item.get("originalPrice") or 0)
                         price = float(item.get("price") or 0)
-                        raw_stock = item.get("stockAmount")
-                        stock = None if raw_stock is None or raw_stock == "" else float(raw_stock)
+                        stock, stock_source = reported_stock(item)
                         if not (old > price > 0):
                             continue
                         discount = round((1 - price / old) * 100, 2)
@@ -272,6 +272,7 @@ for branch in seeds:
                                     "original_price": old,
                                     "discount": discount,
                                     "stock_status": "unknown",
+                                    "stock_source": stock_source,
                                     "source": url,
                                     "observed_at": int(time.time()),
                                 }
@@ -294,6 +295,7 @@ for branch in seeds:
                             "original_price": old,
                             "discount": discount,
                             "stock": stock,
+                            "stock_source": stock_source,
                             "source": url,
                             "branch_matched": True,
                             "delivery_verified": False,

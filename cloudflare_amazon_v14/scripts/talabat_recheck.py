@@ -2,6 +2,7 @@ import json, time, re, os
 import urllib.request, urllib.parse
 from pathlib import Path
 from collections import defaultdict
+from talabat_availability import reported_stock
 
 data = json.loads(
     Path("reports/talabat_multi_branch.json").read_text(encoding="utf-8")
@@ -110,11 +111,11 @@ for x in shortlist:
             if item:
                 price = float(item.get("price") or 0)
                 old = float(item.get("originalPrice") or 0)
-                raw_stock = item.get("stockAmount")
-                stock = None if raw_stock is None or raw_stock == "" else float(raw_stock)
+                stock, stock_source = reported_stock(item)
 
                 record["live_price"] = price
                 record["live_stock"] = stock
+                record["live_stock_source"] = stock_source
                 record["live_discount"] = round(
                     (1-price/old)*100,2
                 ) if old > price > 0 else 0
