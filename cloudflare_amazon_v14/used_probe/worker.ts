@@ -2,6 +2,7 @@ import {extractUsedOffers, extractUsedFromProductPage, parseEgyptianMoney} from 
 import {extractResaleListing} from './resale_source.js';
 import {analyzeResaleNavigation} from './resale_navigation.js';
 import {FIXED_SEARCH_URL,validResaleSearchDestination,inspectSearchData} from './resale_search.js';
+import {RESALE_REAL_URL, validResaleRealDestination, inspectRealResaleLanding} from './resale_real_source.js';
 
 interface Env {
   BROWSER: any;
@@ -176,6 +177,58 @@ async function probeResaleSearch(env: Env): Promise<any> {
   return result;
 }
 
+// AMAZON_RESALE_REAL_V8: one read of an independently referenced Resale /l/ landing.
+// Discovery only. No listing confirmations, offer retries, or public alerts.
+const REAL_RESALE_SELECTORS = [
+  'title', 'h1', '#mainContent', '#desktop-grid', '#search',
+  '#mainContent a[href]', '#desktop-grid a[href]', '.bxc-grid a[href]',
+  'a[href*="/dp/"]', 'a[href*="/gp/product/"]',
+  'a[href*="/l/"]', 'div[data-asin]',
+  '[data-component-type="s-search-result"]', 'div.s-card-container',
+  'form[action*="validateCaptcha"]', '#captchacharacters'
+];
+async function probeRealResaleSourceV8(env: Env): Promise<any> {
+  const result: any = {requested_url: RESALE_REAL_URL, public_posting_enabled: false,
+    verified_used_offers: 0, candidate_count: 0, category_count: 0};
+  const response: Response = await env.BROWSER.quickAction('scrape', {
+    url: RESALE_REAL_URL,
+    elements: REAL_RESALE_SELECTORS.map(selector => ({selector})),
+    gotoOptions: {waitUntil: 'domcontentloaded', timeout: 20000},
+    waitForTimeout: 900
+  });
+  result.browser_http = response.status;
+  if (!response.ok) {
+    result.status = response.status === 429 ? 'REAL_SOURCE_RATE_LIMITED' : 'REAL_SOURCE_FETCH_FAILED';
+    return result;
+  }
+  const data: any = await response.json();
+  const originStatus = Number(data?.meta?.status || 200);
+  const finalURL = String(data?.meta?.finalUrl || RESALE_REAL_URL);
+  result.source_http = originStatus;
+  result.final_url = finalURL.slice(0, 400);
+  if (originStatus === 429) {result.status = 'REAL_SOURCE_RATE_LIMITED'; return result;}
+  if (originStatus >= 400) {result.status = 'REAL_SOURCE_FETCH_FAILED'; return result;}
+  if (!validResaleRealDestination(finalURL)) {
+    result.status = 'REAL_SOURCE_REDIRECT_UNVERIFIED'; return result;
+  }
+  const seen = inspectRealResaleLanding(data);
+  result.page_context = seen.page_context;
+  result.inspected_elements = seen.inspected_elements;
+  result.anchors_with_href = seen.anchors_with_href;
+  result.has_captcha_elements = seen.has_captcha_elements;
+  if (seen.has_captcha_elements) {
+    result.status = 'REAL_SOURCE_CAPTCHA_REQUIRES_REVIEW'; return result;
+  }
+  result.candidate_count = seen.candidate_count;
+  result.candidates = seen.candidates;
+  result.category_count = seen.category_count;
+  result.category_link_candidates = seen.category_link_candidates;
+  result.status = seen.candidate_count ? 'REAL_SOURCE_PRODUCT_CANDIDATES_UNVERIFIED'
+    : seen.category_count ? 'REAL_SOURCE_CATEGORY_LINKS_UNVERIFIED'
+      : 'REAL_SOURCE_ACCESSIBLE_NO_LISTINGS';
+  return result;
+}
+
 function safeRows(data: any): Row[] {
   return (Array.isArray(data?.result) ? data.result : []).map((group: any) => ({
     selector: String(group?.selector ?? ''),
@@ -211,6 +264,11 @@ export default {
     if (!env.PROBE_KEY || request.headers.get('Authorization') !== `Bearer ${env.PROBE_KEY}`)
       return new Response('Unauthorized', {status: 401});
     const input = new URL(request.url);
+    if (input.searchParams.get('mode') === 'resale_real_v8') {
+      try {return Response.json(await probeRealResaleSourceV8(env));}
+      catch (e) {return Response.json({status:'REAL_SOURCE_FETCH_FAILED',
+        error_type:String(e).slice(0,120),public_posting_enabled:false},{status:502});}
+    }
     if (input.searchParams.get('mode')==='resale_search') {
       try {return Response.json(await probeResaleSearch(env));}
       catch(e) {return Response.json({status:'SEARCH_FETCH_FAILED',error_type:String(e).slice(0,120),public_posting_enabled:false},{status:502});}
