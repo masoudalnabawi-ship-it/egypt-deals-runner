@@ -1,4 +1,5 @@
 import {extractUsedOffers, extractUsedFromProductPage, parseEgyptianMoney} from './offer_parser.js';
+import {extractResaleListing} from './resale_source.js';
 
 interface Env {
   BROWSER: any;
@@ -23,6 +24,45 @@ const OFFER_SELECTORS = [
   '#aod-offer-list', '#olpOfferList',
   'form[action*="validateCaptcha"]', '#captchacharacters'
 ];
+
+// AMAZON_EGYPT_RESALE_SOURCE_V5: one read of a known storefront candidate.
+// Listing cards are discovery evidence only: no confirmed seller/stock/checkout.
+const RESALE_URL = 'https://www.amazon.eg/b?node=27972175031';
+async function probeResaleSource(env: Env): Promise<any> {
+  const result: any = {source_url:RESALE_URL, verified_offers:0,
+    public_posting_enabled:false, candidates:[]};
+  const page: Response = await env.BROWSER.quickAction('scrape',{
+    url: RESALE_URL,
+    elements: [
+      {selector:'h1'},
+      {selector:'div[data-asin]'},
+      {selector:'[data-component-type="s-search-result"]'},
+      {selector:'div.s-card-container'},
+      {selector:'a[href*="/dp/"]'},
+    ],gotoOptions:{waitUntil:'domcontentloaded',timeout:20000},waitForTimeout:800
+  });
+  result.browser_http = page.status;
+  if(!page.ok){result.status=page.status===429?'SOURCE_RATE_LIMITED':'SOURCE_BROWSER_ERROR';return result;}
+  const data:any=await page.json();
+  const originStatus=Number(data?.meta?.status||200);
+  result.source_http=originStatus;
+  result.final_url=String(data?.meta?.finalUrl||RESALE_URL).slice(0,400);
+  if(originStatus===429){result.status='SOURCE_RATE_LIMITED';return result;}
+  if(originStatus>=400){result.status='SOURCE_HTTP_ERROR';return result;}
+  try {
+    const final=new URL(result.final_url);
+    if(final.hostname!=='www.amazon.eg' || !/^\/b\/?$/.test(final.pathname) ||
+       final.searchParams.get('node')!=='27972175031'){
+      result.status='SOURCE_REDIRECT_UNVERIFIED';return result;
+    }
+  }catch {result.status='SOURCE_REDIRECT_UNVERIFIED';return result;}
+  const evidence=extractResaleListing(data,24);
+  result.inspected_elements=evidence.inspected_elements;
+  result.candidates=evidence.products;
+  result.candidate_count=evidence.products.length;
+  result.status=evidence.products.length?'RESALE_LISTING_CANDIDATES_NEED_VALIDATION':'SOURCE_ACCESSIBLE_NO_LISTINGS';
+  return result;
+}
 
 function safeRows(data: any): Row[] {
   return (Array.isArray(data?.result) ? data.result : []).map((group: any) => ({
@@ -59,6 +99,10 @@ export default {
     if (!env.PROBE_KEY || request.headers.get('Authorization') !== `Bearer ${env.PROBE_KEY}`)
       return new Response('Unauthorized', {status: 401});
     const input = new URL(request.url);
+    if (input.searchParams.get('mode')==='resale') {
+      try {return Response.json(await probeResaleSource(env));}
+      catch (e) {return Response.json({status:'SOURCE_BROWSER_ERROR', error_type:String(e).slice(0,100), public_posting_enabled:false}, {status:502});}
+    }
     const asin = (input.searchParams.get('asin') || 'B0DYGHH7CY').toUpperCase();
     if (!/^[A-Z0-9]{10}$/.test(asin))
       return Response.json({error: 'INVALID_ASIN'}, {status: 400});

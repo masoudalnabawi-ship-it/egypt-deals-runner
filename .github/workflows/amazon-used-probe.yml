@@ -45,13 +45,13 @@ jobs:
           sleep 25
           # Only three product-page reads; never query the rate-limited offer-listing.
           # Fail closed on throttling and preserve detailed results as an artifact.
-          PROBE_KEY="$KEY" python3 used_probe/run_rotation.py
+          PROBE_KEY="$KEY" python3 used_probe/run_resale_source.py
 
       - name: Save isolated used-offer pilot report
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: amazon-used-product-pilot-${{ github.run_id }}
-          path: cloudflare_amazon_v14/used_probe/reports/amazon_used_rotation.json
+          name: amazon-used-resale-source-${{ github.run_id }}
+          path: cloudflare_amazon_v14/used_probe/reports/amazon_used_resale_source.json
           retention-days: 7
           if-no-files-found: warn
