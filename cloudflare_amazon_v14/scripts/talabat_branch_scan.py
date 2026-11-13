@@ -1,4 +1,15 @@
 import json, re, urllib.request, urllib.parse, time, os
+import math
+
+# ROTATION_COPRIME_V2: avoid missing branches/categories when batch and total
+# share a common divisor (e.g. three branches per run in a nine-branch catalog).
+def fair_start(slot, total, batch):
+    if total <= batch: return 0
+    step = batch
+    while math.gcd(step, total) != 1:
+        step += 1
+    return (slot * step) % total
+
 from pathlib import Path
 from html import unescape
 
@@ -24,12 +35,12 @@ all_branch_count = len(seeds)
 if os.getenv('TALABAT_FAST') == '1' and seeds:
     # Three different branches per five-minute slot; all discovered branches rotate.
     size = min(3, len(seeds))
-    offset = (int(time.time() // 300) * size) % len(seeds)
+    offset = fair_start(int(time.time() // 300), len(seeds), size)
     seeds = [seeds[(offset+i) % len(seeds)] for i in range(size)]
 elif len(seeds) > 3:
     # Deep scan is sharded too; don't overload a single Actions job.
     size = min(2, len(seeds))
-    offset = (int(time.time() // 21600) * size) % len(seeds)
+    offset = fair_start(int(time.time() // 21600), len(seeds), size)
     seeds = [seeds[(offset+i) % len(seeds)] for i in range(size)]
 print('BRANCH_CATALOG_TOTAL:', all_branch_count, 'THIS_RUN:', len(seeds), flush=True)
 
@@ -129,7 +140,7 @@ for branch in seeds:
         # FAST_ROTATING_WINDOW_V1
         if os.getenv("TALABAT_FAST") == "1" and links:
             size = 6
-            cursor = (int(time.time() // 300) * size) % len(links)
+            cursor = fair_start(int(time.time() // 300), len(links), size)
             links = [
                 links[(cursor + i) % len(links)]
                 for i in range(min(size, len(links)))

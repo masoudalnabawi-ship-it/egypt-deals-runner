@@ -176,6 +176,68 @@ def discover_area(area):
         return (area, [], type(exc).__name__, 0)
 
 
+# ROBUST_TALABAT_DIRECTORY_V2: parse anchors, Next.js state and rendered DOM.
+def raw_index_areas(markup):
+    found = {x['area_id']: x for x in areas_from_index(markup)}
+    normalized = (unescape(markup).replace(r'\/', '/')
+                  .replace(r'\u002F', '/').replace(r'\u002f', '/')
+                  .replace(r'\u003A', ':').replace(r'\u003a', ':'))
+    pattern = re.compile(r'/(?:egypt|uae)/groceries/(\d{2,8})/([a-z0-9-]+)', re.I)
+    for match in pattern.finditer(normalized):
+        aid, slug = match.groups()
+        if aid not in found:
+            found[aid] = {
+                'area_id': aid,
+                'slug': slug,
+                'label': slug.replace('-', ' ').title(),
+                'url': f'{BASE}/egypt/groceries/{aid}/{slug}',
+            }
+    return sorted(found.values(), key=lambda x: int(x['area_id']))
+
+
+def directory_areas_with_fallback():
+    raw = get(INDEX)
+    areas = raw_index_areas(raw)
+    print('DIRECTORY_STATIC_AREAS:', len(areas), 'HTML_BYTES:', len(raw), flush=True)
+    if areas:
+        return areas
+    # Directory content can be client-rendered; use an actual Chromium page.
+    try:
+        from playwright.sync_api import sync_playwright
+        with sync_playwright() as playwright:
+            browser = playwright.chromium.launch(headless=True, args=['--no-sandbox'])
+            try:
+                page = browser.new_page(locale='en-EG', viewport={'width': 1366, 'height': 900})
+                response = page.goto(INDEX, wait_until='domcontentloaded', timeout=45000)
+                page.wait_for_timeout(2300)
+                raw = page.content()
+                areas = raw_index_areas(raw)
+                print('DIRECTORY_BROWSER_HTTP:', response.status if response else None,
+                      'BROWSER_AREAS:', len(areas), 'URL:', page.url, flush=True)
+                if not areas:
+                    anchors_on_page = page.locator('a[href*="/groceries/"]').evaluate_all(
+                        '(els) => els.map(a => ({url:a.href, label:(a.innerText||a.textContent||"").trim()}))'
+                    )
+                    for anchor in anchors_on_page:
+                        u = urllib.parse.urlsplit(anchor.get('url',''))
+                        m = re.fullmatch(r'/(?:egypt|uae)/groceries/(\d{2,8})/([a-z0-9-]+)/?', u.path, re.I)
+                        if not m or u.hostname != 'www.talabat.com':
+                            continue
+                        aid, slug = m.groups()
+                        areas.append({'area_id':aid,'slug':slug,
+                                      'label': anchor.get('label') or slug.replace('-', ' ').title(),
+                                      'url':f'{BASE}/egypt/groceries/{aid}/{slug}'})
+                    areas = sorted({x['area_id']: x for x in areas}.values(),
+                                   key=lambda x: int(x['area_id']))
+                    print('DIRECTORY_BROWSER_ANCHOR_AREAS:', len(areas), flush=True)
+            finally:
+                browser.close()
+    except Exception as exc:
+        print('DIRECTORY_BROWSER_FALLBACK_FAILED:', type(exc).__name__,
+              str(exc)[:160], flush=True)
+    return areas
+
+
 def main():
     if OUT.exists():
         old = json.loads(OUT.read_text(encoding='utf-8'))
@@ -185,7 +247,7 @@ def main():
         old = []
     known = {str(b['branch_id']): b for b in old if b.get('branch_id')}
 
-    area_list = areas_from_index(get(INDEX))
+    area_list = directory_areas_with_fallback()
     if not area_list:
         raise RuntimeError('PUBLIC_DIRECTORY_HAS_NO_AREAS: CATALOG_UNCHANGED')
 
