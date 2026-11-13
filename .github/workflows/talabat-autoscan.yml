@@ -59,6 +59,13 @@ jobs:
           print("SCAN_VALIDATED")
           PY
 
+      - name: Archive observed Talabat prices
+        continue-on-error: true
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          REVIEW_WORKER_URL: https://egypt-talabat-review.masoud-amazon-eg.workers.dev
+        run: python3 -u scripts/talabat_price_history_push.py
+
       - name: Recheck prices and stock
         run: python3 -u scripts/talabat_recheck.py
 

@@ -49,6 +49,13 @@ jobs:
         run: |
           python3 -c 'import json;d=json.load(open("reports/talabat_multi_branch.json"));assert len(d["branches"])>=1 and sum(x["pages_checked"] for x in d["branches"])>=2,"INCOMPLETE_SCAN"'
 
+      - name: Archive observed Talabat prices
+        continue-on-error: true
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          REVIEW_WORKER_URL: https://egypt-talabat-review.masoud-amazon-eg.workers.dev
+        run: python3 -u scripts/talabat_price_history_push.py
+
       - name: Recheck prices and stock
         run: python3 -u scripts/talabat_recheck.py
 
