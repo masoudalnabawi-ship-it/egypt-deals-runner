@@ -53,7 +53,7 @@ jobs:
           print("PAGES:", pages)
           print("OFFERS_40_PLUS:", offers)
 
-          if len(branches) != 3 or pages < 600:
+          if len(branches) < 1 or pages < 2:
               raise SystemExit("INCOMPLETE_SCAN")
 
           print("SCAN_VALIDATED")

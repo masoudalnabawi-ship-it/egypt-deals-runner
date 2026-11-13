@@ -1,0 +1,82 @@
+name: Talabat Mart Egypt Branch Discovery
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/talabat-discover.yml'
+  workflow_dispatch:
+  schedule:
+    - cron: '11 * * * *'
+  workflow_run:
+    workflows: ['Amazon V14 Pipeline']
+    types: [completed]
+
+permissions:
+  contents: write
+
+concurrency:
+  group: talabat-egypt-branch-discovery
+  cancel-in-progress: false
+
+jobs:
+  discover:
+    if: ${{ github.event_name != 'workflow_run' || (github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.head_branch == 'main') }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Select hourly discovery window
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+        run: |
+          if [ "$EVENT_NAME" = workflow_run ] && [ "$(date -u +%M)" -ge 5 ]; then
+            echo 'SKIP_DISCOVERY=1' >> "$GITHUB_ENV"
+            echo 'DISCOVERY_SKIP: Waiting for hourly window'
+          else
+            echo 'DISCOVERY_WINDOW_OPEN'
+          fi
+
+      - uses: actions/checkout@v4
+        if: env.SKIP_DISCOVERY != '1'
+        with:
+          ref: used-probe-test
+          fetch-depth: 0
+          persist-credentials: true
+
+      - uses: actions/setup-python@v5
+        if: env.SKIP_DISCOVERY != '1'
+        with:
+          python-version: '3.12'
+
+      - name: Discover Talabat Mart branches across Egypt
+        if: env.SKIP_DISCOVERY != '1'
+        working-directory: cloudflare_amazon_v14
+        env:
+          TALABAT_DISCOVERY_BATCH: '80'
+          TALABAT_DISCOVERY_WORKERS: '6'
+        run: python3 -u scripts/talabat_discover_branches.py
+
+      - name: Persist branch catalog for all later fast scans
+        if: env.SKIP_DISCOVERY != '1'
+        run: |
+          git config user.name 'Talabat Branch Discovery Bot'
+          git config user.email 'actions@users.noreply.github.com'
+          git add -f cloudflare_amazon_v14/reports/talabat_discovered_branches.json
+          if git diff --cached --quiet; then
+            echo 'CATALOG_UNCHANGED'
+          else
+            git diff --cached --check
+            git commit -m 'Update verified Talabat Mart Egypt branches'
+            git push origin HEAD:used-probe-test
+          fi
+
+      - name: Save discovery status
+        if: always() && env.SKIP_DISCOVERY != '1'
+        uses: actions/upload-artifact@v4
+        with:
+          name: talabat-egypt-branches-${{ github.run_id }}
+          path: |
+            cloudflare_amazon_v14/reports/talabat_discovered_branches.json
+            cloudflare_amazon_v14/reports/talabat_discovery_status.json
+          retention-days: 7
+          if-no-files-found: warn
