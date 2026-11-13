@@ -1,1 +1,243 @@
-[]
+[
+  {
+    "area": "Zahraa El Maadi El Shatr El Khamis Nerko",
+    "branch_id": "613172",
+    "branch_name": "talabat mart, New Maadi - Taqseem Laselky",
+    "source": "https://www.talabat.com/egypt/grocery/613172/zahraa-el-maadi-el-shatr-el-khamis-nerko?aid=7941",
+    "prices_verified": false,
+    "discovered_via": "talabat_public_grocery_directory",
+    "service_area_id": "7941",
+    "first_seen": 1794553563,
+    "last_seen": 1794553563,
+    "service_area_ids": [
+      "7941"
+    ]
+  },
+  {
+    "area": "Zahraa El Maadi El Morshedy",
+    "branch_id": "613176",
+    "branch_name": "talabat mart, Zahraa El Maadi - El Me`arag El Ouloy",
+    "source": "https://www.talabat.com/egypt/grocery/613176/zahraa-el-maadi-el-morshedy?aid=7940",
+    "prices_verified": false,
+    "discovered_via": "talabat_public_grocery_directory",
+    "service_area_id": "7940",
+    "first_seen": 1794553563,
+    "last_seen": 1794553563,
+    "service_area_ids": [
+      "7940"
+    ]
+  },
+  {
+    "area": "Zahraa El Maadi El Mearag El Soufly",
+    "branch_id": "701884",
+    "branch_name": "tKiosk by tMart, Zahraa El Maadi - El Me`arag El Ouloy",
+    "source": "https://www.talabat.com/egypt/grocery/701884/tkiosk-by-tmart-zahraa-el-maadi-el-mearag-el-ouloy?aid=7939",
+    "prices_verified": false,
+    "discovered_via": "talabat_public_grocery_directory",
+    "service_area_id": "7939",
+    "first_seen": 1794553563,
+    "last_seen": 1794553563,
+    "service_area_ids": [
+      "7939"
+    ]
+  },
+  {
+    "area": "6Th Of October Eskan Gamaet El Qahera",
+    "branch_id": "717277",
+    "branch_name": "tKiosk by tMart, El Sheikh Zayed - El Hay 9",
+    "source": "https://www.talabat.com/egypt/grocery/717277/tkiosk-by-tmart-el-sheikh-zayed-el-hay-9?aid=8000",
+    "prices_verified": false,
+    "discovered_via": "talabat_public_grocery_directory",
+    "service_area_id": "8000",
+    "first_seen": 1794553563,
+    "last_seen": 1794553563,
+    "service_area_ids": [
+      "8000"
+    ]
+  },
+  {
+    "area": "Maadi Corniche Alfa Market",
+    "branch_id": "720673",
+    "branch_name": "tKiosk by tMart, Maadi Old",
+    "source": "https://www.talabat.com/egypt/grocery/720673/tkiosk-by-tmart-maadi-old?aid=7963",
+    "prices_verified": false,
+    "discovered_via": "talabat_public_grocery_directory",
+    "service_area_id": "7963",
+    "first_seen": 1794553563,
+    "last_seen": 1794553563,
+    "service_area_ids": [
+      "7963",
+      "7964",
+      "7965",
+      "7966",
+      "7967",
+      "7968",
+      "7969",
+      "7970",
+      "7972",
+      "7973",
+      "7974",
+      "7975",
+      "7976",
+      "7977",
+      "7978",
+      "7979"
+    ]
+  },
+  {
+    "area": "6Th Of October El Fardous",
+    "branch_id": "743153",
+    "branch_name": "tKiosk by tMart, 6th of October - El Montzah",
+    "source": "https://www.talabat.com/egypt/grocery/743153/tkiosk-by-tmart-6th-of-october-el-montzah?aid=7990",
+    "prices_verified": false,
+    "discovered_via": "talabat_public_grocery_directory",
+    "service_area_id": "7990",
+    "first_seen": 1794553563,
+    "last_seen": 1794553563,
+    "service_area_ids": [
+      "7990",
+      "7991",
+      "7992",
+      "7994"
+    ]
+  },
+  {
+    "area": "Hadayek El Ahram Area A",
+    "branch_id": "753733",
+    "branch_name": "tKiosk by tMart, Hadayek El Ahram - Area ح",
+    "source": "https://www.talabat.com/egypt/grocery/753733/tkiosk-by-tmart-hadayek-el-ahram-area?aid=7947",
+    "prices_verified": false,
+    "discovered_via": "talabat_public_grocery_directory",
+    "service_area_id": "7947",
+    "first_seen": 1794553563,
+    "last_seen": 1794553563,
+    "service_area_ids": [
+      "7947",
+      "7948",
+      "7949",
+      "7950",
+      "7951",
+      "7952",
+      "7953",
+      "7954",
+      "7955",
+      "7956",
+      "7957",
+      "7958",
+      "7959",
+      "7960",
+      "7961",
+      "7962"
+    ]
+  },
+  {
+    "area": "6Th Of October 10Th District",
+    "branch_id": "753736",
+    "branch_name": "Tkiosk By Tmart, 6th Of October - 6th District",
+    "source": "https://www.talabat.com/egypt/grocery/753736/tkiosk-by-tmart-6th-of-october-6th-district?aid=7932",
+    "prices_verified": false,
+    "discovered_via": "talabat_public_grocery_directory",
+    "service_area_id": "7932",
+    "first_seen": 1794553563,
+    "last_seen": 1794553563,
+    "service_area_ids": [
+      "7932",
+      "7933",
+      "7934",
+      "7935",
+      "7936",
+      "7937",
+      "7938",
+      "7998"
+    ]
+  },
+  {
+    "area": "Almaza Airport",
+    "branch_id": "760059",
+    "branch_name": "Tmart, Masaken Sheraton - Abdel Hamid Badwai",
+    "source": "https://www.talabat.com/egypt/grocery/760059/almaza-airport?aid=7983",
+    "prices_verified": false,
+    "discovered_via": "talabat_public_grocery_directory",
+    "service_area_id": "7983",
+    "first_seen": 1794553563,
+    "last_seen": 1794553563,
+    "service_area_ids": [
+      "7983"
+    ]
+  },
+  {
+    "area": "Masaken Sheraton Abdel Hamid Badwai",
+    "branch_id": "779922",
+    "branch_name": "tKiosk by tMart, Masaken Sheraton - Abdel Hamid Badwai",
+    "source": "https://www.talabat.com/egypt/grocery/779922/tkiosk-by-tmart-masaken-sheraton-abdel-hamid-badwai?aid=7981",
+    "prices_verified": false,
+    "discovered_via": "talabat_public_grocery_directory",
+    "service_area_id": "7981",
+    "first_seen": 1794553563,
+    "last_seen": 1794553563,
+    "service_area_ids": [
+      "7981",
+      "7982",
+      "7985"
+    ]
+  },
+  {
+    "area": "Zahraa El Maadi El Shatr El Sabea",
+    "branch_id": "781111",
+    "branch_name": "tKiosk by tMart, Zahraa El Maadi - El Shatr El Sades",
+    "source": "https://www.talabat.com/egypt/grocery/781111/tkiosk-by-tmart-zahraa-el-maadi-el-shatr-el-sades?aid=7942",
+    "prices_verified": false,
+    "discovered_via": "talabat_public_grocery_directory",
+    "service_area_id": "7942",
+    "first_seen": 1794553563,
+    "last_seen": 1794553563,
+    "service_area_ids": [
+      "7942",
+      "7943",
+      "7944",
+      "7945"
+    ]
+  },
+  {
+    "area": "6Th Of October Beta Gardens",
+    "branch_id": "1115830",
+    "branch_name": "tKiosk by talabat mart, 6th of October - Beta Gardens",
+    "source": "https://www.talabat.com/egypt/grocery/1115830/tkiosk-by-talabat-mart-6th-of-october-beta-gardens?aid=7993",
+    "prices_verified": false,
+    "discovered_via": "talabat_public_grocery_directory",
+    "service_area_id": "7993",
+    "first_seen": 1794553563,
+    "last_seen": 1794553563,
+    "service_area_ids": [
+      "7993"
+    ]
+  },
+  {
+    "area": "6Th Of October West Somed",
+    "branch_id": "1116720",
+    "branch_name": "talabat mart, 6th of October - West Somed",
+    "source": "https://www.talabat.com/egypt/grocery/1116720/6th-of-october-west-somed?aid=7987",
+    "prices_verified": false,
+    "discovered_via": "talabat_public_grocery_directory",
+    "service_area_id": "7987",
+    "first_seen": 1794553563,
+    "last_seen": 1794553563,
+    "service_area_ids": [
+      "7987"
+    ]
+  },
+  {
+    "area": "6Th Of October Production City",
+    "branch_id": "1122250",
+    "branch_name": "talabat mart, 6th of October - Mountain View Park",
+    "source": "https://www.talabat.com/egypt/grocery/1122250/6th-of-october-production-city?aid=7988",
+    "prices_verified": false,
+    "discovered_via": "talabat_public_grocery_directory",
+    "service_area_id": "7988",
+    "first_seen": 1794553563,
+    "last_seen": 1794553563,
+    "service_area_ids": [
+      "7988"
+    ]
+  }
+]
