@@ -11,6 +11,19 @@ function asinFrom(item){
       if(ASIN.test(id))return id;
     }
   }
+  // RESALE_LINK_ATTR_V7: browser scraper often returns href as an attribute, not HTML.
+  const asAmazonProductHref=(value)=>{
+    try{
+      const u=new URL(String(value||''),'https://www.amazon.eg');
+      if(u.protocol!=='https:' || u.hostname!=='www.amazon.eg' || u.username || u.password || u.port)return null;
+      const m=u.pathname.match(/^\/(?:dp|gp\/product)\/([A-Z0-9]{10})(?:\/|$)/i);
+      return m?m[1].toUpperCase():null;
+    }catch{return null;}
+  };
+  const hrefs=[item?.href,
+    Array.isArray(item?.attributes)?item.attributes.find(x=>String(x?.name||'').toLowerCase()==='href')?.value:null,
+    !Array.isArray(item?.attributes)?item?.attributes?.href:null];
+  for(const h of hrefs){const asin=asAmazonProductHref(h);if(asin)return asin;}
   const html=String(item?.html||'');
   const data=html.match(/\bdata-asin\s*=\s*["']([A-Z0-9]{10})["']/i);
   if(data)return data[1].toUpperCase();

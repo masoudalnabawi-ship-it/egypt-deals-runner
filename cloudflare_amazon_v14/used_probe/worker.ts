@@ -1,6 +1,7 @@
 import {extractUsedOffers, extractUsedFromProductPage, parseEgyptianMoney} from './offer_parser.js';
 import {extractResaleListing} from './resale_source.js';
 import {analyzeResaleNavigation} from './resale_navigation.js';
+import {FIXED_SEARCH_URL,validResaleSearchDestination,inspectSearchData} from './resale_search.js';
 
 interface Env {
   BROWSER: any;
@@ -138,6 +139,43 @@ async function probeResaleNavigation(env: Env): Promise<any> {
   return result;
 }
 
+// AMAZON_RESALE_SEARCH_V7: try the exact Resale browse node as constrained search.
+// One read only; no offer listing, no retry, no public posting.
+const SEARCH_SELECTORS = [
+  'title','h1','#search','div[data-asin]','div.s-result-item[data-asin]',
+  '[data-component-type="s-search-result"]','div.s-card-container',
+  '#search a[href*="/dp/"]','a[href*="/dp/"]',
+  'form[action*="validateCaptcha"]','#captchacharacters'
+];
+async function probeResaleSearch(env: Env): Promise<any> {
+  const result:any={requested_url:FIXED_SEARCH_URL,public_posting_enabled:false,
+    verified_offers:0,used_prices_verified:0,candidate_count:0};
+  const response:Response=await env.BROWSER.quickAction('scrape',{
+    url:FIXED_SEARCH_URL,elements:SEARCH_SELECTORS.map(selector=>({selector})),
+    gotoOptions:{waitUntil:'domcontentloaded',timeout:20000},waitForTimeout:900
+  });
+  result.browser_http=response.status;
+  if(!response.ok){result.status=response.status===429?'SEARCH_RATE_LIMITED':'SEARCH_FETCH_FAILED';return result;}
+  const data:any=await response.json();
+  const origin=Number(data?.meta?.status||200);
+  const finalUrl=String(data?.meta?.finalUrl||FIXED_SEARCH_URL);
+  result.source_http=origin;result.final_url=finalUrl.slice(0,400);
+  if(origin===429){result.status='SEARCH_RATE_LIMITED';return result;}
+  if(origin>=400){result.status='SEARCH_FETCH_FAILED';return result;}
+  if(!validResaleSearchDestination(finalUrl)){
+    result.status='SEARCH_REDIRECT_UNVERIFIED';return result;
+  }
+  const x=inspectSearchData(data);
+  result.page_context=x.page_context;
+  result.has_captcha_elements=x.has_captcha_elements;
+  result.inspected_elements=x.inspected_elements;
+  if(x.has_captcha_elements){result.status='SEARCH_CAPTCHA_REQUIRES_REVIEW';return result;}
+  result.candidate_count=x.product_count;
+  result.candidates=x.product_candidates;
+  result.status=x.product_count?'SEARCH_PRODUCT_CANDIDATES_UNVERIFIED':'SEARCH_ACCESSIBLE_NO_PRODUCTS_OBSERVED';
+  return result;
+}
+
 function safeRows(data: any): Row[] {
   return (Array.isArray(data?.result) ? data.result : []).map((group: any) => ({
     selector: String(group?.selector ?? ''),
@@ -173,6 +211,10 @@ export default {
     if (!env.PROBE_KEY || request.headers.get('Authorization') !== `Bearer ${env.PROBE_KEY}`)
       return new Response('Unauthorized', {status: 401});
     const input = new URL(request.url);
+    if (input.searchParams.get('mode')==='resale_search') {
+      try {return Response.json(await probeResaleSearch(env));}
+      catch(e) {return Response.json({status:'SEARCH_FETCH_FAILED',error_type:String(e).slice(0,120),public_posting_enabled:false},{status:502});}
+    }
     if (input.searchParams.get('mode')==='resale_nav') {
       try {return Response.json(await probeResaleNavigation(env));}
       catch(e) {return Response.json({status:'SOURCE_BROWSER_ERROR',error_type:String(e).slice(0,120),public_posting_enabled:false},{status:502});}
