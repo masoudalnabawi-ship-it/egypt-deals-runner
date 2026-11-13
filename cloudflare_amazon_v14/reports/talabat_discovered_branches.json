@@ -171,7 +171,7 @@
     "discovered_via": "talabat_public_grocery_directory",
     "service_area_id": "7963",
     "first_seen": 1794553563,
-    "last_seen": 1794560525,
+    "last_seen": 1794582175,
     "service_area_ids": [
       "7963",
       "7964",
@@ -189,7 +189,9 @@
       "7977",
       "7978",
       "7979",
-      "8194"
+      "8194",
+      "9832",
+      "9837"
     ]
   },
   {
@@ -638,10 +640,11 @@
     "discovered_via": "talabat_public_grocery_directory",
     "service_area_id": "9573",
     "first_seen": 1794574989,
-    "last_seen": 1794578541,
+    "last_seen": 1794582175,
     "service_area_ids": [
       "9573",
-      "9654"
+      "9654",
+      "9772"
     ]
   },
   {
@@ -720,13 +723,14 @@
     "discovered_via": "talabat_public_grocery_directory",
     "service_area_id": "7942",
     "first_seen": 1794553563,
-    "last_seen": 1794556920,
+    "last_seen": 1794582175,
     "service_area_ids": [
       "7942",
       "7943",
       "7944",
       "7945",
-      "8017"
+      "8017",
+      "9801"
     ]
   },
   {
@@ -770,10 +774,19 @@
     "discovered_via": "talabat_public_grocery_directory",
     "service_area_id": "9288",
     "first_seen": 1794574989,
-    "last_seen": 1794578541,
+    "last_seen": 1794582175,
     "service_area_ids": [
       "9288",
-      "9659"
+      "9659",
+      "9660",
+      "9661",
+      "9662",
+      "9663",
+      "9664",
+      "9665",
+      "9666",
+      "9667",
+      "9669"
     ]
   },
   {
@@ -959,7 +972,7 @@
     "discovered_via": "talabat_public_grocery_directory",
     "service_area_id": "8182",
     "first_seen": 1794560525,
-    "last_seen": 1794560525,
+    "last_seen": 1794582175,
     "service_area_ids": [
       "8182",
       "8183",
@@ -970,7 +983,8 @@
       "8188",
       "8189",
       "8190",
-      "8191"
+      "8191",
+      "9689"
     ]
   },
   {
@@ -1020,6 +1034,20 @@
     ]
   },
   {
+    "area": "Al Mostakbal City",
+    "branch_id": "1115839",
+    "branch_name": "tKiosk by tMart, El Shorouk - 8th Area",
+    "source": "https://www.talabat.com/egypt/grocery/1115839/tkiosk-by-tmart-el-shorouk-8th-area?aid=9693",
+    "prices_verified": false,
+    "discovered_via": "talabat_public_grocery_directory",
+    "service_area_id": "9693",
+    "first_seen": 1794582175,
+    "last_seen": 1794582175,
+    "service_area_ids": [
+      "9693"
+    ]
+  },
+  {
     "area": "La Fontain Elsharbatly Compound",
     "branch_id": "1116287",
     "branch_name": "tKiosk by tMart, Tagammoa 5 - El Lotus El Shamaleya",
@@ -1062,6 +1090,23 @@
       "8333",
       "8386",
       "9585"
+    ]
+  },
+  {
+    "area": "Maadi Old 2",
+    "branch_id": "1116736",
+    "branch_name": "talabat mart, New Maadi - El Nadi El Gedid",
+    "source": "https://www.talabat.com/egypt/grocery/1116736/maadi-old-2?aid=9833",
+    "prices_verified": false,
+    "discovered_via": "talabat_public_grocery_directory",
+    "service_area_id": "9833",
+    "first_seen": 1794582175,
+    "last_seen": 1794582175,
+    "service_area_ids": [
+      "9833",
+      "9834",
+      "9835",
+      "9836"
     ]
   },
   {
