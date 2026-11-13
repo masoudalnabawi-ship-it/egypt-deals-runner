@@ -4,6 +4,35 @@ from html import unescape
 
 base = "https://www.talabat.com"
 seeds = json.loads(Path("reports/talabat_branch_seeds.json").read_text())
+
+# DYNAMIC_ALL_EGYPT_BRANCHES_V1
+catalog_path = Path('reports/talabat_discovered_branches.json')
+if catalog_path.is_file():
+    discovered = json.loads(catalog_path.read_text(encoding='utf-8'))
+    if not isinstance(discovered, list):
+        raise ValueError('INVALID_DYNAMIC_BRANCH_CATALOG')
+    by_id = {str(b['branch_id']): b for b in seeds}
+    for b in discovered:
+        if not isinstance(b, dict) or not str(b.get('branch_id', '')).isdigit():
+            continue
+        if not isinstance(b.get('source'), str) or not b['source'].startswith('https://www.talabat.com/egypt/grocery/'):
+            continue
+        by_id[str(b['branch_id'])] = b
+    seeds = sorted(by_id.values(), key=lambda b: int(b['branch_id']))
+
+all_branch_count = len(seeds)
+if os.getenv('TALABAT_FAST') == '1' and seeds:
+    # Three different branches per five-minute slot; all discovered branches rotate.
+    size = min(3, len(seeds))
+    offset = (int(time.time() // 300) * size) % len(seeds)
+    seeds = [seeds[(offset+i) % len(seeds)] for i in range(size)]
+elif len(seeds) > 3:
+    # Deep scan is sharded too; don't overload a single Actions job.
+    size = min(2, len(seeds))
+    offset = (int(time.time() // 21600) * size) % len(seeds)
+    seeds = [seeds[(offset+i) % len(seeds)] for i in range(size)]
+print('BRANCH_CATALOG_TOTAL:', all_branch_count, 'THIS_RUN:', len(seeds), flush=True)
+
 results = []
 summary = []
 
