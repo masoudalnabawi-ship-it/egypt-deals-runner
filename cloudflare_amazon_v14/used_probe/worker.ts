@@ -62,6 +62,8 @@ export default {
     const asin = (input.searchParams.get('asin') || 'B0DYGHH7CY').toUpperCase();
     if (!/^[A-Z0-9]{10}$/.test(asin))
       return Response.json({error: 'INVALID_ASIN'}, {status: 400});
+    // AMAZON_USED_PRODUCT_ONLY_ROTATION_V4: consent-respecting low-volume check.
+    const productOnly = input.searchParams.get('main_only') === '1';
     const productUrl = `https://www.amazon.eg/dp/${asin}`;
     const offersUrl = `https://www.amazon.eg/gp/offer-listing/${asin}?condition=used`;
     const result: any = {asin, product_url: productUrl, used_offers_url: offersUrl,
@@ -71,7 +73,8 @@ export default {
       result.product_page = {http: product.http, blocked: product.blocked,
         elements: product.rows, final_url: (product as any).final_url};
       if (!product.ok || product.blocked) {
-        result.status = product.blocked ? 'BLOCKED_CAPTCHA' : 'PRODUCT_BROWSER_ERROR';
+        result.status = product.http === 429 ? 'PRODUCT_RATE_LIMITED'
+          : (product.blocked ? 'BLOCKED_CAPTCHA' : 'PRODUCT_BROWSER_ERROR');
         return Response.json(result);
       }
       const priceSelectors = ['#corePrice_feature_div .a-price .a-offscreen', '#newBuyBoxPrice', '#price_inside_buybox'];
@@ -94,6 +97,13 @@ export default {
         result.used_price_verified = false;
         result.offer_page = {skipped: true, reason: 'USED_CANDIDATE_ON_PRODUCT_PAGE'};
         result.status = 'PRODUCT_PAGE_USED_CANDIDATE_NEEDS_VERIFICATION';
+        return Response.json(result);
+      }
+      if (productOnly) {
+        result.used_offers = [];
+        result.used_price_verified = false;
+        result.offer_page = {skipped: true, reason: 'PRODUCT_PAGE_ONLY_RATE_LIMIT_SAFE'};
+        result.status = 'USED_NOT_VISIBLE_ON_PRODUCT_PAGE';
         return Response.json(result);
       }
       const offers = await scrape(env, offersUrl, OFFER_SELECTORS);

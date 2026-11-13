@@ -43,7 +43,15 @@ jobs:
           printf '%s' "$KEY" | npx wrangler secret put PROBE_KEY -c used_probe/wrangler.jsonc
           echo "Waiting for secret propagation"
           sleep 25
-          curl --retry 6 --retry-all-errors --retry-delay 10 -fsS --max-time 70 \
-            -H "Authorization: Bearer $KEY" \
-            "https://egypt-amazon-used-probe.masoud-amazon-eg.workers.dev/?asin=B0DYGHH7CY" \
-            | python3 -m json.tool
+          # Only three product-page reads; never query the rate-limited offer-listing.
+          # Fail closed on throttling and preserve detailed results as an artifact.
+          PROBE_KEY="$KEY" python3 used_probe/run_rotation.py
+
+      - name: Save isolated used-offer pilot report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: amazon-used-product-pilot-${{ github.run_id }}
+          path: cloudflare_amazon_v14/used_probe/reports/amazon_used_rotation.json
+          retention-days: 7
+          if-no-files-found: warn
