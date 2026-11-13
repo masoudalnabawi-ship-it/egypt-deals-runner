@@ -31,7 +31,7 @@ jobs:
         run: npm ci --no-audit --no-fund
 
       - name: Verify product-page used evidence parser
-        run: node --test used_probe/offer_parser.test.mjs used_probe/resale_source.test.mjs used_probe/resale_navigation.test.mjs used_probe/resale_search.test.mjs used_probe/resale_links.test.mjs used_probe/resale_real_source.test.mjs used_probe/resale_snapshot.test.mjs
+        run: node --test used_probe/offer_parser.test.mjs used_probe/resale_source.test.mjs used_probe/resale_navigation.test.mjs used_probe/resale_search.test.mjs used_probe/resale_links.test.mjs used_probe/resale_real_source.test.mjs used_probe/resale_snapshot.test.mjs used_probe/resale_link_audit.test.mjs
 
       - name: Deploy isolated probe
         run: npx wrangler deploy -c used_probe/wrangler.jsonc
@@ -45,13 +45,13 @@ jobs:
           sleep 25
           # One read of exact user-provided Resale section, no retries or unverified publication.
           # Fail closed on throttling and preserve detailed results as an artifact.
-          PROBE_KEY="$KEY" python3 used_probe/run_resale_snapshot.py
+          PROBE_KEY="$KEY" python3 used_probe/run_resale_link_audit.py
 
       - name: Save isolated used-offer pilot report
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: amazon-used-snapshot-v11-${{ github.run_id }}
-          path: cloudflare_amazon_v14/used_probe/reports/amazon_used_resale_snapshot_v11.json
+          name: amazon-used-link-audit-v12-${{ github.run_id }}
+          path: cloudflare_amazon_v14/used_probe/reports/amazon_used_resale_link_audit_v12.json
           retention-days: 7
           if-no-files-found: warn

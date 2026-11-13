@@ -1,3 +1,4 @@
+import {AUDIT_URL,validAuditDestination,auditResaleLinks} from './resale_link_audit.js';
 import {SOURCE_URL as RESALE_SNAPSHOT_URL, sameResalePage, analyzeResaleSnapshot} from './resale_snapshot.js';
 import {extractUsedOffers, extractUsedFromProductPage, parseEgyptianMoney} from './offer_parser.js';
 import {extractResaleListing} from './resale_source.js';
@@ -256,6 +257,29 @@ async function probeResaleSnapshotV11(env: Env): Promise<any> {
   return result;
 }
 
+// AMAZON_RESALE_LINK_AUDIT_V12: one fixed source snapshot for safe link-shape diagnosis.
+// No login, retries, rate-limit bypasses, offer-listing pages, or publication.
+async function probeResaleLinkAuditV12(env: Env): Promise<any> {
+  const result: any = {requested_url:AUDIT_URL, verified_used_offers:0,
+    public_posting_enabled:false, product_candidate_count:0, category_candidate_count:0};
+  const response:Response=await env.BROWSER.quickAction('snapshot', {
+    url:AUDIT_URL, formats:['markdown','accessibilityTree'],
+    gotoOptions:{waitUntil:'domcontentloaded',timeout:20000},waitForTimeout:1100
+  });
+  result.browser_http=response.status;
+  if(!response.ok){result.status=response.status===429?'SOURCE_RATE_LIMITED':'SOURCE_LINK_AUDIT_FAILED';return result;}
+  const data:any=await response.json();
+  result.source_http=Number(data?.meta?.status||200);
+  result.final_url=String(data?.meta?.finalUrl||AUDIT_URL).slice(0,400);
+  if(result.source_http===429){result.status='SOURCE_RATE_LIMITED';return result;}
+  if(result.source_http>=400){result.status='SOURCE_LINK_AUDIT_FAILED';return result;}
+  if(!validAuditDestination(result.final_url)){result.status='SOURCE_REDIRECT_UNVERIFIED';return result;}
+  const details=auditResaleLinks(data);
+  Object.assign(result,details);
+  result.status=details.captcha_text_signal?'SOURCE_CAPTCHA_REQUIRES_REVIEW':'LINK_AUDIT_DIAGNOSTIC_ONLY';
+  return result;
+}
+
 function safeRows(data: any): Row[] {
   return (Array.isArray(data?.result) ? data.result : []).map((group: any) => ({
     selector: String(group?.selector ?? ''),
@@ -291,6 +315,11 @@ export default {
     if (!env.PROBE_KEY || request.headers.get('Authorization') !== `Bearer ${env.PROBE_KEY}`)
       return new Response('Unauthorized', {status: 401});
     const input = new URL(request.url);
+    if (input.searchParams.get('mode') === 'resale_link_audit_v12') {
+      try {return Response.json(await probeResaleLinkAuditV12(env));}
+      catch(e) {return Response.json({status:'SOURCE_LINK_AUDIT_FAILED',
+        error_type:String(e).slice(0,120),public_posting_enabled:false},{status:502});}
+    }
     if (input.searchParams.get('mode') === 'resale_snapshot_v11') {
       try {return Response.json(await probeResaleSnapshotV11(env));}
       catch(e) {return Response.json({status:'SOURCE_SNAPSHOT_FAILED',error_type:String(e).slice(0,120),public_posting_enabled:false},{status:502});}
