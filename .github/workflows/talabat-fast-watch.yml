@@ -1,6 +1,13 @@
 name: Talabat Mart Fast Watch
 
 on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/talabat-fast-watch.yml'
+  workflow_run:
+    workflows: ['Amazon V14 Pipeline']
+    types: [completed]
   workflow_dispatch:
   schedule:
     - cron: '*/5 * * * *'
@@ -14,6 +21,7 @@ concurrency:
 
 jobs:
   scan:
+    if: ${{ github.event_name != 'workflow_run' || (github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.head_branch == 'main') }}
     runs-on: ubuntu-latest
     timeout-minutes: 15
     env:
