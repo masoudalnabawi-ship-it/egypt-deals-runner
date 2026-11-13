@@ -9,10 +9,69 @@ async function hexHmac(secret,msg) { const k=await crypto.subtle.importKey('raw'
 function auth(req,env){return safeEqual(req.headers.get('Authorization'),`Bearer ${env.BOT_TOKEN}`);}
 async function telegram(env,method,payload){const r=await fetch(`https://api.telegram.org/bot${env.BOT_TOKEN}/${method}`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)});const x=await r.json().catch(()=>({}));if(!r.ok||!x.ok)throw new Error('telegram_'+method+':'+String(x.description||r.status));return x.result;}
 function documentPage(label,title,body,submit){return html(`<!doctype html><html lang="ar" dir="rtl"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${esc(label)}</title><style>body{font-family:system-ui;max-width:470px;margin:9vh auto;padding:22px;line-height:1.8;background:#f7f8fa;color:#1b2936}article{padding:22px;background:white;border-radius:18px;box-shadow:0 2px 16px #0001}h2{margin-top:0}button{border:0;padding:13px 20px;background:#11795d;color:#fff;border-radius:11px;font-weight:700;width:100%;font-size:17px}small{color:#596573} .reject{background:#b33434}</style><article><h2>${esc(label)}</h2><p>${esc(title)}</p><p><small>${esc(body)}</small></p>${submit||''}</article></html>`);}
+// GLOBAL_BRANCH_OBSERVATIONS_V2: multiple service areas share one product review.
+function money(x){return Number(x).toFixed(2);}
+function verifiedCaption(title, locs){
+  const a=locs.slice(0,8).map(x=>`• ${String(x.area).slice(0,70)}: ${money(x.price)} ج`).join('\n');
+  return (`🛒 طلبات مارت | عرض موحد\n📦 ${String(title).slice(0,165)}\n📍 الفروع التي تم التحقق منها مؤخرًا:\n${a}${locs.length>8?'\n• وفروع أخرى عبر الزر':''}\n📸 الصورة من أحد الفروع؛ السعر قد يختلف حسب المنطقة\n✅ تمت مراجعة السعر والمخزون في هذه الفروع\n⚠️ التوصيل والسعر النهائي غير مؤكدين\n⏸️ النشر العام متوقف حتى إصلاح الروابط وتأمين الموافقات`).slice(0,1010);
+}
+async function recentLocations(env,key){
+  const r=await env.DB.prepare('SELECT branch_id,area,price,discount,checked_at FROM talabat_product_locations WHERE offer_key=? AND checked_at>? ORDER BY checked_at DESC,area LIMIT 80')
+    .bind(key,Math.floor(Date.now()/1000)-43200).all();
+  return r.results || [];
+}
+async function signedReviewUrl(env,origin,id,action){
+  const expiry=Math.floor(Date.now()/1000)+86400*3;
+  const signature=await hexHmac(env.BOT_TOKEN,`${id}|${action}|${expiry}`);
+  return `${origin}/review?id=${encodeURIComponent(id)}&action=${action}&exp=${expiry}&sig=${signature}`;
+}
 export default {async fetch(request,env){
   const u=new URL(request.url),path=u.pathname;
   if(path==='/health')return json({ok:true,service:'talabat-isolated-review',main_v14_untouched:true});
   if(!env.BOT_TOKEN || !env.CHANNEL_ID || !env.DB)return json({ok:false,error:'missing_secret_or_binding'},503);
+  if(path==='/status' && request.method==='GET')
+    return documentPage('النشر العام متوقف','مراجعة عروض طلبات مارت','لا يتم نشر العروض في القناة قبل إصلاح رابط المنتج والتحقق من صلاحيات مسؤول المراجعة.',null);
+  if(path==='/branches' && request.method==='GET') {
+    const key=String(u.searchParams.get('key')||'');
+    if(!/^[a-f0-9]{32}$/.test(key))return documentPage('رابط غير صالح','','لا توجد بيانات.',null);
+    const locations=await recentLocations(env,key);
+    const rec=await env.DB.prepare('SELECT title FROM talabat_reviews WHERE id=? LIMIT 1').bind(key).first();
+    const title=rec?.title||'الفروع المؤكدة للمنتج';
+    const lines=locations.map(x=>`${x.area} — ${money(x.price)} جنيه — خصم ${money(x.discount)}% — آخر فحص ${new Date(Number(x.checked_at)*1000).toLocaleString('ar-EG',{timeZone:'Africa/Cairo'})}`).join(' | ');
+    return documentPage('الفروع والأسعار المؤكدة',title,lines||'لا توجد فروع تم التحقق منها خلال آخر 12 ساعة. السعر والتوصيل النهائي غير مضمونين.',null);
+  }
+  if(path==='/observe' && request.method==='POST') {
+    if(!auth(request,env))return json({ok:false,error:'unauthorized'},401);
+    const o=await request.json().catch(()=>null);
+    if(!o)return json({ok:false,error:'invalid_body'},400);
+    const key=String(o.key||''),branch=String(o.branch_id||'');
+    const now=Math.floor(Date.now()/1000);
+    if(!/^[a-f0-9]{32}$/.test(key)||!/^[0-9]{3,10}$/.test(branch)||
+       !o.title||!o.sku||!o.area||!isTalabatUrl(o.source_url)||
+       !(Number(o.price)>0)||!(Number(o.stock)>0)||!(Number(o.discount)>=40)||
+       Math.abs(now-Number(o.checked_at))>900)
+      return json({ok:false,error:'invalid_or_stale_observation'},400);
+    const prev=await env.DB.prepare('SELECT price,discount,area FROM talabat_product_locations WHERE offer_key=? AND branch_id=?').bind(key,branch).first();
+    await env.DB.prepare('INSERT INTO talabat_product_locations(offer_key,branch_id,area,sku,title,price,discount,checked_at) VALUES(?,?,?,?,?,?,?,?) ON CONFLICT(offer_key,branch_id) DO UPDATE SET area=excluded.area,sku=excluded.sku,title=excluded.title,price=excluded.price,discount=excluded.discount,checked_at=excluded.checked_at')
+      .bind(key,branch,String(o.area).slice(0,110),String(o.sku).slice(0,90),String(o.title).slice(0,400),Number(o.price),Number(o.discount),now).run();
+    const locations=await recentLocations(env,key);
+    const rec=await env.DB.prepare('SELECT id,title,status,review_message_id FROM talabat_reviews WHERE review_message_id IS NOT NULL AND (id=? OR lower(title)=lower(?)) ORDER BY created_at ASC LIMIT 1')
+      .bind(key,String(o.title)).first();
+    const changed=!prev||Number(prev.price)!==Number(o.price)||Number(prev.discount)!==Number(o.discount)||prev.area!==String(o.area);
+    if(rec && rec.status==='pending' && changed) {
+      try {
+        await telegram(env,'editMessageCaption',{chat_id:REVIEW_CHAT,message_id:rec.review_message_id,caption:verifiedCaption(rec.title,locations)});
+        const rejectUrl=await signedReviewUrl(env,u.origin,rec.id,'reject');
+        await telegram(env,'editMessageReplyMarkup',{chat_id:REVIEW_CHAT,message_id:rec.review_message_id,reply_markup:{inline_keyboard:[
+          [{text:'⏸️ النشر متوقف',url:u.origin+'/status'},{text:'❌ رفض العرض',url:rejectUrl}],
+          [{text:'📍 الفروع والأسعار المؤكدة',url:u.origin+'/branches?key='+key}]
+        ]}});
+      } catch(error) { console.error('BRANCH_CAPTION_UPDATE_FAILED',key,String(error)); }
+    }
+    return json({ok:true,seen:!!rec,review_status:rec?.status||null,
+      branches:locations.map(x=>({area:x.area,branch_id:x.branch_id,price:x.price,discount:x.discount,checked_at:x.checked_at})),
+      updated:changed});
+  }
   if(path==='/seen' && request.method==='POST') {
     if(!auth(request,env))return json({ok:false,error:'unauthorized'},401);
     const o=await request.json().catch(()=>null);
@@ -48,6 +107,7 @@ export default {async fetch(request,env){
     const rec=await env.DB.prepare('SELECT * FROM talabat_reviews WHERE id=?').bind(id).first();
     if(!rec)return documentPage('العرض غير موجود','لم نعثر على هذا العرض','لا يوجد إجراء.',null);
     if(rec.status!=='pending')return documentPage('تمت معالجة العرض',rec.title,`الحالة الحالية: ${rec.status}`,null);
+    if(action==='publish')return documentPage('النشر العام متوقف',rec.title,'لا يمكن نشر العرض قبل توثيق رابط المنتج وتأمين هوية المسؤول.',null);
     if(request.method==='GET') {
       const fields=[['id',id],['action',action],['exp',String(exp)],['sig',sig]].map(([k,v])=>`<input type="hidden" name="${k}" value="${esc(v)}">`).join('');
       const form=`<form method="post" action="/review">${fields}<button class="${action==='reject'?'reject':''}" type="submit">${action==='publish'?'تأكيد النشر لقناة أمازون':'تأكيد رفض العرض'}</button></form>`;

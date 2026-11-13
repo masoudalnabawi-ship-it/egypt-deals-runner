@@ -3,6 +3,7 @@
 No public-channel posting, no broken product link button.
 """
 import hashlib
+import unicodedata
 import json
 import os
 import re
@@ -46,11 +47,14 @@ def worker_post(endpoint, payload):
         raise RuntimeError('WORKER_'+endpoint+'_NOT_OK')
     return x
 
+# GLOBAL_TALABAT_PRODUCT_MERGE_V2: stable per-product, across branches & prices.
 def offer_identity(item):
-    branch = str(item['branch_id'])
-    sku = str(item['sku'])
-    price = float(item['live_price'])
-    return hashlib.sha256(f'{branch}|{sku}|{price:.2f}'.encode()).hexdigest()[:32]
+    title = unicodedata.normalize('NFKC', str(item.get('title') or ''))
+    title = re.sub(r'[^\w]+', ' ', title.casefold(), flags=re.UNICODE).strip()
+    if not title or len(title) < 9:
+        raise ValueError('PRODUCT_TITLE_TOO_SHORT')
+    return hashlib.sha256(('talabat-product-v2|' + title).encode('utf-8')).hexdigest()[:32]
+
 
 def card_photo(page, item, offer_id):
     """Find actual SKU-linked DOM card, ensure matching live price, screenshot it."""
@@ -108,7 +112,7 @@ def card_photo(page, item, offer_id):
             print('CARD_PAGE_ERROR:', item['area'], sku, index, type(e).__name__, flush=True)
     return None
 
-def send_photo_and_controls(item, photo, product_url, offer_id):
+def send_photo_and_controls(item, photo, product_url, offer_id, branches):
     now = int(time.time())
     p = worker_post('/reserve', {
         'id': offer_id,
@@ -125,13 +129,16 @@ def send_photo_and_controls(item, photo, product_url, offer_id):
         print('ALREADY_REVIEWED:', item['area'], item['sku'], flush=True)
         return False
 
-    caption = (f"🛒 طلبات مارت | {item['area']}\n"
+    branch_lines = [f"• {b['area']}: {float(b['price']):.2f} ج" for b in branches[:7]]
+    caption = (f"🛒 طلبات مارت | عرض موحد\n"
                f"📦 {str(item.get('title') or '')[:150]}\n"
-               f"💰 {float(item['live_price']):.2f} جنيه | 🔥 {float(item['live_discount']):.1f}%\n"
-               "📸 صورة حقيقية للبطاقة والسعر عند الفحص\n"
+               f"💰 لقطة السعر: {float(item['live_price']):.2f} جنيه | 🔥 {float(item['live_discount']):.1f}%\n"
+               "📍 الفروع التي تم التحقق منها مؤخرًا:\n"
+               + '\n'.join(branch_lines) + ('\n• وغيرها — افتح زر الفروع' if len(branches)>7 else '') + "\n"
+               "📸 الصورة من فرع واحد، وقد تختلف الأسعار حسب المنطقة\n"
                "✅ السعر والمخزون مطابقان لإعادة الفحص\n"
-               "⚠️ التوصيل والسعر النهائي في السلة غير مؤكدين\n"
-               "⏸️ النشر العام متوقف لحين إصلاح الروابط")
+               "⚠️ التوصيل والسعر النهائي غير مؤكدين\n"
+               "⏸️ النشر العام متوقف حتى تأمين الروابط والموافقات")
     with photo.open('rb') as file:
         r = session.post(f'https://api.telegram.org/bot{TOKEN}/sendPhoto',
                          data={'chat_id': REVIEW_CHAT, 'caption': caption[:1024]},
@@ -144,7 +151,9 @@ def send_photo_and_controls(item, photo, product_url, offer_id):
     message_id = int(resp['result']['message_id'])
     urls = worker_post('/attach', {'id': offer_id, 'message_id': message_id})
     markup = {'inline_keyboard': [
-        [{'text': '❌ رفض العرض', 'url': urls['reject_url']}],
+        [{'text': '⏸️ النشر متوقف', 'url': WORKER + '/status'},
+         {'text': '❌ رفض العرض', 'url': urls['reject_url']}],
+        [{'text': '📍 الفروع والأسعار المؤكدة', 'url': WORKER + '/branches?key=' + offer_id}],
     ]}
     edit = session.post(f'https://api.telegram.org/bot{TOKEN}/editMessageReplyMarkup',
                         json={'chat_id': REVIEW_CHAT,
@@ -156,6 +165,8 @@ def send_photo_and_controls(item, photo, product_url, offer_id):
     print('PRIVATE_REVIEW_SENT:', item['area'], item['sku'], offer_id, flush=True)
     return True
 
+# Every eligible branch is recorded before taking a screenshot. As later runs
+# discover other branches, the same Telegram message is updated instead of reposted.
 records = json.loads(REPORT.read_text(encoding='utf-8'))
 eligible = []
 for item in records:
@@ -176,33 +187,58 @@ print('ELIGIBLE_FOR_PRIVATE_REVIEW:', len(eligible), flush=True)
 if not eligible:
     raise SystemExit(0)
 
-sent = seen = fail = 0
+# Observe rechecked availability before selecting a canonical photo.
+groups = {}
+observed = {}
+errors = 0
+for item in eligible:
+    try:
+        key = offer_identity(item)
+        groups.setdefault(key, []).append(item)
+        response = worker_post('/observe', {
+            'key': key, 'title': str(item.get('title') or '')[:400],
+            'sku': str(item['sku'])[:90], 'branch_id': str(item['branch_id']),
+            'area': str(item['area'])[:100], 'price': float(item['live_price']),
+            'discount': float(item['live_discount']),
+            'stock': float(item['live_stock']), 'checked_at': int(item['checked_at']),
+            'source_url': str(item['source']),
+        })
+        observed[key] = response
+    except Exception as exc:
+        errors += 1
+        print('BRANCH_OBSERVATION_ERROR:', item.get('sku'), type(exc).__name__, str(exc)[:140], flush=True)
+
+sent = seen = failures = 0
 with sync_playwright() as playwright:
     browser = playwright.chromium.launch(headless=True, args=['--no-sandbox'])
     page = browser.new_page(viewport={'width':1080, 'height':900}, device_scale_factor=1.2)
     try:
-        for item in eligible:
+        for key, choices in groups.items():
             if sent >= MAX_ALERTS:
                 break
-            identity = offer_identity(item)
-            try:
-                status = worker_post('/seen', {'id': identity})
-                if status.get('seen'):
-                    seen += 1
-                    continue
-                screenshot = card_photo(page, item, identity)
-                if not screenshot:
+            status = observed.get(key)
+            if status is None:
+                failures += 1
+                continue
+            if status.get('seen'):
+                seen += 1
+                print('ONE_PRODUCT_MANY_BRANCHES: EXISTING',key,len(status.get('branches') or []),flush=True)
+                continue
+            for item in choices:
+                try:
+                    screenshot = card_photo(page, item, key)
+                    if screenshot:
+                        if send_photo_and_controls(item, *screenshot, key, status.get('branches') or []):
+                            sent += 1
+                        break
                     print('REAL_CARD_NOT_FOUND:', item['area'], item['sku'], flush=True)
-                    continue
-                if send_photo_and_controls(item, *screenshot, identity):
-                    sent += 1
-            except Exception as exc:
-                fail += 1
-                print('PRIVATE_REVIEW_ERROR:', item['area'], item['sku'],
-                      type(exc).__name__, str(exc)[:100], flush=True)
+                except Exception as exc:
+                    failures += 1
+                    print('PRIVATE_REVIEW_ERROR:', item['area'], item['sku'], type(exc).__name__, str(exc)[:100], flush=True)
     finally:
         browser.close()
 
-print('TALABAT_PRIVATE_REVIEW_SUMMARY:', 'SENT', sent, 'SEEN', seen, 'ERRORS', fail, flush=True)
-if fail and not sent and not seen:
-    raise SystemExit('ALL_PRIVATE_REVIEW_ATTEMPTS_FAILED')
+print('TALABAT_PRIVATE_REVIEW_SUMMARY:', 'SENT', sent, 'SEEN', seen,
+      'ERRORS', errors + failures, 'PRODUCTS_GROUPED',len(groups),flush=True)
+if errors and not observed:
+    raise SystemExit('ALL_BRANCH_OBSERVATIONS_FAILED')
