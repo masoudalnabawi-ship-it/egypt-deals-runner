@@ -43,15 +43,15 @@ jobs:
           printf '%s' "$KEY" | npx wrangler secret put PROBE_KEY -c used_probe/wrangler.jsonc
           echo "Waiting for secret propagation"
           sleep 25
-          # Only three product-page reads; never query the rate-limited offer-listing.
+          # One named product read only; never query the rate-limited offer-listing.
           # Fail closed on throttling and preserve detailed results as an artifact.
-          PROBE_KEY="$KEY" python3 used_probe/run_resale_real_source.py
+          PROBE_KEY="$KEY" python3 used_probe/run_known_product.py B0DBHRWRKC
 
       - name: Save isolated used-offer pilot report
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: amazon-used-resale-real-v8-${{ github.run_id }}
-          path: cloudflare_amazon_v14/used_probe/reports/amazon_used_resale_real_v8.json
+          name: amazon-used-redmi-target-${{ github.run_id }}
+          path: cloudflare_amazon_v14/used_probe/reports/amazon_used_known_product.json
           retention-days: 7
           if-no-files-found: warn
