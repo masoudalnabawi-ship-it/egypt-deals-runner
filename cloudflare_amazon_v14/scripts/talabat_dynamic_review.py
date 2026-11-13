@@ -112,6 +112,29 @@ def card_photo(page, item, offer_id):
             print('CARD_PAGE_ERROR:', item['area'], sku, index, type(e).__name__, flush=True)
     return None
 
+# HISTORIC_EVIDENCE_V1: never equate displayed originalPrice with actual history.
+def price_evidence_line(item):
+    try:
+        status = worker_post('/price-history/evidence', {
+            'branch_id': str(item['branch_id']), 'sku': str(item['sku']),
+            'price': float(item['live_price']),
+            'advertised_discount': float(item['live_discount']),
+        })
+        if status.get('status') == 'historically_supported':
+            return (f"📈 مقارنة بالتاريخ: متوسط وسيط {status['baseline']:.2f} ج؛ "
+                    f"التوفير المرصود {status['observed_savings_percent']:.1f}% "
+                    f"({status['history_days']} أيام رصد) — مدعوم بسجل الفرع")
+        if status.get('status') == 'advertised_discount_not_supported':
+            return (f"⚠️ الخصم المعلن غير مدعوم بتاريخ هذا الفرع: "
+                    f"السعر المعتاد المرصود {status['baseline']:.2f} ج "
+                    f"({status['history_days']} أيام رصد)")
+        if status.get('status') == 'mixed_price_history':
+            return '🟡 تاريخ الأسعار متباين؛ نسبة الخصم المعلنة تحتاج مراجعة'
+        return '📊 لم يتكوّن تاريخ أسعار كافٍ للتحقق من نسبة الخصم بعد'
+    except Exception as e:
+        print('PRICE_EVIDENCE_UNAVAILABLE:', type(e).__name__, flush=True)
+        return '📊 التحقق التاريخي غير متاح حاليًا؛ الخصم المعلن غير مؤكد'
+
 def send_photo_and_controls(item, photo, product_url, offer_id, branches):
     now = int(time.time())
     p = worker_post('/reserve', {
@@ -137,6 +160,7 @@ def send_photo_and_controls(item, photo, product_url, offer_id, branches):
                + '\n'.join(branch_lines) + ('\n• وغيرها — افتح زر الفروع' if len(branches)>7 else '') + "\n"
                "📸 الصورة من فرع واحد، وقد تختلف الأسعار حسب المنطقة\n"
                "✅ السعر والمخزون مطابقان لإعادة الفحص\n"
+               + price_evidence_line(item) + "\n"
                "⚠️ التوصيل والسعر النهائي غير مؤكدين\n"
                "⏸️ النشر العام متوقف حتى تأمين الروابط والموافقات")
     with photo.open('rb') as file:

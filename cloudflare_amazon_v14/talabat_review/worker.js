@@ -72,6 +72,75 @@ export default {async fetch(request,env){
       branches:locations.map(x=>({area:x.area,branch_id:x.branch_id,price:x.price,discount:x.discount,checked_at:x.checked_at})),
       updated:changed});
   }
+  // PRICE_HISTORY_API_V1: bot-authenticated snapshots of OBSERVED prices only.
+  // Hourly upsert prevents the five-minute scanner from creating duplicate rows.
+  if(path==='/price-history/ingest' && request.method==='POST') {
+    if(!auth(request,env))return json({ok:false,error:'unauthorized'},401);
+    const data=await request.json().catch(()=>null);
+    if(!data||!Array.isArray(data.rows)||data.rows.length<1||data.rows.length>70)
+      return json({ok:false,error:'invalid_batch'},400);
+    const now=Math.floor(Date.now()/1000);
+    const stmts=[];
+    for(const row of data.rows){
+      const branch=String(row?.branch_id||''),sku=String(row?.sku||'');
+      const price=Number(row?.price),reported=Number(row?.displayed_original_price);
+      const stamp=Number(row?.observed_at);
+      if(!/^[0-9]{3,10}$/.test(branch)||!/^[A-Za-z0-9_-]{1,90}$/.test(sku)||
+         !Number.isFinite(price)||price<=0||price>1000000||
+         !Number.isSafeInteger(stamp)||stamp>now+300||stamp<now-14400)
+        return json({ok:false,error:'invalid_observation'},422);
+      const bucket=Math.floor(stamp/3600)*3600;
+      const original=Number.isFinite(reported)&&reported>0&&reported<1000000?reported:null;
+      stmts.push(env.DB.prepare(`INSERT INTO talabat_price_history
+        (branch_id,sku,hour_bucket,price,displayed_original_price,observed_at,title)
+        VALUES(?,?,?,?,?,?,?)
+        ON CONFLICT(branch_id,sku,hour_bucket) DO UPDATE SET
+        price=excluded.price,displayed_original_price=excluded.displayed_original_price,
+        observed_at=excluded.observed_at,title=excluded.title`)
+        .bind(branch,sku,bucket,price,original,stamp,String(row.title||'').slice(0,200)));
+    }
+    await env.DB.batch(stmts);
+    return json({ok:true,accepted:stmts.length});
+  }
+  if(path==='/price-history/evidence' && request.method==='POST') {
+    if(!auth(request,env))return json({ok:false,error:'unauthorized'},401);
+    const data=await request.json().catch(()=>null);
+    const branch=String(data?.branch_id||''),sku=String(data?.sku||'');
+    const current=Number(data?.price),advertised=Number(data?.advertised_discount);
+    if(!/^[0-9]{3,10}$/.test(branch)||!/^[A-Za-z0-9_-]{1,90}$/.test(sku)||
+       !Number.isFinite(current)||current<=0||current>1000000)
+      return json({ok:false,error:'invalid_evidence_request'},400);
+    const now=Math.floor(Date.now()/1000);
+    // Exclude the current 24h; today's sale price cannot prove a prior baseline.
+    const q=await env.DB.prepare(`SELECT price,observed_at FROM talabat_price_history
+      WHERE branch_id=? AND sku=? AND observed_at>=? AND observed_at<?
+      ORDER BY observed_at DESC LIMIT 1000`)
+      .bind(branch,sku,now-31*86400,now-86400).all();
+    const rows=(q.results||[]).filter(x=>Number(x.price)>0);
+    const days=new Set(rows.map(x=>Math.floor(Number(x.observed_at)/86400)));
+    const span=rows.length?Math.max(...rows.map(x=>Number(x.observed_at)))-Math.min(...rows.map(x=>Number(x.observed_at))):0;
+    const med=(values)=>{
+      const a=values.sort((x,y)=>x-y),n=a.length;
+      return n ? (a[Math.floor((n-1)/2)]+a[Math.floor(n/2)])/2 : null;
+    };
+    const baseline=med(rows.map(x=>Number(x.price)));
+    const coverage=days.size;
+    let status='insufficient_history';
+    let observedSavings=null;
+    if(baseline!==null){
+      observedSavings=Math.round((1-current/baseline)*1000)/10;
+      if(coverage>=3 && span>=6*86400){
+        if(observedSavings>=20) status='historically_supported';
+        else if(observedSavings<10 && Number.isFinite(advertised)&&advertised>=40)
+          status='advertised_discount_not_supported';
+        else status='mixed_price_history';
+      }
+    }
+    return json({ok:true,status,baseline:baseline===null?null:Math.round(baseline*100)/100,
+      observed_savings_percent:observedSavings,history_days:coverage,
+      earliest_observation:rows.length?Math.min(...rows.map(x=>Number(x.observed_at))):null,
+      note:'Only observed prices for this SKU and branch; no third-party market comparison.'});
+  }
   if(path==='/seen' && request.method==='POST') {
     if(!auth(request,env))return json({ok:false,error:'unauthorized'},401);
     const o=await request.json().catch(()=>null);

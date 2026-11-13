@@ -46,6 +46,8 @@ print('BRANCH_CATALOG_TOTAL:', all_branch_count, 'THIS_RUN:', len(seeds), flush=
 
 results = []
 summary = []
+# PRICE_HISTORY_STATE_V1
+price_observations = {}
 
 def fetch(url):
     req = urllib.request.Request(url, headers={
@@ -215,6 +217,25 @@ for branch in seeds:
                 count += len(items)
 
                 for item in items:
+                    # PRICE_HISTORY_CAPTURE_V1: every in-stock observed price,
+                    # including products without any advertised discount.
+                    try:
+                        sku_all = str(item.get("sku") or "")
+                        price_all = float(item.get("price") or 0)
+                        stock_all = float(item.get("stockAmount") or 0)
+                        old_all = float(item.get("originalPrice") or 0)
+                        if (re.fullmatch(r"[A-Za-z0-9_-]{1,90}", sku_all)
+                            and 0 < price_all <= 1000000 and math.isfinite(price_all) and stock_all > 0):
+                            price_observations[(bid, sku_all)] = {
+                                "branch_id": bid,
+                                "sku": sku_all,
+                                "title": str(item.get("title") or "")[:200],
+                                "price": round(price_all, 2),
+                                "displayed_original_price": round(old_all, 2) if old_all > 0 and math.isfinite(old_all) else None,
+                                "observed_at": int(time.time()),
+                            }
+                    except (TypeError, ValueError, AttributeError):
+                        pass
                     try:
                         old = float(item.get("originalPrice") or 0)
                         price = float(item.get("price") or 0)
@@ -268,6 +289,15 @@ for branch in seeds:
 
     except Exception as e:
         print("BRANCH_ERROR:", type(e).__name__, str(e)[:100])
+
+# PRICE_HISTORY_REPORT_V1: observations remain separate from candidate deals.
+Path("reports/talabat_price_observations.json").write_text(
+    json.dumps({"observations": list(price_observations.values()),
+                "captured_at": int(time.time()),
+                "data_source": "observed_catalog_prices_not_claimed_originals"},
+               ensure_ascii=False, separators=(",", ":")), encoding="utf-8"
+)
+print("PRICE_HISTORY_OBSERVATIONS:", len(price_observations), flush=True)
 
 Path("reports/talabat_multi_branch.json").write_text(
     json.dumps(

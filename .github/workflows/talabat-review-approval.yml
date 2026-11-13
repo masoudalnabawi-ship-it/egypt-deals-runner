@@ -80,6 +80,12 @@ jobs:
         run: |
           npx wrangler d1 execute talabat-mart-review-db --remote --yes --command "CREATE TABLE IF NOT EXISTS talabat_product_locations(offer_key TEXT NOT NULL, branch_id TEXT NOT NULL, area TEXT NOT NULL, sku TEXT NOT NULL, title TEXT NOT NULL, price REAL NOT NULL, discount REAL NOT NULL, checked_at INTEGER NOT NULL, PRIMARY KEY(offer_key,branch_id));"
 
+      - name: Create historical price table
+        working-directory: cloudflare_amazon_v14
+        run: |
+          npx wrangler d1 execute talabat-mart-review-db --remote --yes --command "CREATE TABLE IF NOT EXISTS talabat_price_history(branch_id TEXT NOT NULL, sku TEXT NOT NULL, hour_bucket INTEGER NOT NULL, price REAL NOT NULL, displayed_original_price REAL, observed_at INTEGER NOT NULL, title TEXT NOT NULL, PRIMARY KEY(branch_id,sku,hour_bucket));"
+          npx wrangler d1 execute talabat-mart-review-db --remote --yes --command "CREATE INDEX IF NOT EXISTS idx_talabat_price_history_lookup ON talabat_price_history(branch_id,sku,observed_at);"
+
       - name: Deploy separate approval Worker
         working-directory: cloudflare_amazon_v14
         run: |
