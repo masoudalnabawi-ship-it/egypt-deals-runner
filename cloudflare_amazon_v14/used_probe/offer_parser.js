@@ -46,6 +46,54 @@ export function classifyUsedCondition(text) {
  * and price, and no interpreting generic "new & used" navigation as proof.
  * Multi-price cards remain candidates without numeric price.
  */
+/**
+ * A used-offer teaser visible on the main product page can be used as a
+ * CANDIDATE, not a verified checkout price.  Never mix a generic "New & Used"
+ * navigation price, the new buybox, or a separate shipping price into it.
+ * Rows must come from an explicitly used-specific DOM section.
+ */
+export function extractUsedFromProductPage(rows, productUrl) {
+  const usedSections = new Set([
+    '#usedBuyBox', '#usedBuyBoxPrice', '#usedBuyBox .a-price .a-offscreen',
+    '#usedAccordionRow', '#usedAccordionRow .a-price .a-offscreen',
+    '#buybox-used', '#buybox-used .a-price .a-offscreen',
+    '#usedOffer', '#usedOffer .a-price .a-offscreen'
+  ]);
+  const priority = new Map([...usedSections].map((selector, i) => [selector, i]));
+  const unique = new Map();
+  for (const row of Array.isArray(rows) ? rows : []) {
+    const selector = String(row?.selector || '');
+    if (!usedSections.has(selector)) continue;
+    for (const sample of Array.isArray(row?.samples) ? row.samples : []) {
+      const text = String(sample || '').replace(/\s+/g, ' ').trim();
+      if (!text || /\brenewed\b|\brefurbished\b|مجدد|مُجدد/i.test(text)) continue;
+      if (/new\s*[&+]\s*used\s*(?:from)?|الجديد\s*والمستعمل/i.test(text)) continue;
+      if (/currently unavailable|out of stock|غير متوفر|نفد المخزون/i.test(text)) continue;
+      const prices = parseEgyptianMoney(text);
+      // Two prices in one card could be shipping, list price or another seller.
+      if (prices.length !== 1) continue;
+      const price = prices[0];
+      const candidate = {
+        condition: classifyUsedCondition(text) || 'USED_UNSPECIFIED',
+        price,
+        price_candidates: [price],
+        status: 'PRODUCT_PAGE_USED_PRICE_CANDIDATE',
+        source: productUrl,
+        selector,
+        evidence: text.slice(0, 240),
+        verified_checkout: false,
+        verified_stock: false
+      };
+      // Deduplicate parent+child snapshots; prefer a richer parent section.
+      const key = price.toFixed(2);
+      const previous = unique.get(key);
+      if (!previous || priority.get(selector) < priority.get(previous.selector))
+        unique.set(key, candidate);
+    }
+  }
+  return [...unique.values()];
+}
+
 export function extractUsedOffers(cards, sourceUrl) {
   const matches = [];
   for (const card of cards) {

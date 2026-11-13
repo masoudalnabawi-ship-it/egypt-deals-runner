@@ -1,4 +1,4 @@
-import {extractUsedOffers, parseEgyptianMoney} from './offer_parser.js';
+import {extractUsedOffers, extractUsedFromProductPage, parseEgyptianMoney} from './offer_parser.js';
 
 interface Env {
   BROWSER: any;
@@ -10,6 +10,10 @@ type Row = {selector: string; matches: number; samples: string[]};
 const PRODUCT_SELECTORS = [
   '#productTitle', '#corePrice_feature_div .a-price .a-offscreen',
   '#newBuyBoxPrice', '#price_inside_buybox', '#usedBuyBox', '#usedBuyBoxPrice',
+  '#usedAccordionRow', '#usedAccordionRow .a-price .a-offscreen',
+  '#usedBuyBox .a-price .a-offscreen', '#buybox-used',
+  '#buybox-used .a-price .a-offscreen', '#usedOffer',
+  '#usedOffer .a-price .a-offscreen',
   '#olp_feature_div', '#buybox-see-all-buying-choices', '#availability',
   'form[action*="validateCaptcha"]', '#captchacharacters'
 ];
@@ -25,7 +29,7 @@ function safeRows(data: any): Row[] {
     selector: String(group?.selector ?? ''),
     matches: Array.isArray(group?.results) ? group.results.length : 0,
     samples: (Array.isArray(group?.results) ? group.results : []).slice(0, 6)
-      .map((item: any) => String(item?.text || '').trim().slice(0, 450)),
+      .map((item: any) => String(item?.text || '').trim().slice(0, 1200)),
   })).filter((r: Row) => r.matches > 0);
 }
 
@@ -76,6 +80,22 @@ export default {
       const prices = [...new Set(priceTexts.flatMap(parseEgyptianMoney))];
       result.new_price = prices.length === 1 ? prices[0] : null;
       result.new_price_status = prices.length === 1 ? 'OBSERVED' : 'UNVERIFIED';
+      // AMAZON_USED_PRODUCT_PAGE_SAFE_V3: inspect used-specific containers first.
+      // If they contain a single price, skip the rate-limited secondary page.
+      // All amounts remain unverified seller candidates, never publication proof.
+      const primaryCandidates = extractUsedFromProductPage(product.rows, productUrl);
+      result.product_page_used_offers = primaryCandidates;
+      if (primaryCandidates.length) {
+        result.used_offers = primaryCandidates;
+        const lowest = Math.min(...primaryCandidates.map(x => x.price));
+        result.lowest_used_price_candidate = lowest;
+        result.used_saving_vs_new_percent_candidate = (result.new_price && lowest < result.new_price)
+          ? Math.round((1 - lowest / result.new_price) * 1000) / 10 : null;
+        result.used_price_verified = false;
+        result.offer_page = {skipped: true, reason: 'USED_CANDIDATE_ON_PRODUCT_PAGE'};
+        result.status = 'PRODUCT_PAGE_USED_CANDIDATE_NEEDS_VERIFICATION';
+        return Response.json(result);
+      }
       const offers = await scrape(env, offersUrl, OFFER_SELECTORS);
       result.offer_page = {http: offers.http, blocked: offers.blocked,
         elements: offers.rows, final_url: (offers as any).final_url};

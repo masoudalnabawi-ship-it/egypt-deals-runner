@@ -30,6 +30,9 @@ jobs:
       - name: Install dependencies
         run: npm ci --no-audit --no-fund
 
+      - name: Verify product-page used evidence parser
+        run: node --test used_probe/offer_parser.test.mjs
+
       - name: Deploy isolated probe
         run: npx wrangler deploy -c used_probe/wrangler.jsonc
 
