@@ -438,9 +438,10 @@
     "discovered_via": "talabat_public_grocery_directory",
     "service_area_id": "8698",
     "first_seen": 1794571304,
-    "last_seen": 1794571304,
+    "last_seen": 1794592895,
     "service_area_ids": [
-      "8698"
+      "8698",
+      "10498"
     ]
   },
   {
@@ -560,6 +561,22 @@
       "8567",
       "8568",
       "8569"
+    ]
+  },
+  {
+    "area": "El Hayiaa Compound",
+    "branch_id": "743116",
+    "branch_name": "tKiosk by tMart, Al Sharq District",
+    "source": "https://www.talabat.com/egypt/grocery/743116/tkiosk-by-tmart-al-sharq-district?aid=10533",
+    "prices_verified": false,
+    "discovered_via": "talabat_public_grocery_directory",
+    "service_area_id": "10533",
+    "first_seen": 1794592895,
+    "last_seen": 1794592895,
+    "service_area_ids": [
+      "10533",
+      "10534",
+      "10535"
     ]
   },
   {
@@ -748,6 +765,20 @@
     ]
   },
   {
+    "area": "Nasr City Nasr City Towers",
+    "branch_id": "753729",
+    "branch_name": "tKiosk by tMart, Nasr City - El Tayaran",
+    "source": "https://www.talabat.com/egypt/grocery/753729/tkiosk-by-tmart-nasr-city-el-tayaran?aid=10541",
+    "prices_verified": false,
+    "discovered_via": "talabat_public_grocery_directory",
+    "service_area_id": "10541",
+    "first_seen": 1794592895,
+    "last_seen": 1794592895,
+    "service_area_ids": [
+      "10541"
+    ]
+  },
+  {
     "area": "Haram Omraniya Gharbeya 1",
     "branch_id": "753730",
     "branch_name": "Tkiosk By Tmart, Haram - Tersa",
@@ -837,13 +868,14 @@
     "discovered_via": "talabat_public_grocery_directory",
     "service_area_id": "9289",
     "first_seen": 1794574989,
-    "last_seen": 1794578541,
+    "last_seen": 1794592895,
     "service_area_ids": [
       "9289",
       "9291",
       "9574",
       "9575",
-      "9576"
+      "9576",
+      "10547"
     ]
   },
   {
@@ -1244,6 +1276,20 @@
     ]
   },
   {
+    "area": "Mit Khaqan",
+    "branch_id": "805246",
+    "branch_name": "talabat mart, El Sadat Road",
+    "source": "https://www.talabat.com/egypt/grocery/805246/mit-khaqan?aid=10495",
+    "prices_verified": false,
+    "discovered_via": "talabat_public_grocery_directory",
+    "service_area_id": "10495",
+    "first_seen": 1794592895,
+    "last_seen": 1794592895,
+    "service_area_ids": [
+      "10495"
+    ]
+  },
+  {
     "area": "Haddayek Al Ahram Masaken El Dobat",
     "branch_id": "1101256",
     "branch_name": "talabat mart, Hadayek El Ahram - Area D",
@@ -1285,7 +1331,7 @@
     "discovered_via": "talabat_public_grocery_directory",
     "service_area_id": "8862",
     "first_seen": 1794574989,
-    "last_seen": 1794574989,
+    "last_seen": 1794592895,
     "service_area_ids": [
       "8862",
       "8870",
@@ -1293,7 +1339,8 @@
       "8875",
       "8878",
       "8879",
-      "8883"
+      "8883",
+      "10536"
     ]
   },
   {
@@ -1395,6 +1442,20 @@
     "last_seen": 1794585707,
     "service_area_ids": [
       "10028"
+    ]
+  },
+  {
+    "area": "Shebin University",
+    "branch_id": "1115838",
+    "branch_name": "tKiosk by tMart, El Sadat Road",
+    "source": "https://www.talabat.com/egypt/grocery/1115838/tkiosk-by-tmart-el-sadat-road?aid=10494",
+    "prices_verified": false,
+    "discovered_via": "talabat_public_grocery_directory",
+    "service_area_id": "10494",
+    "first_seen": 1794592895,
+    "last_seen": 1794592895,
+    "service_area_ids": [
+      "10494"
     ]
   },
   {
