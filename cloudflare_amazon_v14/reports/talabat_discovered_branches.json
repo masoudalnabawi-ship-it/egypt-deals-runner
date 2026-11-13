@@ -28,6 +28,35 @@
     ]
   },
   {
+    "area": "Zamalek El Ahly Club",
+    "branch_id": "615752",
+    "branch_name": "talabat mart, Agouza",
+    "source": "https://www.talabat.com/egypt/grocery/615752/zamalek-el-ahly-club?aid=8042",
+    "prices_verified": false,
+    "discovered_via": "talabat_public_grocery_directory",
+    "service_area_id": "8042",
+    "first_seen": 1794556920,
+    "last_seen": 1794556920,
+    "service_area_ids": [
+      "8042",
+      "8050"
+    ]
+  },
+  {
+    "area": "El Sheikh Zayed El Hay 11",
+    "branch_id": "620011",
+    "branch_name": "talabat mart, El Sheikh Zayed - El Hay 9",
+    "source": "https://www.talabat.com/egypt/grocery/620011/el-sheikh-zayed-el-hay-11?aid=8057",
+    "prices_verified": false,
+    "discovered_via": "talabat_public_grocery_directory",
+    "service_area_id": "8057",
+    "first_seen": 1794556920,
+    "last_seen": 1794556920,
+    "service_area_ids": [
+      "8057"
+    ]
+  },
+  {
     "area": "Zahraa El Maadi El Mearag El Soufly",
     "branch_id": "701884",
     "branch_name": "tKiosk by tMart, Zahraa El Maadi - El Me`arag El Ouloy",
@@ -50,9 +79,14 @@
     "discovered_via": "talabat_public_grocery_directory",
     "service_area_id": "8000",
     "first_seen": 1794553563,
-    "last_seen": 1794553563,
+    "last_seen": 1794556920,
     "service_area_ids": [
-      "8000"
+      "8000",
+      "8056",
+      "8063",
+      "8069",
+      "8070",
+      "8071"
     ]
   },
   {
@@ -85,6 +119,78 @@
     ]
   },
   {
+    "area": "Zamalek 26 July",
+    "branch_id": "720674",
+    "branch_name": "tKiosk by tMart, Agouza",
+    "source": "https://www.talabat.com/egypt/grocery/720674/tkiosk-by-tmart-agouza?aid=8039",
+    "prices_verified": false,
+    "discovered_via": "talabat_public_grocery_directory",
+    "service_area_id": "8039",
+    "first_seen": 1794556920,
+    "last_seen": 1794556920,
+    "service_area_ids": [
+      "8039",
+      "8040",
+      "8041",
+      "8043",
+      "8044",
+      "8045",
+      "8046",
+      "8047",
+      "8048",
+      "8049"
+    ]
+  },
+  {
+    "area": "Dokki El Bohous",
+    "branch_id": "720680",
+    "branch_name": "tKiosk by tMart, Dokki - Mosaddak,",
+    "source": "https://www.talabat.com/egypt/grocery/720680/tkiosk-by-tmart-dokki-mosaddak?aid=8016",
+    "prices_verified": false,
+    "discovered_via": "talabat_public_grocery_directory",
+    "service_area_id": "8016",
+    "first_seen": 1794556920,
+    "last_seen": 1794556920,
+    "service_area_ids": [
+      "8016"
+    ]
+  },
+  {
+    "area": "El Obour Ain Shams University",
+    "branch_id": "742728",
+    "branch_name": "tKiosk by tMart, El Obour - El Hay 9",
+    "source": "https://www.talabat.com/egypt/grocery/742728/tkiosk-by-tmart-el-obour-el-hay-9?aid=8018",
+    "prices_verified": false,
+    "discovered_via": "talabat_public_grocery_directory",
+    "service_area_id": "8018",
+    "first_seen": 1794556920,
+    "last_seen": 1794556920,
+    "service_area_ids": [
+      "8018",
+      "8025",
+      "8026",
+      "8027",
+      "8029",
+      "8034",
+      "8035"
+    ]
+  },
+  {
+    "area": "El Sheikh Zayed Nile University",
+    "branch_id": "743151",
+    "branch_name": "tKiosk by tMart, 6th Of October - Palm Hills",
+    "source": "https://www.talabat.com/egypt/grocery/743151/tkiosk-by-tmart-6th-of-october-palm-hills?aid=8074",
+    "prices_verified": false,
+    "discovered_via": "talabat_public_grocery_directory",
+    "service_area_id": "8074",
+    "first_seen": 1794556920,
+    "last_seen": 1794556920,
+    "service_area_ids": [
+      "8074",
+      "8076"
+    ]
+  },
+  {
     "area": "6Th Of October El Fardous",
     "branch_id": "743153",
     "branch_name": "tKiosk by tMart, 6th of October - El Montzah",
@@ -93,12 +199,13 @@
     "discovered_via": "talabat_public_grocery_directory",
     "service_area_id": "7990",
     "first_seen": 1794553563,
-    "last_seen": 1794553563,
+    "last_seen": 1794556920,
     "service_area_ids": [
       "7990",
       "7991",
       "7992",
-      "7994"
+      "7994",
+      "8083"
     ]
   },
   {
@@ -166,6 +273,28 @@
     ]
   },
   {
+    "area": "El Sheikh Zayed Al Ahly Club",
+    "branch_id": "779871",
+    "branch_name": "tKiosk by tMart, El Sheikh Zayed - El Hay 13",
+    "source": "https://www.talabat.com/egypt/grocery/779871/tkiosk-by-tmart-el-sheikh-zayed-el-hay-13?aid=8053",
+    "prices_verified": false,
+    "discovered_via": "talabat_public_grocery_directory",
+    "service_area_id": "8053",
+    "first_seen": 1794556920,
+    "last_seen": 1794556920,
+    "service_area_ids": [
+      "8053",
+      "8054",
+      "8058",
+      "8059",
+      "8060",
+      "8061",
+      "8062",
+      "8064",
+      "8067"
+    ]
+  },
+  {
     "area": "Masaken Sheraton Abdel Hamid Badwai",
     "branch_id": "779922",
     "branch_name": "tKiosk by tMart, Masaken Sheraton - Abdel Hamid Badwai",
@@ -174,11 +303,12 @@
     "discovered_via": "talabat_public_grocery_directory",
     "service_area_id": "7981",
     "first_seen": 1794553563,
-    "last_seen": 1794553563,
+    "last_seen": 1794556920,
     "service_area_ids": [
       "7981",
       "7982",
-      "7985"
+      "7985",
+      "8015"
     ]
   },
   {
@@ -190,12 +320,88 @@
     "discovered_via": "talabat_public_grocery_directory",
     "service_area_id": "7942",
     "first_seen": 1794553563,
-    "last_seen": 1794553563,
+    "last_seen": 1794556920,
     "service_area_ids": [
       "7942",
       "7943",
       "7944",
-      "7945"
+      "7945",
+      "8017"
+    ]
+  },
+  {
+    "area": "6Th Of October Chill Out",
+    "branch_id": "786763",
+    "branch_name": "tKiosk by tMart, 6th of October - Wahet El Mohandsen",
+    "source": "https://www.talabat.com/egypt/grocery/786763/tkiosk-by-tmart-6th-of-october-wahet-el-mohandsen?aid=8080",
+    "prices_verified": false,
+    "discovered_via": "talabat_public_grocery_directory",
+    "service_area_id": "8080",
+    "first_seen": 1794556920,
+    "last_seen": 1794556920,
+    "service_area_ids": [
+      "8079",
+      "8080",
+      "8081",
+      "8082"
+    ]
+  },
+  {
+    "area": "El Obour El Eskan El Qawmy",
+    "branch_id": "786862",
+    "branch_name": "tKiosk by tMart, El Obour Industrial Area BG",
+    "source": "https://www.talabat.com/egypt/grocery/786862/tkiosk-by-tmart-el-obour-industrial-area-bg?aid=8020",
+    "prices_verified": false,
+    "discovered_via": "talabat_public_grocery_directory",
+    "service_area_id": "8020",
+    "first_seen": 1794556920,
+    "last_seen": 1794556920,
+    "service_area_ids": [
+      "8019",
+      "8020",
+      "8021",
+      "8022",
+      "8023",
+      "8024",
+      "8028",
+      "8030",
+      "8031",
+      "8032",
+      "8037"
+    ]
+  },
+  {
+    "area": "Damietta University",
+    "branch_id": "791542",
+    "branch_name": "tKiosk by tMart, Down Town",
+    "source": "https://www.talabat.com/egypt/grocery/791542/tkiosk-by-tmart-down-town?aid=8089",
+    "prices_verified": false,
+    "discovered_via": "talabat_public_grocery_directory",
+    "service_area_id": "8089",
+    "first_seen": 1794556920,
+    "last_seen": 1794556920,
+    "service_area_ids": [
+      "8089",
+      "8090"
+    ]
+  },
+  {
+    "area": "El Sheikh Zayed El Hay 1",
+    "branch_id": "1101483",
+    "branch_name": "talabat mart, El Sheikh Zayed - El Hay 4",
+    "source": "https://www.talabat.com/egypt/grocery/1101483/el-sheikh-zayed-el-hay-1?aid=8055",
+    "prices_verified": false,
+    "discovered_via": "talabat_public_grocery_directory",
+    "service_area_id": "8055",
+    "first_seen": 1794556920,
+    "last_seen": 1794556920,
+    "service_area_ids": [
+      "8055",
+      "8065",
+      "8066",
+      "8068",
+      "8073",
+      "8075"
     ]
   },
   {
@@ -224,6 +430,20 @@
     "last_seen": 1794553563,
     "service_area_ids": [
       "7987"
+    ]
+  },
+  {
+    "area": "El Obour Industrial Area A",
+    "branch_id": "1119391",
+    "branch_name": "talabat mart, El Obour - Golf Area",
+    "source": "https://www.talabat.com/egypt/grocery/1119391/el-obour-industrial-area-a?aid=8036",
+    "prices_verified": false,
+    "discovered_via": "talabat_public_grocery_directory",
+    "service_area_id": "8036",
+    "first_seen": 1794556920,
+    "last_seen": 1794556920,
+    "service_area_ids": [
+      "8036"
     ]
   },
   {
