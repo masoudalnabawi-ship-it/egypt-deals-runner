@@ -20,10 +20,13 @@ except (HTTPError,URLError,ValueError,TimeoutError) as e:
     if isinstance(e,HTTPError):report['endpoint_http']=e.code
 finally:
     OUT.write_text(json.dumps(report,ensure_ascii=False,indent=2)+'\n',encoding='utf-8')
-print('AMAZON_RESALE_REAL_V8:',report.get('status'),'ORIGIN_HTTP:',report.get('source_http'),
+print('AMAZON_RESALE_EXACT_V9:',report.get('status'),'ORIGIN_HTTP:',report.get('source_http'),
       'PRODUCTS:',report.get('candidate_count',0),'CATEGORY_LINKS:',report.get('category_count',0),
       'VERIFIED_USED:',0,flush=True)
 if report['status'] in ('PROBE_CONNECTION_ERROR','REAL_SOURCE_RATE_LIMITED','REAL_SOURCE_FETCH_FAILED',
                         'REAL_SOURCE_REDIRECT_UNVERIFIED','REAL_SOURCE_CAPTCHA_REQUIRES_REVIEW'):
     raise SystemExit('AMAZON_RESALE_REAL_V8_REQUIRES_REVIEW')
 print('AMAZON_RESALE_REAL_V8_DIAGNOSTIC_COMPLETE',flush=True)
+
+if report.get('status') == 'REAL_SOURCE_ACCESSIBLE_NO_LISTINGS':
+    raise SystemExit('AMAZON_RESALE_EXACT_V9_NO_PRODUCT_OR_CATEGORY_EVIDENCE')

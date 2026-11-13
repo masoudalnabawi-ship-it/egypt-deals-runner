@@ -1,6 +1,6 @@
 /** Inspect evidence from a documented Amazon Egypt Resale /l/ landing.
  * A link/ASIN found here is not proof of an active used offer. */
-export const RESALE_REAL_URL = 'https://www.amazon.eg/l/27972173031';
+export const RESALE_REAL_URL = 'https://www.amazon.eg/b?node=27972173031';
 const ORIGIN = 'https://www.amazon.eg';
 const ASIN_RE = /^[A-Z0-9]{10}$/;
 

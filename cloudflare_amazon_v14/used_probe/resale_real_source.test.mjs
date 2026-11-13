@@ -1,7 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {validResaleRealDestination,inspectRealResaleLanding} from './resale_real_source.js';
+import {RESALE_REAL_URL,validResaleRealDestination,inspectRealResaleLanding} from './resale_real_source.js';
 test('allows documented direct store but not prior node or unrelated pages',()=>{
+  assert.equal(RESALE_REAL_URL,'https://www.amazon.eg/b?node=27972173031');
   assert.equal(validResaleRealDestination('https://www.amazon.eg/l/27972173031'),true);
   assert.equal(validResaleRealDestination('https://www.amazon.eg/b?node=27972173031'),true);
   assert.equal(validResaleRealDestination('https://www.amazon.eg/s?rh=n%3A27972173031'),true);
