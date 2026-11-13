@@ -78,6 +78,21 @@
     ]
   },
   {
+    "area": "Moharam Bek Qesm Bab Sharq",
+    "branch_id": "650267",
+    "branch_name": "talabat mart, Ibrahimia",
+    "source": "https://www.talabat.com/egypt/grocery/650267/moharam-bek-qesm-bab-sharq?aid=8322",
+    "prices_verified": false,
+    "discovered_via": "talabat_public_grocery_directory",
+    "service_area_id": "8322",
+    "first_seen": 1794564096,
+    "last_seen": 1794564096,
+    "service_area_ids": [
+      "8322",
+      "8412"
+    ]
+  },
+  {
     "area": "Zahraa El Maadi El Mearag El Soufly",
     "branch_id": "701884",
     "branch_name": "tKiosk by tMart, Zahraa El Maadi - El Me`arag El Ouloy",
@@ -196,6 +211,20 @@
     ]
   },
   {
+    "area": "Fleming El Souk",
+    "branch_id": "725493",
+    "branch_name": "Tmart, Fleming - Koliyat Tarbya 2",
+    "source": "https://www.talabat.com/egypt/grocery/725493/fleming-el-souk?aid=8331",
+    "prices_verified": false,
+    "discovered_via": "talabat_public_grocery_directory",
+    "service_area_id": "8331",
+    "first_seen": 1794564096,
+    "last_seen": 1794564096,
+    "service_area_ids": [
+      "8331"
+    ]
+  },
+  {
     "area": "Tagammoa 3 1St District",
     "branch_id": "726868",
     "branch_name": "Tmart,  Tagammoa 5 - Hay 1",
@@ -234,6 +263,22 @@
     ]
   },
   {
+    "area": "Masaken El Tagned",
+    "branch_id": "742731",
+    "branch_name": "tKiosk by tMart, El Helw Street",
+    "source": "https://www.talabat.com/egypt/grocery/742731/tkiosk-by-tmart-el-helw-street?aid=8389",
+    "prices_verified": false,
+    "discovered_via": "talabat_public_grocery_directory",
+    "service_area_id": "8389",
+    "first_seen": 1794564096,
+    "last_seen": 1794564096,
+    "service_area_ids": [
+      "8389",
+      "8390",
+      "8391"
+    ]
+  },
+  {
     "area": "El Shorouk 5Th Area",
     "branch_id": "742732",
     "branch_name": "tKiosk by tMart, El Shorouk - 1st Area",
@@ -254,6 +299,24 @@
     ]
   },
   {
+    "area": "Miami St Mark Church",
+    "branch_id": "742733",
+    "branch_name": "tKiosk by tMart, Miami - Arab Academy",
+    "source": "https://www.talabat.com/egypt/grocery/742733/tkiosk-by-tmart-miami-arab-academy?aid=8326",
+    "prices_verified": false,
+    "discovered_via": "talabat_public_grocery_directory",
+    "service_area_id": "8326",
+    "first_seen": 1794564096,
+    "last_seen": 1794564096,
+    "service_area_ids": [
+      "8325",
+      "8326",
+      "8327",
+      "8328",
+      "8329"
+    ]
+  },
+  {
     "area": "Tagammoa 1 The Districts",
     "branch_id": "743149",
     "branch_name": "tKiosk by tMart, Tagammoa 5 - Banafseg 1,2,3,4",
@@ -262,9 +325,31 @@
     "discovered_via": "talabat_public_grocery_directory",
     "service_area_id": "8195",
     "first_seen": 1794560525,
-    "last_seen": 1794560525,
+    "last_seen": 1794564096,
     "service_area_ids": [
-      "8195"
+      "8195",
+      "8379",
+      "8381",
+      "8382",
+      "8383",
+      "8384",
+      "8385"
+    ]
+  },
+  {
+    "area": "Faisal Mansheya Road",
+    "branch_id": "743150",
+    "branch_name": "tKiosk by tMart, Haram - Talbiya 2",
+    "source": "https://www.talabat.com/egypt/grocery/743150/tkiosk-by-tmart-haram-talbiya-2?aid=8348",
+    "prices_verified": false,
+    "discovered_via": "talabat_public_grocery_directory",
+    "service_area_id": "8348",
+    "first_seen": 1794564096,
+    "last_seen": 1794564096,
+    "service_area_ids": [
+      "8348",
+      "8349",
+      "8352"
     ]
   },
   {
@@ -298,6 +383,64 @@
       "7992",
       "7994",
       "8083"
+    ]
+  },
+  {
+    "area": "Brands Mall El Kothar",
+    "branch_id": "743154",
+    "branch_name": "tKiosk by tMart, Masaken El Nagda",
+    "source": "https://www.talabat.com/egypt/grocery/743154/tkiosk-by-tmart-masaken-el-nagda?aid=8374",
+    "prices_verified": false,
+    "discovered_via": "talabat_public_grocery_directory",
+    "service_area_id": "8374",
+    "first_seen": 1794564096,
+    "last_seen": 1794564096,
+    "service_area_ids": [
+      "8367",
+      "8373",
+      "8374"
+    ]
+  },
+  {
+    "area": "Fleming Koliyat Tarbya",
+    "branch_id": "743155",
+    "branch_name": "tKiosk by tMart, Fleming - Koliyat Tarbya 2",
+    "source": "https://www.talabat.com/egypt/grocery/743155/tkiosk-by-tmart-fleming-koliyat-tarbya-2?aid=8330",
+    "prices_verified": false,
+    "discovered_via": "talabat_public_grocery_directory",
+    "service_area_id": "8330",
+    "first_seen": 1794564096,
+    "last_seen": 1794564096,
+    "service_area_ids": [
+      "8330"
+    ]
+  },
+  {
+    "area": "Talkha",
+    "branch_id": "752683",
+    "branch_name": "tKiosk by tMart, El Mokhtalat",
+    "source": "https://www.talabat.com/egypt/grocery/752683/tkiosk-by-tmart-el-mokhtalat?aid=8387",
+    "prices_verified": false,
+    "discovered_via": "talabat_public_grocery_directory",
+    "service_area_id": "8387",
+    "first_seen": 1794564096,
+    "last_seen": 1794564096,
+    "service_area_ids": [
+      "8387"
+    ]
+  },
+  {
+    "area": "2Nd District Damietta",
+    "branch_id": "753732",
+    "branch_name": "tKiosk by tMart, Downtown - El Sayeda Zeinab",
+    "source": "https://www.talabat.com/egypt/grocery/753732/tkiosk-by-tmart-downtown-el-sayeda-zeinab?aid=8347",
+    "prices_verified": false,
+    "discovered_via": "talabat_public_grocery_directory",
+    "service_area_id": "8347",
+    "first_seen": 1794564096,
+    "last_seen": 1794564096,
+    "service_area_ids": [
+      "8347"
     ]
   },
   {
@@ -387,6 +530,20 @@
     ]
   },
   {
+    "area": "Tagammoa 1 Sharq El Academya",
+    "branch_id": "779885",
+    "branch_name": "tKiosk by tMart, Tagammoa 5 - El Banafseg Buildings",
+    "source": "https://www.talabat.com/egypt/grocery/779885/tkiosk-by-tmart-tagammoa-5-el-banafseg-buildings?aid=8380",
+    "prices_verified": false,
+    "discovered_via": "talabat_public_grocery_directory",
+    "service_area_id": "8380",
+    "first_seen": 1794564096,
+    "last_seen": 1794564096,
+    "service_area_ids": [
+      "8380"
+    ]
+  },
+  {
     "area": "Masaken Sheraton Abdel Hamid Badwai",
     "branch_id": "779922",
     "branch_name": "tKiosk by tMart, Masaken Sheraton - Abdel Hamid Badwai",
@@ -422,6 +579,22 @@
     ]
   },
   {
+    "area": "Faisal Ezbet Gebril",
+    "branch_id": "781216",
+    "branch_name": "tKiosk by tMart, Haram - Mash'aal",
+    "source": "https://www.talabat.com/egypt/grocery/781216/tkiosk-by-tmart-haram-mashaal?aid=8353",
+    "prices_verified": false,
+    "discovered_via": "talabat_public_grocery_directory",
+    "service_area_id": "8353",
+    "first_seen": 1794564096,
+    "last_seen": 1794564096,
+    "service_area_ids": [
+      "8350",
+      "8351",
+      "8353"
+    ]
+  },
+  {
     "area": "El Shorouk 8Th Area",
     "branch_id": "781495",
     "branch_name": "tKiosk by tMart, El Shorouk - 3rd District",
@@ -434,6 +607,26 @@
     "service_area_ids": [
       "8111",
       "8117"
+    ]
+  },
+  {
+    "area": "Moharam Bek Mosque",
+    "branch_id": "783758",
+    "branch_name": "talabat mart, Semouha",
+    "source": "https://www.talabat.com/egypt/grocery/783758/moharam-bek-mosque?aid=8320",
+    "prices_verified": false,
+    "discovered_via": "talabat_public_grocery_directory",
+    "service_area_id": "8320",
+    "first_seen": 1794564096,
+    "last_seen": 1794564096,
+    "service_area_ids": [
+      "8315",
+      "8319",
+      "8320",
+      "8321",
+      "8323",
+      "8324",
+      "8408"
     ]
   },
   {
@@ -478,6 +671,20 @@
     ]
   },
   {
+    "area": "Green Plaza",
+    "branch_id": "791515",
+    "branch_name": "tKiosk by tMart, Green Plaza",
+    "source": "https://www.talabat.com/egypt/grocery/791515/tkiosk-by-tmart-green-plaza?aid=8409",
+    "prices_verified": false,
+    "discovered_via": "talabat_public_grocery_directory",
+    "service_area_id": "8409",
+    "first_seen": 1794564096,
+    "last_seen": 1794564096,
+    "service_area_ids": [
+      "8409"
+    ]
+  },
+  {
     "area": "Damietta University",
     "branch_id": "791542",
     "branch_name": "tKiosk by tMart, Down Town",
@@ -490,6 +697,23 @@
     "service_area_ids": [
       "8089",
       "8090"
+    ]
+  },
+  {
+    "area": "45 Street El Nabwy El Mohandes",
+    "branch_id": "801245",
+    "branch_name": "talabat mart, Montazah",
+    "source": "https://www.talabat.com/egypt/grocery/801245/45-street-el-nabwy-el-mohandes?aid=8317",
+    "prices_verified": false,
+    "discovered_via": "talabat_public_grocery_directory",
+    "service_area_id": "8317",
+    "first_seen": 1794564096,
+    "last_seen": 1794564096,
+    "service_area_ids": [
+      "8316",
+      "8317",
+      "8318",
+      "8410"
     ]
   },
   {
@@ -550,6 +774,23 @@
     ]
   },
   {
+    "area": "Agamy Bianchi",
+    "branch_id": "1101768",
+    "branch_name": "tKiosk by tMart, Agamy - Hanuvile",
+    "source": "https://www.talabat.com/egypt/grocery/1101768/tkiosk-by-tmart-agamy-hanuvile?aid=8334",
+    "prices_verified": false,
+    "discovered_via": "talabat_public_grocery_directory",
+    "service_area_id": "8334",
+    "first_seen": 1794564096,
+    "last_seen": 1794564096,
+    "service_area_ids": [
+      "8334",
+      "8335",
+      "8336",
+      "8337"
+    ]
+  },
+  {
     "area": "6Th Of October Beta Gardens",
     "branch_id": "1115830",
     "branch_name": "tKiosk by talabat mart, 6th of October - Beta Gardens",
@@ -575,6 +816,22 @@
     "last_seen": 1794553563,
     "service_area_ids": [
       "7987"
+    ]
+  },
+  {
+    "area": "Fleming Gianaclis",
+    "branch_id": "1116721",
+    "branch_name": "talabat mart, El Seyouf",
+    "source": "https://www.talabat.com/egypt/grocery/1116721/fleming-gianaclis?aid=8332",
+    "prices_verified": false,
+    "discovered_via": "talabat_public_grocery_directory",
+    "service_area_id": "8332",
+    "first_seen": 1794564096,
+    "last_seen": 1794564096,
+    "service_area_ids": [
+      "8332",
+      "8333",
+      "8386"
     ]
   },
   {
