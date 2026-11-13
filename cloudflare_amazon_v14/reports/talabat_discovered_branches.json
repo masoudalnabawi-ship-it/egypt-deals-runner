@@ -137,7 +137,7 @@
     "discovered_via": "talabat_public_grocery_directory",
     "service_area_id": "8695",
     "first_seen": 1794571304,
-    "last_seen": 1794589324,
+    "last_seen": 1794599081,
     "service_area_ids": [
       "8695",
       "8696",
@@ -147,7 +147,8 @@
       "8711",
       "8712",
       "9373",
-      "10178"
+      "10178",
+      "10698"
     ]
   },
   {
@@ -212,6 +213,20 @@
       "8069",
       "8070",
       "8071"
+    ]
+  },
+  {
+    "area": "Masaken El Dobat Zahraa Nasr City",
+    "branch_id": "717765",
+    "branch_name": "Talabat Mart, Nasr City - Hay 8",
+    "source": "https://www.talabat.com/egypt/grocery/717765/masaken-el-dobat-zahraa-nasr-city?aid=10710",
+    "prices_verified": false,
+    "discovered_via": "talabat_public_grocery_directory",
+    "service_area_id": "10710",
+    "first_seen": 1794599081,
+    "last_seen": 1794599081,
+    "service_area_ids": [
+      "10710"
     ]
   },
   {
@@ -418,7 +433,7 @@
     "discovered_via": "talabat_public_grocery_directory",
     "service_area_id": "8018",
     "first_seen": 1794556920,
-    "last_seen": 1794556920,
+    "last_seen": 1794599081,
     "service_area_ids": [
       "8018",
       "8025",
@@ -426,7 +441,8 @@
       "8027",
       "8029",
       "8034",
-      "8035"
+      "8035",
+      "10712"
     ]
   },
   {
@@ -588,13 +604,16 @@
     "discovered_via": "talabat_public_grocery_directory",
     "service_area_id": "10184",
     "first_seen": 1794589324,
-    "last_seen": 1794589324,
+    "last_seen": 1794599081,
     "service_area_ids": [
       "10184",
       "10185",
       "10187",
       "10188",
-      "10189"
+      "10189",
+      "10651",
+      "10680",
+      "10699"
     ]
   },
   {
@@ -684,11 +703,12 @@
     "discovered_via": "talabat_public_grocery_directory",
     "service_area_id": "8374",
     "first_seen": 1794564096,
-    "last_seen": 1794564096,
+    "last_seen": 1794599081,
     "service_area_ids": [
       "8367",
       "8373",
-      "8374"
+      "8374",
+      "10690"
     ]
   },
   {
@@ -752,7 +772,7 @@
     "discovered_via": "talabat_public_grocery_directory",
     "service_area_id": "8387",
     "first_seen": 1794564096,
-    "last_seen": 1794574989,
+    "last_seen": 1794599081,
     "service_area_ids": [
       "8387",
       "8697",
@@ -761,7 +781,10 @@
       "8709",
       "8713",
       "9371",
-      "9372"
+      "9372",
+      "10694",
+      "10695",
+      "10696"
     ]
   },
   {
@@ -1007,14 +1030,15 @@
     "discovered_via": "talabat_public_grocery_directory",
     "service_area_id": "7942",
     "first_seen": 1794553563,
-    "last_seen": 1794583169,
+    "last_seen": 1794599081,
     "service_area_ids": [
       "7942",
       "7943",
       "7944",
       "7945",
       "8017",
-      "9801"
+      "9801",
+      "10707"
     ]
   },
   {
@@ -1124,13 +1148,14 @@
     "discovered_via": "talabat_public_grocery_directory",
     "service_area_id": "8080",
     "first_seen": 1794556920,
-    "last_seen": 1794589324,
+    "last_seen": 1794599081,
     "service_area_ids": [
       "8079",
       "8080",
       "8081",
       "8082",
-      "10071"
+      "10071",
+      "10702"
     ]
   },
   {
@@ -1425,9 +1450,10 @@
     "discovered_via": "talabat_public_grocery_directory",
     "service_area_id": "7993",
     "first_seen": 1794553563,
-    "last_seen": 1794553563,
+    "last_seen": 1794599081,
     "service_area_ids": [
-      "7993"
+      "7993",
+      "10703"
     ]
   },
   {
@@ -1495,9 +1521,10 @@
     "discovered_via": "talabat_public_grocery_directory",
     "service_area_id": "10409",
     "first_seen": 1794589324,
-    "last_seen": 1794589324,
+    "last_seen": 1794599081,
     "service_area_ids": [
-      "10409"
+      "10409",
+      "10768"
     ]
   },
   {
