@@ -46,12 +46,20 @@ jobs:
           # One read of exact user-provided Resale section, no retries or unverified publication.
           # Fail closed on throttling and preserve detailed results as an artifact.
           PROBE_KEY="$KEY" python3 used_probe/run_resale_link_audit.py
+          # One existing candidate ASIN, product page only. No publication.
+          if PROBE_KEY="$KEY" python3 used_probe/run_known_product.py B0DBHRWRKC; then
+            echo "AMAZON_USED_KNOWN_PAGE_DIAGNOSTIC_COMPLETE"
+          else
+            echo "AMAZON_USED_KNOWN_PAGE_REQUIRES_REVIEW"
+          fi
 
       - name: Save isolated used-offer pilot report
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: amazon-used-link-audit-v12-${{ github.run_id }}
-          path: cloudflare_amazon_v14/used_probe/reports/amazon_used_resale_link_audit_v12.json
+          path: |
+            cloudflare_amazon_v14/used_probe/reports/amazon_used_resale_link_audit_v12.json
+            cloudflare_amazon_v14/used_probe/reports/amazon_used_known_product.json
           retention-days: 7
           if-no-files-found: warn
