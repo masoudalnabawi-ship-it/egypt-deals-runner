@@ -1,3 +1,4 @@
+import {SOURCE_URL as RESALE_SNAPSHOT_URL, sameResalePage, analyzeResaleSnapshot} from './resale_snapshot.js';
 import {extractUsedOffers, extractUsedFromProductPage, parseEgyptianMoney} from './offer_parser.js';
 import {extractResaleListing} from './resale_source.js';
 import {analyzeResaleNavigation} from './resale_navigation.js';
@@ -229,6 +230,32 @@ async function probeRealResaleSourceV8(env: Env): Promise<any> {
   return result;
 }
 
+// AMAZON_RESALE_SNAPSHOT_V11: one read, rendered markdown plus accessibility tree.
+// No repeated scraping, no login/session tricks, no offer confirmation.
+async function probeResaleSnapshotV11(env: Env): Promise<any> {
+  const result: any = {requested_url:RESALE_SNAPSHOT_URL, verified_used_offers:0,
+    public_posting_enabled:false, product_candidate_count:0, category_link_count:0};
+  const response:Response=await env.BROWSER.quickAction('snapshot', {
+    url:RESALE_SNAPSHOT_URL, formats:['markdown','accessibilityTree'],
+    gotoOptions:{waitUntil:'domcontentloaded', timeout:20000}, waitForTimeout:1000
+  });
+  result.browser_http=response.status;
+  if (!response.ok) {result.status=response.status===429?'SOURCE_RATE_LIMITED':'SOURCE_SNAPSHOT_FAILED';return result;}
+  const data:any=await response.json();
+  result.source_http=Number(data?.meta?.status||200);
+  result.final_url=String(data?.meta?.finalUrl||RESALE_SNAPSHOT_URL).slice(0,400);
+  if (result.source_http===429) {result.status='SOURCE_RATE_LIMITED';return result;}
+  if (result.source_http>=400) {result.status='SOURCE_SNAPSHOT_FAILED';return result;}
+  if (!sameResalePage(result.final_url)) {result.status='SOURCE_REDIRECT_UNVERIFIED';return result;}
+  const seen=analyzeResaleSnapshot(data);
+  Object.assign(result,seen);
+  result.status=seen.captcha_text_signal?'SOURCE_CAPTCHA_REQUIRES_REVIEW':
+    seen.product_candidate_count?'SOURCE_PRODUCT_LINKS_UNVERIFIED':
+      seen.category_link_count?'SOURCE_CATEGORY_LINKS_UNVERIFIED':
+        seen.markdown_length<100 && seen.accessibility_nodes_seen<10?'SOURCE_GENERIC_SHELL_ONLY':'SOURCE_NO_PRODUCT_LINKS_OBSERVED';
+  return result;
+}
+
 function safeRows(data: any): Row[] {
   return (Array.isArray(data?.result) ? data.result : []).map((group: any) => ({
     selector: String(group?.selector ?? ''),
@@ -264,6 +291,10 @@ export default {
     if (!env.PROBE_KEY || request.headers.get('Authorization') !== `Bearer ${env.PROBE_KEY}`)
       return new Response('Unauthorized', {status: 401});
     const input = new URL(request.url);
+    if (input.searchParams.get('mode') === 'resale_snapshot_v11') {
+      try {return Response.json(await probeResaleSnapshotV11(env));}
+      catch(e) {return Response.json({status:'SOURCE_SNAPSHOT_FAILED',error_type:String(e).slice(0,120),public_posting_enabled:false},{status:502});}
+    }
     if (input.searchParams.get('mode') === 'resale_real_v8') {
       try {return Response.json(await probeRealResaleSourceV8(env));}
       catch (e) {return Response.json({status:'REAL_SOURCE_FETCH_FAILED',

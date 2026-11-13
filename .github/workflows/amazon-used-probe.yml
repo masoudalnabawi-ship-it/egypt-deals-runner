@@ -31,7 +31,7 @@ jobs:
         run: npm ci --no-audit --no-fund
 
       - name: Verify product-page used evidence parser
-        run: node --test used_probe/offer_parser.test.mjs used_probe/resale_source.test.mjs used_probe/resale_navigation.test.mjs used_probe/resale_search.test.mjs used_probe/resale_links.test.mjs used_probe/resale_real_source.test.mjs
+        run: node --test used_probe/offer_parser.test.mjs used_probe/resale_source.test.mjs used_probe/resale_navigation.test.mjs used_probe/resale_search.test.mjs used_probe/resale_links.test.mjs used_probe/resale_real_source.test.mjs used_probe/resale_snapshot.test.mjs
 
       - name: Deploy isolated probe
         run: npx wrangler deploy -c used_probe/wrangler.jsonc
@@ -43,15 +43,15 @@ jobs:
           printf '%s' "$KEY" | npx wrangler secret put PROBE_KEY -c used_probe/wrangler.jsonc
           echo "Waiting for secret propagation"
           sleep 25
-          # One named product read only; never query the rate-limited offer-listing.
+          # One read of exact user-provided Resale section, no retries or unverified publication.
           # Fail closed on throttling and preserve detailed results as an artifact.
-          PROBE_KEY="$KEY" python3 used_probe/run_known_product.py B0DBHRWRKC
+          PROBE_KEY="$KEY" python3 used_probe/run_resale_snapshot.py
 
       - name: Save isolated used-offer pilot report
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: amazon-used-redmi-target-${{ github.run_id }}
-          path: cloudflare_amazon_v14/used_probe/reports/amazon_used_known_product.json
+          name: amazon-used-snapshot-v11-${{ github.run_id }}
+          path: cloudflare_amazon_v14/used_probe/reports/amazon_used_resale_snapshot_v11.json
           retention-days: 7
           if-no-files-found: warn
