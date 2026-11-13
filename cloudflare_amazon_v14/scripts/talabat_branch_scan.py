@@ -47,6 +47,7 @@ elif len(seeds) > 3:
 print('BRANCH_CATALOG_TOTAL:', all_branch_count, 'THIS_RUN:', len(seeds), flush=True)
 
 results = []
+stock_unverified = {}  # >=40% price evidence; NOT verified stock
 summary = []
 # PRICE_HISTORY_STATE_V1
 price_observations = {}
@@ -142,10 +143,12 @@ for branch in seeds:
         before = len(links)
         existing = set(links)
         links.extend(sorted(extra_links - existing))
+        added_category_links = len(links) - before
 
         # FAST_ROTATING_WINDOW_V1
         if os.getenv("TALABAT_FAST") == "1" and links:
-            size = 6
+            # Broaden rolling category window without changing branch rotation.
+            size = 12
             cursor = fair_start(int(time.time() // 300), len(links), size)
             links = [
                 links[(cursor + i) % len(links)]
@@ -154,7 +157,7 @@ for branch in seeds:
             print("FAST_WINDOW:", len(links), "START:", cursor)
 
         print("MAIN_CATEGORIES:", len(catalog))
-        print("NEW_CATEGORY_LINKS:", len(links) - before)
+        print("NEW_CATEGORY_LINKS:", added_category_links)
         print("TOTAL_PAGES_TO_SCAN:", len(links))
         count = 0
         checked = 0
@@ -230,14 +233,35 @@ for branch in seeds:
                     try:
                         old = float(item.get("originalPrice") or 0)
                         price = float(item.get("price") or 0)
-                        stock = float(item.get("stockAmount") or 0)
-                        if not (old > price > 0 and stock > 0):
+                        raw_stock = item.get("stockAmount")
+                        stock = None if raw_stock is None or raw_stock == "" else float(raw_stock)
+                        if not (old > price > 0):
                             continue
                         discount = round((1 - price / old) * 100, 2)
                         if not 40 <= discount <= 99:
                             continue
                         sku = str(item.get("sku") or "")
                         if not sku:
+                            continue
+                        if stock is None:
+                            # Keep as a diagnostic candidate; never send to Telegram as confirmed.
+                            key = (bid, sku)
+                            if (key not in stock_unverified or
+                                stock_unverified[key]["discount"] < discount):
+                                stock_unverified[key] = {
+                                    "branch_id": bid,
+                                    "area": branch["area"],
+                                    "sku": sku,
+                                    "title": item.get("title"),
+                                    "price": price,
+                                    "original_price": old,
+                                    "discount": discount,
+                                    "stock_status": "unknown",
+                                    "source": url,
+                                    "observed_at": int(time.time()),
+                                }
+                            continue
+                        if stock <= 0:
                             continue
                         # KEEP_HIGHEST_DISCOUNT_V1
                         if sku in local and local[sku]["discount"] >= discount:
@@ -295,13 +319,15 @@ if history_stats["items_seen"] and not price_observations:
 
 Path("reports/talabat_multi_branch.json").write_text(
     json.dumps(
-        {"branches": summary, "offers": results},
+        {"branches": summary, "offers": results,
+         "stock_unverified": list(stock_unverified.values())},
         ensure_ascii=False, indent=2
     )
 )
 
 print("\nTOTAL_BRANCHES:", len(summary))
 print("TOTAL_OFFERS_40_PLUS:", len(results))
+print("TOTAL_40_PLUS_STOCK_UNVERIFIED:", len(stock_unverified))
 print("REPORT: reports/talabat_multi_branch.json")
 for x in sorted(results, key=lambda a: -a["discount"])[:12]:
     print("OFFER:", x["area"], x["discount"], "%", x["title"])

@@ -9,15 +9,21 @@ data = json.loads(
 
 groups = defaultdict(list)
 
-for x in data["offers"]:
+for x in data["offers"] + data.get("stock_unverified", []):
     path = urllib.parse.urlsplit(x["source"]).path.split("/")
     category = path[5] if len(path) > 5 else "unknown"
     groups[(x["branch_id"], category)].append(x)
 
-shortlist = [
-    max(v, key=lambda x: float(x["discount"]))
-    for v in groups.values()
-]
+# Recheck one known-stock and one unknown-stock candidate per category.
+# Unknown is NEVER promoted unless live stock is explicitly positive.
+shortlist = []
+for values in groups.values():
+    reported = [x for x in values if x.get("stock_status") != "unknown"]
+    unknown = [x for x in values if x.get("stock_status") == "unknown"]
+    if reported:
+        shortlist.append(max(reported, key=lambda x: float(x["discount"])))
+    if unknown:
+        shortlist.append(max(unknown, key=lambda x: float(x["discount"])))
 
 # FAST_RECHECK_WINDOW_V1: recheck a small rotating group, two pages per category.
 if os.getenv('TALABAT_FAST') == '1' and shortlist:
@@ -104,7 +110,8 @@ for x in shortlist:
             if item:
                 price = float(item.get("price") or 0)
                 old = float(item.get("originalPrice") or 0)
-                stock = float(item.get("stockAmount") or 0)
+                raw_stock = item.get("stockAmount")
+                stock = None if raw_stock is None or raw_stock == "" else float(raw_stock)
 
                 record["live_price"] = price
                 record["live_stock"] = stock
@@ -112,10 +119,12 @@ for x in shortlist:
                     (1-price/old)*100,2
                 ) if old > price > 0 else 0
 
+                price_matches = price > 0 and abs(price-float(x["price"])) < 0.01
                 record["recheck_status"] = (
                     "PRICE_STOCK_CONFIRMED"
-                    if price > 0 and stock > 0
-                    and abs(price-float(x["price"])) < 0.01
+                    if price_matches and stock is not None and stock > 0
+                    else "STOCK_UNVERIFIED"
+                    if price_matches and stock is None
                     else "CHANGED_OR_UNAVAILABLE"
                 )
                 break
