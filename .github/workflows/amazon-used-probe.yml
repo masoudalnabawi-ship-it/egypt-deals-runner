@@ -46,12 +46,9 @@ jobs:
           # One read of exact user-provided Resale section, no retries or unverified publication.
           # Fail closed on throttling and preserve detailed results as an artifact.
           PROBE_KEY="$KEY" python3 used_probe/run_resale_link_audit.py
-          # One existing candidate ASIN, product page only. No publication.
-          if PROBE_KEY="$KEY" python3 used_probe/run_known_product.py B0DBHRWRKC; then
-            echo "AMAZON_USED_KNOWN_PAGE_DIAGNOSTIC_COMPLETE"
-          else
-            echo "AMAZON_USED_KNOWN_PAGE_REQUIRES_REVIEW"
-          fi
+          # Prior isolated product-page check got Amazon HTTP 429.
+          # No repeated product requests here; diagnose only the working Resale landing.
+          echo "AMAZON_USED_PRODUCT_REQUESTS_PAUSED_AFTER_HTTP_429"
 
       - name: Save isolated used-offer pilot report
         if: always()

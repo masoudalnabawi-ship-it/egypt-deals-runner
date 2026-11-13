@@ -77,6 +77,23 @@ export function auditResaleLinks(data){
   }
   const md=markdownUrls(markdown);
   for(const href of md)register(href);
+  // SAFE_RESALE_CONTEXT_V13: read the SAME already-loaded source markdown only.
+  // A price marker or "used" in the same markdown line is not seller/stock proof.
+  const contexts=new Map();
+  for(const match of body.matchAll(/\[([^\]\n]{1,160})\]\(((?:https?:\/\/|\/)[^\s)]+)\)/gi)) {
+    const route=target(match[2]);
+    if(route.kind!=='product')continue;
+    const begin=body.lastIndexOf('\n',match.index-1)+1;
+    const finish=body.indexOf('\n',match.index+match[0].length);
+    const line=body.slice(begin,finish<0?Math.min(body.length,begin+1600):finish).slice(0,1600);
+    const used=/(?:\bused\b|amazon\s*resale|مستعمل(?:ة)?|مفتوح(?:ة)?\s*العلبة|open[ -]?box)/i.test(line);
+    const currency=/(?:\bEGP\b|جنيه|ج\s*\.?\s*م\.?)/i.test(line);
+    const previous=contexts.get(route.asin);
+    const score=Number(used)+Number(currency);
+    if(!previous||score>previous.score)contexts.set(route.asin,{
+      label:match[1].replace(/[<>]/g,'').slice(0,100),used,currency,score
+    });
+  }
   const resale=/amazon\s*(?:resale|warehouse)|أمازون\s*المستعمل|مستعمل|مفتوح(?:ة)?\s*العلبة/i;
   const metadataResale=resale.test(meta);
   const bodyResale=resale.test(body);
@@ -91,6 +108,15 @@ export function auditResaleLinks(data){
     accessibility_link_roles_with_target:withHref,accessibility_link_property_shapes:keyShapes,
     markdown_links_seen:md.length,link_kind_counts:kinds,
     product_candidate_count:products.size,category_candidate_count:categories.size,
-    product_candidates:[...products].map(([asin,url])=>({asin,url,used_verified:false})),
+    product_candidates:[...products].map(([asin,url])=>({
+      asin,url,used_verified:false,
+      listing_link_label:contexts.get(asin)?.label || null,
+      same_line_used_keyword:Boolean(contexts.get(asin)?.used),
+      same_line_currency_marker:Boolean(contexts.get(asin)?.currency),
+      context_is_diagnostic_only:true
+    })),
+    product_links_with_used_keyword:[...products.keys()].filter(k=>contexts.get(k)?.used).length,
+    product_links_with_currency_marker:[...products.keys()].filter(k=>contexts.get(k)?.currency).length,
+    product_links_with_both_signals:[...products.keys()].filter(k=>contexts.get(k)?.used&&contexts.get(k)?.currency).length,
     category_candidates:[...categories],verified_used_offers:0,public_posting_enabled:false};
 }

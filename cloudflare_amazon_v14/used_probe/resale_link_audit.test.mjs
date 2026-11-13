@@ -41,3 +41,20 @@ test('single page never reports used-offer verification',()=>{
   const x=auditResaleLinks(snap('[p](/dp/B0DBHRWRKC)'));
   assert.equal(x.verified_used_offers,0);assert.equal(x.public_posting_enabled,false);
 });
+
+test('same-line product signals remain diagnostic, never verified offers',()=>{
+  const x=auditResaleLinks(snap(
+    '[Used like new product — EGP 450](https://www.amazon.eg/dp/B0DBHRWRKC?tag=private)\n'+
+    '[Regular item](https://www.amazon.eg/dp/B09381LZWT)'
+  ));
+  assert.equal(x.product_candidate_count,2);
+  const used=x.product_candidates.find(p=>p.asin==='B0DBHRWRKC');
+  assert.equal(used.same_line_used_keyword,true);
+  assert.equal(used.same_line_currency_marker,true);
+  assert.equal(used.used_verified,false);
+  assert.equal(used.context_is_diagnostic_only,true);
+  assert.equal(x.product_links_with_both_signals,1);
+  assert.equal(x.verified_used_offers,0);
+  assert.equal(x.public_posting_enabled,false);
+  assert.equal(JSON.stringify(x).includes('tag=private'),false);
+});

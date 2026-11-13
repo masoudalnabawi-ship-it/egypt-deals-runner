@@ -28,7 +28,10 @@ print('AMAZON_RESALE_LINK_AUDIT_V12:',report.get('status'),
       'MARKDOWN_LINKS:',report.get('markdown_links_seen'),
       'PRODUCTS:',report.get('product_candidate_count'),
       'CATEGORIES:',report.get('category_candidate_count'),
-      'DIAGNOSIS:',report.get('diagnosis'),flush=True)
+      'DIAGNOSIS:',report.get('diagnosis'),
+      'SAME_LINE_USED:',report.get('product_links_with_used_keyword'),
+      'SAME_LINE_CURRENCY:',report.get('product_links_with_currency_marker'),
+      'SAME_LINE_BOTH:',report.get('product_links_with_both_signals'),flush=True)
 if report['status'] in ('PROBE_CONNECTION_ERROR','SOURCE_LINK_AUDIT_FAILED','SOURCE_RATE_LIMITED',
                         'SOURCE_REDIRECT_UNVERIFIED','SOURCE_CAPTCHA_REQUIRES_REVIEW'):
     raise SystemExit('AMAZON_RESALE_LINK_AUDIT_V12_NEEDS_REVIEW')
