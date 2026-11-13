@@ -272,9 +272,27 @@
     "discovered_via": "talabat_public_grocery_directory",
     "service_area_id": "8331",
     "first_seen": 1794564096,
-    "last_seen": 1794564096,
+    "last_seen": 1794585707,
     "service_area_ids": [
-      "8331"
+      "8331",
+      "9972",
+      "9975",
+      "10012",
+      "10016"
+    ]
+  },
+  {
+    "area": "Faisal El Twabee 2",
+    "branch_id": "725603",
+    "branch_name": "Tmart, Haram - Talbiya 2",
+    "source": "https://www.talabat.com/egypt/grocery/725603/faisal-el-twabee-2?aid=10034",
+    "prices_verified": false,
+    "discovered_via": "talabat_public_grocery_directory",
+    "service_area_id": "10034",
+    "first_seen": 1794585707,
+    "last_seen": 1794585707,
+    "service_area_ids": [
+      "10034"
     ]
   },
   {
@@ -330,6 +348,20 @@
     ]
   },
   {
+    "area": "New Sporting",
+    "branch_id": "742730",
+    "branch_name": "tKiosk by tMart, Ibrahimia",
+    "source": "https://www.talabat.com/egypt/grocery/742730/tkiosk-by-tmart-ibrahimia?aid=10030",
+    "prices_verified": false,
+    "discovered_via": "talabat_public_grocery_directory",
+    "service_area_id": "10030",
+    "first_seen": 1794585707,
+    "last_seen": 1794585707,
+    "service_area_ids": [
+      "10030"
+    ]
+  },
+  {
     "area": "Masaken El Tagned",
     "branch_id": "742731",
     "branch_name": "tKiosk by tMart, El Helw Street",
@@ -356,7 +388,7 @@
     "discovered_via": "talabat_public_grocery_directory",
     "service_area_id": "8112",
     "first_seen": 1794560525,
-    "last_seen": 1794560525,
+    "last_seen": 1794585707,
     "service_area_ids": [
       "8112",
       "8113",
@@ -364,7 +396,12 @@
       "8115",
       "8116",
       "8118",
-      "8119"
+      "8119",
+      "9965",
+      "9974",
+      "9979",
+      "9984",
+      "10023"
     ]
   },
   {
@@ -376,13 +413,16 @@
     "discovered_via": "talabat_public_grocery_directory",
     "service_area_id": "8326",
     "first_seen": 1794564096,
-    "last_seen": 1794564096,
+    "last_seen": 1794585707,
     "service_area_ids": [
       "8325",
       "8326",
       "8327",
       "8328",
-      "8329"
+      "8329",
+      "9966",
+      "9973",
+      "9982"
     ]
   },
   {
@@ -437,11 +477,20 @@
     "discovered_via": "talabat_public_grocery_directory",
     "service_area_id": "8348",
     "first_seen": 1794564096,
-    "last_seen": 1794564096,
+    "last_seen": 1794585707,
     "service_area_ids": [
       "8348",
       "8349",
-      "8352"
+      "8352",
+      "9987",
+      "9995",
+      "10010",
+      "10013",
+      "10021",
+      "10022",
+      "10025",
+      "10029",
+      "10032"
     ]
   },
   {
@@ -502,9 +551,12 @@
     "discovered_via": "talabat_public_grocery_directory",
     "service_area_id": "8330",
     "first_seen": 1794564096,
-    "last_seen": 1794564096,
+    "last_seen": 1794585707,
     "service_area_ids": [
-      "8330"
+      "8330",
+      "9981",
+      "9985",
+      "10019"
     ]
   },
   {
@@ -545,6 +597,21 @@
       "8713",
       "9371",
       "9372"
+    ]
+  },
+  {
+    "area": "Haram Omraniya Gharbeya 1",
+    "branch_id": "753730",
+    "branch_name": "Tkiosk By Tmart, Haram - Tersa",
+    "source": "https://www.talabat.com/egypt/grocery/753730/tkiosk-by-tmart-haram-tersa?aid=9962",
+    "prices_verified": false,
+    "discovered_via": "talabat_public_grocery_directory",
+    "service_area_id": "9962",
+    "first_seen": 1794585707,
+    "last_seen": 1794585707,
+    "service_area_ids": [
+      "9962",
+      "9970"
     ]
   },
   {
@@ -662,6 +729,21 @@
     ]
   },
   {
+    "area": "Haram El Arish 2",
+    "branch_id": "763763",
+    "branch_name": "talabat mart, Faisal - Maryoteya",
+    "source": "https://www.talabat.com/egypt/grocery/763763/haram-el-arish-2?aid=9999",
+    "prices_verified": false,
+    "discovered_via": "talabat_public_grocery_directory",
+    "service_area_id": "9999",
+    "first_seen": 1794585707,
+    "last_seen": 1794585707,
+    "service_area_ids": [
+      "9999",
+      "10035"
+    ]
+  },
+  {
     "area": "El Sheikh Zayed Al Ahly Club",
     "branch_id": "779871",
     "branch_name": "tKiosk by tMart, El Sheikh Zayed - El Hay 13",
@@ -742,12 +824,13 @@
     "discovered_via": "talabat_public_grocery_directory",
     "service_area_id": "8353",
     "first_seen": 1794564096,
-    "last_seen": 1794574989,
+    "last_seen": 1794585707,
     "service_area_ids": [
       "8350",
       "8351",
       "8353",
-      "9434"
+      "9434",
+      "9976"
     ]
   },
   {
@@ -798,7 +881,7 @@
     "discovered_via": "talabat_public_grocery_directory",
     "service_area_id": "8320",
     "first_seen": 1794564096,
-    "last_seen": 1794564096,
+    "last_seen": 1794585707,
     "service_area_ids": [
       "8315",
       "8319",
@@ -806,7 +889,10 @@
       "8321",
       "8323",
       "8324",
-      "8408"
+      "8408",
+      "10020",
+      "10024",
+      "10031"
     ]
   },
   {
@@ -859,9 +945,12 @@
     "discovered_via": "talabat_public_grocery_directory",
     "service_area_id": "8409",
     "first_seen": 1794564096,
-    "last_seen": 1794564096,
+    "last_seen": 1794585707,
     "service_area_ids": [
-      "8409"
+      "8409",
+      "9997",
+      "10004",
+      "10009"
     ]
   },
   {
@@ -902,12 +991,16 @@
     "discovered_via": "talabat_public_grocery_directory",
     "service_area_id": "8317",
     "first_seen": 1794564096,
-    "last_seen": 1794564096,
+    "last_seen": 1794585707,
     "service_area_ids": [
       "8316",
       "8317",
       "8318",
-      "8410"
+      "8410",
+      "9994",
+      "10003",
+      "10008",
+      "10015"
     ]
   },
   {
@@ -1034,6 +1127,20 @@
     ]
   },
   {
+    "area": "10Th Of Ramadan Industrial Area 3",
+    "branch_id": "1115831",
+    "branch_name": "tKiosk by tMart, 10th of Ramadan - 7th District",
+    "source": "https://www.talabat.com/egypt/grocery/1115831/tkiosk-by-tmart-10th-of-ramadan-7th-district?aid=10028",
+    "prices_verified": false,
+    "discovered_via": "talabat_public_grocery_directory",
+    "service_area_id": "10028",
+    "first_seen": 1794585707,
+    "last_seen": 1794585707,
+    "service_area_ids": [
+      "10028"
+    ]
+  },
+  {
     "area": "Al Mostakbal City",
     "branch_id": "1115839",
     "branch_name": "tKiosk by tMart, El Shorouk - 8th Area",
@@ -1084,12 +1191,15 @@
     "discovered_via": "talabat_public_grocery_directory",
     "service_area_id": "8332",
     "first_seen": 1794564096,
-    "last_seen": 1794578541,
+    "last_seen": 1794585707,
     "service_area_ids": [
       "8332",
       "8333",
       "8386",
-      "9585"
+      "9585",
+      "9968",
+      "9978",
+      "9992"
     ]
   },
   {
@@ -1121,6 +1231,22 @@
     "last_seen": 1794560525,
     "service_area_ids": [
       "8180"
+    ]
+  },
+  {
+    "area": "Giza El Omraneya El Sharkeya 2 1",
+    "branch_id": "1119387",
+    "branch_name": "talabat mart, Haram - Mohafzet El Giza 2",
+    "source": "https://www.talabat.com/egypt/grocery/1119387/giza-el-omraneya-el-sharkeya-2-1?aid=9983",
+    "prices_verified": false,
+    "discovered_via": "talabat_public_grocery_directory",
+    "service_area_id": "9983",
+    "first_seen": 1794585707,
+    "last_seen": 1794585707,
+    "service_area_ids": [
+      "9983",
+      "10002",
+      "10014"
     ]
   },
   {
