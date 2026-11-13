@@ -248,6 +248,20 @@
     ]
   },
   {
+    "area": "Gardenia City Compound",
+    "branch_id": "723251",
+    "branch_name": "tKiosk by tMart, Nasr City - Hay 8,Nasr City - Hay 8",
+    "source": "https://www.talabat.com/egypt/grocery/723251/tkiosk-by-tmart-nasr-city-hay-8nasr-city-hay-8?aid=9651",
+    "prices_verified": false,
+    "discovered_via": "talabat_public_grocery_directory",
+    "service_area_id": "9651",
+    "first_seen": 1794578541,
+    "last_seen": 1794578541,
+    "service_area_ids": [
+      "9651"
+    ]
+  },
+  {
     "area": "Fleming El Souk",
     "branch_id": "725493",
     "branch_name": "Tmart, Fleming - Koliyat Tarbya 2",
@@ -585,10 +599,13 @@
     "discovered_via": "talabat_public_grocery_directory",
     "service_area_id": "9289",
     "first_seen": 1794574989,
-    "last_seen": 1794574989,
+    "last_seen": 1794578541,
     "service_area_ids": [
       "9289",
-      "9291"
+      "9291",
+      "9574",
+      "9575",
+      "9576"
     ]
   },
   {
@@ -621,9 +638,10 @@
     "discovered_via": "talabat_public_grocery_directory",
     "service_area_id": "9573",
     "first_seen": 1794574989,
-    "last_seen": 1794574989,
+    "last_seen": 1794578541,
     "service_area_ids": [
-      "9573"
+      "9573",
+      "9654"
     ]
   },
   {
@@ -752,9 +770,10 @@
     "discovered_via": "talabat_public_grocery_directory",
     "service_area_id": "9288",
     "first_seen": 1794574989,
-    "last_seen": 1794574989,
+    "last_seen": 1794578541,
     "service_area_ids": [
-      "9288"
+      "9288",
+      "9659"
     ]
   },
   {
@@ -1001,6 +1020,20 @@
     ]
   },
   {
+    "area": "La Fontain Elsharbatly Compound",
+    "branch_id": "1116287",
+    "branch_name": "tKiosk by tMart, Tagammoa 5 - El Lotus El Shamaleya",
+    "source": "https://www.talabat.com/egypt/grocery/1116287/tkiosk-by-tmart-tagammoa-5-el-lotus-el-shamaleya?aid=9655",
+    "prices_verified": false,
+    "discovered_via": "talabat_public_grocery_directory",
+    "service_area_id": "9655",
+    "first_seen": 1794578541,
+    "last_seen": 1794578541,
+    "service_area_ids": [
+      "9655"
+    ]
+  },
+  {
     "area": "6Th Of October West Somed",
     "branch_id": "1116720",
     "branch_name": "talabat mart, 6th of October - West Somed",
@@ -1023,11 +1056,12 @@
     "discovered_via": "talabat_public_grocery_directory",
     "service_area_id": "8332",
     "first_seen": 1794564096,
-    "last_seen": 1794564096,
+    "last_seen": 1794578541,
     "service_area_ids": [
       "8332",
       "8333",
-      "8386"
+      "8386",
+      "9585"
     ]
   },
   {
