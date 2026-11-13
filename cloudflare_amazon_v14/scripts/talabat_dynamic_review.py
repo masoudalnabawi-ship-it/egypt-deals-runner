@@ -74,7 +74,15 @@ def balance_offer_departments(items):
 def worker_post(endpoint, payload):
     r = session.post(WORKER + endpoint, json=payload, headers=headers, timeout=25)
     if r.status_code >= 400:
-        print('REVIEW_WORKER_HTTP_ERROR:', endpoint, r.status_code, flush=True)
+        # Only the documented error code and stage. Never log tokens or payloads.
+        try:
+            data = r.json()
+            stage = str(data.get('stage', 'unknown'))[:48] if isinstance(data, dict) else 'unknown'
+            reason = str(data.get('error', 'unknown'))[:60] if isinstance(data, dict) else 'unknown'
+        except ValueError:
+            stage, reason = 'unknown', 'non_json_response'
+        print('REVIEW_WORKER_HTTP_ERROR:', endpoint, r.status_code,
+              'STAGE:', stage, 'REASON:', reason, flush=True)
     r.raise_for_status()
     x = r.json()
     if not x.get('ok'):
@@ -314,3 +322,5 @@ print('TALABAT_PRIVATE_REVIEW_SUMMARY:', 'SENT', sent, 'SEEN', seen,
       'ERRORS', errors + failures, 'PRODUCTS_GROUPED',len(groups),flush=True)
 if errors and not observed:
     raise SystemExit('ALL_BRANCH_OBSERVATIONS_FAILED')
+if failures and not sent:
+    raise SystemExit('TALABAT_PRIVATE_REVIEW_ATTACHMENTS_FAILED')

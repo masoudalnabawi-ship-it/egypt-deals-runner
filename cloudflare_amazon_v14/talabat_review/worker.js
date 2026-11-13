@@ -231,15 +231,40 @@ export default {async fetch(request,env){
     }
     return json({ok:true,reserved:!!q.meta.changes,id});
   }
+  // TALABAT_ATTACH_STAGE_DIAGNOSTICS_V1: identify the exact private-attachment failure.
+  // No public post, no new Telegram photo; idempotent for the SAME message ID.
   if(path==='/attach' && request.method==='POST') {
     if(!auth(request,env))return json({ok:false,error:'unauthorized'},401);
-    const o=await request.json().catch(()=>null);if(!o||!/^\d+$/.test(String(o.message_id))||!/^[a-z0-9_-]{12,90}$/i.test(String(o.id)))return json({ok:false,error:'bad_input'},400);
-    const q=await env.DB.prepare(`UPDATE talabat_reviews SET status='pending',review_message_id=? WHERE id=? AND status='reserved'`)
-      .bind(Number(o.message_id),String(o.id)).run();
-    if(!q.meta.changes)return json({ok:false,error:'not_reserved_or_duplicate'},409);
-    const expiry=Math.floor(Date.now()/1000)+86400*3;
-    const sign=async action=>{const msg=`${o.id}|${action}|${expiry}`;const signature=await hexHmac(env.BOT_TOKEN,msg);return `${u.origin}/review?id=${encodeURIComponent(o.id)}&action=${action}&exp=${expiry}&sig=${signature}`;};
-    return json({ok:true,publish_url:await sign('publish'),reject_url:await sign('reject')});
+    const o=await request.json().catch(()=>null);
+    if(!o||!/^\d+$/.test(String(o.message_id))||!/^[a-z0-9_-]{12,90}$/i.test(String(o.id)))
+      return json({ok:false,error:'bad_input'},400);
+    let stage='database_update';
+    try {
+      const q=await env.DB.prepare(`UPDATE talabat_reviews SET status='pending',review_message_id=? WHERE id=? AND status='reserved'`)
+        .bind(Number(o.message_id),String(o.id)).run();
+      if(!Number(q?.meta?.changes)) {
+        stage='read_existing_message';
+        const existing=await env.DB.prepare('SELECT status,review_message_id FROM talabat_reviews WHERE id=?')
+          .bind(String(o.id)).first();
+        // A retry may only refer to the SAME already-attached Telegram message.
+        if(!existing||existing.status!=='pending'||Number(existing.review_message_id)!==Number(o.message_id))
+          return json({ok:false,error:'not_reserved_or_duplicate'},409);
+      }
+      const expiry=Math.floor(Date.now()/1000)+86400*3;
+      const sign=async action=>{
+        const msg=`${o.id}|${action}|${expiry}`;
+        const signature=await hexHmac(env.BOT_TOKEN,msg);
+        return `${u.origin}/review?id=${encodeURIComponent(o.id)}&action=${action}&exp=${expiry}&sig=${signature}`;
+      };
+      stage='sign_reject_url';
+      const reject_url=await sign('reject');
+      stage='sign_publish_url';
+      const publish_url=await sign('publish');
+      return json({ok:true,publish_url,reject_url});
+    } catch(error) {
+      console.error('TALABAT_ATTACH_FAILED',stage,String(error).slice(0,240));
+      return json({ok:false,error:'private_attachment_failed',stage},503);
+    }
   }
   if(path==='/review' && (request.method==='GET'||request.method==='POST')) {
     const data=request.method==='GET'?u.searchParams:await request.formData();
