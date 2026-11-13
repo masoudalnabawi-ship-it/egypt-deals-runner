@@ -48,6 +48,12 @@ jobs:
         with:
           python-version: '3.12'
 
+      - name: Install browser for client-rendered area index
+        if: env.SKIP_DISCOVERY != '1'
+        run: |
+          python3 -m pip install -q playwright
+          python3 -m playwright install --with-deps chromium >/dev/null
+
       - name: Discover Talabat Mart branches across Egypt
         if: env.SKIP_DISCOVERY != '1'
         working-directory: cloudflare_amazon_v14
