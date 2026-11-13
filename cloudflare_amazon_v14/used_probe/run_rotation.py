@@ -74,8 +74,17 @@ for pos, asin in enumerate(selected):
             result['stopped_due_to_restriction'] = True
             break
     except (HTTPError, URLError, TimeoutError, ValueError) as error:
-        result['results'].append({'asin':asin, 'status':'REQUEST_ERROR',
-                                  'error_type':type(error).__name__})
+        code = int(error.code) if isinstance(error, HTTPError) else None
+        reason = ('PROBE_AUTH_DENIED' if code in (401, 403)
+                  else 'PROBE_ENDPOINT_RATE_LIMITED' if code == 429
+                  else 'PROBE_SERVER_ERROR' if code is not None and code >= 500
+                  else 'PROBE_HTTP_ERROR' if code is not None
+                  else 'PROBE_TRANSPORT_ERROR')
+        result['results'].append({'asin': asin, 'status': 'REQUEST_ERROR',
+                                  'error_type': type(error).__name__,
+                                  'http_status': code, 'error_reason': reason})
+        print('USED_PILOT_HTTP_ERROR:', asin, reason,
+              'HTTP', code if code is not None else 'n/a', flush=True)
         blocked = True
         result['stopped_due_to_request_error'] = True
         break
@@ -87,3 +96,8 @@ save()
 print('AMAZON_USED_PILOT_SUMMARY:', 'ITEMS',len(result['results']),
       'CANDIDATES',result['candidate_count'],'BLOCKED',blocked,
       'PUBLISHED',False,flush=True)
+# A 401/429/5xx without even one inspected page is NOT a successful pilot.
+# GitHub saves the report as an artifact even if this step fails.
+if not any(isinstance(x.get('product_http'), int) and x['product_http'] == 200
+           for x in result['results']):
+    raise SystemExit('AMAZON_USED_PILOT_NO_SUCCESSFUL_PROBES')
