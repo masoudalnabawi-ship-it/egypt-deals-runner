@@ -34,6 +34,21 @@ if catalog_path.is_file():
     seeds = sorted(by_id.values(), key=lambda b: int(b['branch_id']))
 
 all_branch_count = len(seeds)
+# FAST_REAL_TMART_FIRST_V1: keep tKiosk in catalog for discovery/deep scan,
+# but use real tMart storefronts for the frequent, time-limited watch.
+if os.getenv('TALABAT_FAST') == '1' and seeds:
+    real_mart = [
+        b for b in seeds
+        if 'kiosk' not in str(b.get('branch_name') or '').lower()
+        and re.search(r'\b(?:talabat\s*mart|tmart)\b',
+                      str(b.get('branch_name') or ''), re.I)
+    ]
+    print('FAST_REAL_TMART_BRANCHES:', len(real_mart),
+          'SKIPPED_KIOSK_OR_OTHER:', len(seeds) - len(real_mart), flush=True)
+    if not real_mart:
+        raise RuntimeError('NO_REAL_TMART_BRANCHES_IN_CATALOG')
+    seeds = real_mart
+
 if os.getenv('TALABAT_FAST') == '1' and seeds:
     # Three different branches per five-minute slot; all discovered branches rotate.
     size = min(3, len(seeds))
