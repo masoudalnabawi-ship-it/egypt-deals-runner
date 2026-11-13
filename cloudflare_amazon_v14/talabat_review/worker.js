@@ -11,9 +11,15 @@ async function telegram(env,method,payload){const r=await fetch(`https://api.tel
 function documentPage(label,title,body,submit){return html(`<!doctype html><html lang="ar" dir="rtl"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${esc(label)}</title><style>body{font-family:system-ui;max-width:470px;margin:9vh auto;padding:22px;line-height:1.8;background:#f7f8fa;color:#1b2936}article{padding:22px;background:white;border-radius:18px;box-shadow:0 2px 16px #0001}h2{margin-top:0}button{border:0;padding:13px 20px;background:#11795d;color:#fff;border-radius:11px;font-weight:700;width:100%;font-size:17px}small{color:#596573} .reject{background:#b33434}</style><article><h2>${esc(label)}</h2><p>${esc(title)}</p><p><small>${esc(body)}</small></p>${submit||''}</article></html>`);}
 // GLOBAL_BRANCH_OBSERVATIONS_V2: multiple service areas share one product review.
 function money(x){return Number(x).toFixed(2);}
-function verifiedCaption(title, locs){
-  const a=locs.slice(0,8).map(x=>`• ${String(x.area).slice(0,70)}: ${money(x.price)} ج`).join('\n');
-  return (`🛒 طلبات مارت | عرض موحد\n📦 ${String(title).slice(0,165)}\n📍 الفروع التي تم التحقق منها مؤخرًا:\n${a}${locs.length>8?'\n• وفروع أخرى عبر الزر':''}\n📸 الصورة من أحد الفروع؛ السعر قد يختلف حسب المنطقة\n✅ تمت مراجعة السعر والمخزون في هذه الفروع\n⚠️ التوصيل والسعر النهائي غير مؤكدين\n⏸️ النشر العام متوقف حتى إصلاح الروابط وتأمين الموافقات`).slice(0,1010);
+// Keep future and existing private-review cards concise.
+function verifiedCaption(rec, locs){
+  const last=locs[0]||{};
+  // Keep the original photographed branch/price; other prices live behind the button.
+  const price=Number(rec.price);
+  const discount=Number(rec.discount);
+  const area=String(rec.area||last.area||'').slice(0,55);
+  const more=locs.length>1?` (+${locs.length-1} فرع)`:'';
+  return (`🛒 طلبات مارت | للمراجعة فقط\n📦 ${String(rec.title).slice(0,120)}\n💰 ${money(price)} ج | 🔥 خصم ${discount.toFixed(1)}%\n📍 ${area}${more}\n⚠️ السعر والتوفر والتوصيل حسب منطقتك`).slice(0,550);
 }
 async function recentLocations(env,key){
   const r=await env.DB.prepare('SELECT branch_id,area,price,discount,checked_at FROM talabat_product_locations WHERE offer_key=? AND checked_at>? ORDER BY checked_at DESC,area LIMIT 80')
@@ -55,17 +61,27 @@ export default {async fetch(request,env){
     await env.DB.prepare('INSERT INTO talabat_product_locations(offer_key,branch_id,area,sku,title,price,discount,checked_at) VALUES(?,?,?,?,?,?,?,?) ON CONFLICT(offer_key,branch_id) DO UPDATE SET area=excluded.area,sku=excluded.sku,title=excluded.title,price=excluded.price,discount=excluded.discount,checked_at=excluded.checked_at')
       .bind(key,branch,String(o.area).slice(0,110),String(o.sku).slice(0,90),String(o.title).slice(0,400),Number(o.price),Number(o.discount),now).run();
     const locations=await recentLocations(env,key);
-    const rec=await env.DB.prepare('SELECT id,title,status,review_message_id FROM talabat_reviews WHERE review_message_id IS NOT NULL AND (id=? OR lower(title)=lower(?)) ORDER BY created_at ASC LIMIT 1')
+    const rec=await env.DB.prepare('SELECT id,title,status,review_message_id,product_url,price,discount,area FROM talabat_reviews WHERE review_message_id IS NOT NULL AND (id=? OR lower(title)=lower(?)) ORDER BY created_at ASC LIMIT 1')
       .bind(key,String(o.title)).first();
     const changed=!prev||Number(prev.price)!==Number(o.price)||Number(prev.discount)!==Number(o.discount)||prev.area!==String(o.area);
-    if(rec && rec.status==='pending' && changed) {
+    if(rec && rec.status==='pending') {
+      // Refresh older long cards too, even when the price has not changed.
+      // Telegram returns 400 for a no-op edit; ignore that specific condition.
+      const editPrivate=async(method,payload)=>{
+        try { await telegram(env,method,payload); }
+        catch(error) {if(!String(error).includes('message is not modified'))throw error;}
+      };
       try {
-        await telegram(env,'editMessageCaption',{chat_id:REVIEW_CHAT,message_id:rec.review_message_id,caption:verifiedCaption(rec.title,locations)});
+        await editPrivate('editMessageCaption',{chat_id:REVIEW_CHAT,
+          message_id:rec.review_message_id,caption:verifiedCaption(rec,locations)});
         const rejectUrl=await signedReviewUrl(env,u.origin,rec.id,'reject');
-        await telegram(env,'editMessageReplyMarkup',{chat_id:REVIEW_CHAT,message_id:rec.review_message_id,reply_markup:{inline_keyboard:[
-          [{text:'⏸️ النشر متوقف',url:u.origin+'/status'},{text:'❌ رفض العرض',url:rejectUrl}],
-          [{text:'📍 الفروع والأسعار المؤكدة',url:u.origin+'/branches?key='+key}]
-        ]}});
+        const buttons=[];
+        if(isTalabatUrl(rec.product_url,true))
+          buttons.push([{text:'🛒 فتح المنتج',url:rec.product_url}]);
+        buttons.push([{text:'📍 الفروع والأسعار',url:u.origin+'/branches?key='+key},
+          {text:'❌ رفض العرض',url:rejectUrl}]);
+        await editPrivate('editMessageReplyMarkup',{chat_id:REVIEW_CHAT,
+          message_id:rec.review_message_id,reply_markup:{inline_keyboard:buttons}});
       } catch(error) { console.error('BRANCH_CAPTION_UPDATE_FAILED',key,String(error)); }
     }
     return json({ok:true,seen:!!rec,review_status:rec?.status||null,

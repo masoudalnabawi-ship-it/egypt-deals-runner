@@ -34,7 +34,8 @@ def valid_talabat(url, product=False):
     try:
         x = urlsplit(url)
         return (x.scheme == 'https' and x.hostname == 'www.talabat.com'
-                and x.path.startswith('/egypt/grocery/')
+                and (x.path.startswith('/egypt/grocery/')
+                     or (product and x.path.startswith('/egypt/talabat-mart/product/')))
                 and (not product or '/product/' in x.path))
     except Exception:
         return False
@@ -152,17 +153,15 @@ def send_photo_and_controls(item, photo, product_url, offer_id, branches):
         print('ALREADY_REVIEWED:', item['area'], item['sku'], flush=True)
         return False
 
-    branch_lines = [f"• {b['area']}: {float(b['price']):.2f} ج" for b in branches[:7]]
-    caption = (f"🛒 طلبات مارت | عرض موحد\n"
-               f"📦 {str(item.get('title') or '')[:150]}\n"
-               f"💰 لقطة السعر: {float(item['live_price']):.2f} جنيه | 🔥 {float(item['live_discount']):.1f}%\n"
-               "📍 الفروع التي تم التحقق منها مؤخرًا:\n"
-               + '\n'.join(branch_lines) + ('\n• وغيرها — افتح زر الفروع' if len(branches)>7 else '') + "\n"
-               "📸 الصورة من فرع واحد، وقد تختلف الأسعار حسب المنطقة\n"
-               "✅ السعر والمخزون مطابقان لإعادة الفحص\n"
-               + price_evidence_line(item) + "\n"
-               "⚠️ التوصيل والسعر النهائي غير مؤكدين\n"
-               "⏸️ النشر العام متوقف حتى تأمين الروابط والموافقات")
+    # Keep review cards short; full locations remain available via button.
+    area = str(item.get('area') or '')[:55]
+    other_branches = max(len(branches) - 1, 0)
+    area_line = area + (f" (+{other_branches} فرع)" if other_branches else '')
+    caption = ("🛒 طلبات مارت | للمراجعة فقط\n"
+               f"📦 {str(item.get('title') or '')[:120]}\n"
+               f"💰 {float(item['live_price']):.2f} ج | 🔥 خصم {float(item['live_discount']):.1f}%\n"
+               f"📍 {area_line}\n"
+               "⚠️ السعر والتوفر والتوصيل حسب منطقتك")
     with photo.open('rb') as file:
         r = session.post(f'https://api.telegram.org/bot{TOKEN}/sendPhoto',
                          data={'chat_id': REVIEW_CHAT, 'caption': caption[:1024]},
@@ -174,10 +173,11 @@ def send_photo_and_controls(item, photo, product_url, offer_id, branches):
 
     message_id = int(resp['result']['message_id'])
     urls = worker_post('/attach', {'id': offer_id, 'message_id': message_id})
+    # Direct SKU-linked product URL was verified from the original card.
     markup = {'inline_keyboard': [
-        [{'text': '⏸️ النشر متوقف', 'url': WORKER + '/status'},
+        [{'text': '🛒 فتح المنتج', 'url': product_url}],
+        [{'text': '📍 الفروع والأسعار', 'url': WORKER + '/branches?key=' + offer_id},
          {'text': '❌ رفض العرض', 'url': urls['reject_url']}],
-        [{'text': '📍 الفروع والأسعار المؤكدة', 'url': WORKER + '/branches?key=' + offer_id}],
     ]}
     edit = session.post(f'https://api.telegram.org/bot{TOKEN}/editMessageReplyMarkup',
                         json={'chat_id': REVIEW_CHAT,
