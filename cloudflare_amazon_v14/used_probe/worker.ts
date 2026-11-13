@@ -1,5 +1,6 @@
 import {extractUsedOffers, extractUsedFromProductPage, parseEgyptianMoney} from './offer_parser.js';
 import {extractResaleListing} from './resale_source.js';
+import {analyzeResaleNavigation} from './resale_navigation.js';
 
 interface Env {
   BROWSER: any;
@@ -64,6 +65,79 @@ async function probeResaleSource(env: Env): Promise<any> {
   return result;
 }
 
+// AMAZON_RESALE_NAV_V6: one storefront inspection plus at most one evident category page.
+// No retry, identity rotation, CAPTCHA handling, inventory or checkout claims.
+const RESALE_NAV_SELECTORS = [
+  'title', 'h1', '#mainContent', '#desktop-grid',
+  'main a[href]', '#mainContent a[href]', '#desktop-grid a[href]',
+  '.bxc-grid a[href]', '#zg_browseRoot a[href]', 'a[href]',
+  'div[data-asin]', '[data-component-type="s-search-result"]',
+  'div.s-card-container', 'a[href*="/dp/"]',
+  'form[action*="validateCaptcha"]', '#captchacharacters'
+];
+async function probeResaleNavigation(env: Env): Promise<any> {
+  const result: any = {source_url:RESALE_URL, status:'UNINSPECTED',
+    public_posting_enabled:false, verified_offers:0, used_prices_verified:0};
+  const scrapeOne = async (url: string, selectors: string[]) => {
+    const response: Response = await env.BROWSER.quickAction('scrape', {
+      url, elements:selectors.map(selector=>({selector})),
+      gotoOptions:{waitUntil:'domcontentloaded',timeout:20000}, waitForTimeout:900
+    });
+    if (!response.ok) return {browser_http:response.status, source_http:null, final_url:null, data:null};
+    const data:any = await response.json();
+    return {browser_http:response.status, source_http:Number(data?.meta?.status||200),
+      final_url:String(data?.meta?.finalUrl||url), data};
+  };
+  const first = await scrapeOne(RESALE_URL, RESALE_NAV_SELECTORS);
+  result.browser_http=first.browser_http;
+  result.source_http=first.source_http;
+  result.final_url=first.final_url;
+  if (first.browser_http===429 || first.source_http===429) {
+    result.status='SOURCE_RATE_LIMITED';return result;
+  }
+  if (!first.data || (first.source_http!==null && first.source_http>=400)) {
+    result.status='SOURCE_FETCH_FAILED';return result;
+  }
+  // A 200 response with an unexpected redirect is not a confirmed Resale page.
+  if (first.final_url!==RESALE_URL) {
+    result.status='SOURCE_REDIRECT_UNVERIFIED';return result;
+  }
+  const overview=analyzeResaleNavigation(first.data, RESALE_URL);
+  result.navigation=overview;
+  result.category_urls_discovered=overview.navigation_total_found;
+  result.product_candidates_on_landing=overview.product_count;
+  if (overview.has_captcha_elements) {
+    result.status='SOURCE_CAPTCHA_REQUIRES_MANUAL_REVIEW';return result;
+  }
+  if (!overview.category_probe_url) {
+    result.status=overview.product_count?'LANDING_PRODUCT_CANDIDATES_ONLY':'SOURCE_NO_CATEGORY_NAV_OBSERVED';
+    return result;
+  }
+  // Only follow a single main-content category link with a valid Amazon.eg browse/search path.
+  const second=await scrapeOne(overview.category_probe_url, RESALE_NAV_SELECTORS);
+  const category:any={requested_url:overview.category_probe_url,browser_http:second.browser_http,
+    source_http:second.source_http,final_url:second.final_url,
+    verified_used_offers:0};
+  result.category_probe=category;
+  if (second.browser_http===429 || second.source_http===429) {
+    result.status='CATEGORY_RATE_LIMITED';return result;
+  }
+  if (!second.data || (second.source_http!==null && second.source_http>=400)) {
+    result.status='CATEGORY_FETCH_FAILED';return result;
+  }
+  if (second.final_url!==overview.category_probe_url) {
+    result.status='CATEGORY_REDIRECT_UNVERIFIED';return result;
+  }
+  const details=analyzeResaleNavigation(second.data, overview.category_probe_url);
+  category.page_context=details.body_context;
+  category.product_count=details.product_count;
+  category.candidates=details.product_candidates.slice(0,12);
+  category.has_captcha_elements=details.has_captcha_elements;
+  result.status=details.has_captcha_elements?'CATEGORY_CAPTCHA_REQUIRES_MANUAL_REVIEW'
+    :(details.product_count?'CATEGORY_PRODUCT_CANDIDATES_ONLY':'CATEGORY_ACCESSIBLE_NO_PRODUCTS_OBSERVED');
+  return result;
+}
+
 function safeRows(data: any): Row[] {
   return (Array.isArray(data?.result) ? data.result : []).map((group: any) => ({
     selector: String(group?.selector ?? ''),
@@ -99,6 +173,10 @@ export default {
     if (!env.PROBE_KEY || request.headers.get('Authorization') !== `Bearer ${env.PROBE_KEY}`)
       return new Response('Unauthorized', {status: 401});
     const input = new URL(request.url);
+    if (input.searchParams.get('mode')==='resale_nav') {
+      try {return Response.json(await probeResaleNavigation(env));}
+      catch(e) {return Response.json({status:'SOURCE_BROWSER_ERROR',error_type:String(e).slice(0,120),public_posting_enabled:false},{status:502});}
+    }
     if (input.searchParams.get('mode')==='resale') {
       try {return Response.json(await probeResaleSource(env));}
       catch (e) {return Response.json({status:'SOURCE_BROWSER_ERROR', error_type:String(e).slice(0,100), public_posting_enabled:false}, {status:502});}

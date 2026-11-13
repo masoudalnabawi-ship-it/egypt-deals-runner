@@ -31,7 +31,7 @@ jobs:
         run: npm ci --no-audit --no-fund
 
       - name: Verify product-page used evidence parser
-        run: node --test used_probe/offer_parser.test.mjs
+        run: node --test used_probe/offer_parser.test.mjs used_probe/resale_source.test.mjs used_probe/resale_navigation.test.mjs
 
       - name: Deploy isolated probe
         run: npx wrangler deploy -c used_probe/wrangler.jsonc
@@ -45,13 +45,13 @@ jobs:
           sleep 25
           # Only three product-page reads; never query the rate-limited offer-listing.
           # Fail closed on throttling and preserve detailed results as an artifact.
-          PROBE_KEY="$KEY" python3 used_probe/run_resale_source.py
+          PROBE_KEY="$KEY" python3 used_probe/run_resale_navigation.py
 
       - name: Save isolated used-offer pilot report
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: amazon-used-resale-source-${{ github.run_id }}
-          path: cloudflare_amazon_v14/used_probe/reports/amazon_used_resale_source.json
+          name: amazon-used-resale-nav-${{ github.run_id }}
+          path: cloudflare_amazon_v14/used_probe/reports/amazon_used_resale_navigation.json
           retention-days: 7
           if-no-files-found: warn
