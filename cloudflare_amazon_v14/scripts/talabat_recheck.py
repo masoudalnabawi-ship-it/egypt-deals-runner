@@ -21,14 +21,13 @@ shortlist = []
 for values in groups.values():
     reported = [x for x in values if x.get("stock_status") != "unknown"]
     unknown = [x for x in values if x.get("stock_status") == "unknown"]
-    if reported:
-        shortlist.append(max(reported, key=lambda x: float(x["discount"])))
-    if unknown:
-        shortlist.append(max(unknown, key=lambda x: float(x["discount"])))
+    # Keep every valid candidate for deep runs; fast runs take a rotating slice.
+    shortlist.extend(sorted(reported, key=lambda x: -float(x["discount"])))
+    shortlist.extend(sorted(unknown, key=lambda x: -float(x["discount"])))
 
 # FAST_RECHECK_WINDOW_V1: recheck a small rotating group, two pages per category.
 if os.getenv('TALABAT_FAST') == '1' and shortlist:
-    keep = min(4, len(shortlist))
+    keep = min(12, len(shortlist))
     start = int(time.time() // 300) % len(shortlist)
     shortlist = [shortlist[(start + i) % len(shortlist)] for i in range(keep)]
     print('FAST_RECHECK_GROUPS:', len(shortlist), flush=True)
@@ -82,9 +81,17 @@ for x in shortlist:
             continue
 
         meta = first.get("itemsData") or {}
-        total = min(max(int(meta.get("pageCount") or 1), 1), 2 if os.getenv("TALABAT_FAST") == "1" else 100)
+        total = min(max(int(meta.get("pageCount") or 1), 1), 100)
+        recorded_page = max(1, min(int(x.get("source_page") or 1), total))
+        if os.getenv("TALABAT_FAST") == "1":
+            # Directly recheck the exact scanned page, even when it is page 3+.
+            pages = sorted({1, recorded_page})
+            if recorded_page == 1 and total >= 2:
+                pages.append(2)
+        else:
+            pages = range(1, total + 1)
 
-        for page in range(1, total + 1):
+        for page in pages:
             if page == 1:
                 state = first
             else:

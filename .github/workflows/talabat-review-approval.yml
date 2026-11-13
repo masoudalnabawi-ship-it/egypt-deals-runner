@@ -94,3 +94,11 @@ jobs:
           printf '%s' "$AMAZON_CHANNEL_TARGET" | npx wrangler secret put CHANNEL_ID -c talabat_review/wrangler.jsonc
           sleep 20
           curl --retry 3 --retry-all-errors --retry-delay 5 -fsS "$REVIEW_WORKER_URL/health"
+
+      - name: Restore product links in old private review messages
+        run: |
+          test -n "$TELEGRAM_BOT_TOKEN" || exit 1
+          for offset in 0 12 24 36 48; do
+            curl --retry 3 --retry-all-errors --retry-delay 3 -fsS -X POST "$REVIEW_WORKER_URL/repair-review-buttons?offset=$offset" -H "Authorization: Bearer $TELEGRAM_BOT_TOKEN"
+            echo
+          done

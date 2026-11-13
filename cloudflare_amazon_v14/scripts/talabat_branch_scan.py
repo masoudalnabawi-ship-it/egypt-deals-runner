@@ -35,6 +35,8 @@ if catalog_path.is_file():
     seeds = sorted(by_id.values(), key=lambda b: int(b['branch_id']))
 
 all_branch_count = len(seeds)
+# Include the user's confirmed Mahalla tMart storefront in every fast cycle.
+mahalla_priority_branch = next((b for b in seeds if str(b.get('branch_id')) == '1116707'), None)
 # FAST_REAL_TMART_FIRST_V1: keep tKiosk in catalog for discovery/deep scan,
 # but use real tMart storefronts for the frequent, time-limited watch.
 if os.getenv('TALABAT_FAST') == '1' and seeds:
@@ -60,6 +62,10 @@ elif len(seeds) > 3:
     size = min(2, len(seeds))
     offset = fair_start(int(time.time() // 21600), len(seeds), size)
     seeds = [seeds[(offset+i) % len(seeds)] for i in range(size)]
+if (os.getenv('TALABAT_FAST') == '1' and mahalla_priority_branch
+        and not any(str(x.get('branch_id')) == '1116707' for x in seeds)):
+    seeds.append(mahalla_priority_branch)
+    print('MAHALLA_PRIORITY_INCLUDED: 1116707', flush=True)
 print('BRANCH_CATALOG_TOTAL:', all_branch_count, 'THIS_RUN:', len(seeds), flush=True)
 
 results = []
@@ -164,7 +170,9 @@ for branch in seeds:
         # FAST_ROTATING_WINDOW_V1
         if os.getenv("TALABAT_FAST") == "1" and links:
             # Broaden rolling category window without changing branch rotation.
-            size = 12
+            # Rotate through every discovered department and subcategory.
+            # Each run is bounded: full coverage happens across successive runs.
+            size = 24 if bid == '1116707' else 18
             cursor = fair_start(int(time.time() // 300), len(links), size)
             links = [
                 links[(cursor + i) % len(links)]
@@ -195,6 +203,7 @@ for branch in seeds:
                 # PAGINATION_WORKING_V3
                 meta = state.get("itemsData") or {}
                 items = list(meta.get("items") or [])
+                item_source_pages = {id(obj): 1 for obj in items}
 
                 try:
                     total_pages = int(meta.get("pageCount") or 1)
@@ -204,7 +213,14 @@ for branch in seeds:
                 if total_pages > 100:
                     print("PAGE_LIMIT_WARNING:", total_pages)
 
-                for page_number in range(2, min(total_pages, 2 if os.getenv("TALABAT_FAST") == "1" else 100) + 1):
+                if os.getenv('TALABAT_FAST') == '1' and total_pages > 1:
+                    # Page 2 plus another rotating page; do not permanently ignore pages 3+.
+                    scan_pages = min(total_pages, 100)
+                    rotated_page = 2 + (int(time.time() // 300) + int(bid)) % (scan_pages - 1)
+                    page_numbers = sorted({2, rotated_page})
+                else:
+                    page_numbers = range(2, min(total_pages, 100) + 1)
+                for page_number in page_numbers:
                     parsed_page = urllib.parse.urlsplit(url)
                     params = urllib.parse.parse_qsl(
                         parsed_page.query, keep_blank_values=True
@@ -230,7 +246,9 @@ for branch in seeds:
                             print("PAGE_MISMATCH:", page_number)
                             continue
 
-                        items.extend(next_meta.get("items") or [])
+                        new_items = list(next_meta.get("items") or [])
+                        items.extend(new_items)
+                        item_source_pages.update({id(obj): page_number for obj in new_items})
                         checked += 1
                         time.sleep(0.3)
 
@@ -240,6 +258,7 @@ for branch in seeds:
                 count += len(items)
 
                 for item in items:
+                    source_page = item_source_pages.get(id(item), 1)
                     # PRICE_HISTORY_CAPTURE_V2: displayed prices are separate
                     # from confirmed availability and 40%-discount filtering.
                     observation = capture_price_observation(
@@ -273,6 +292,7 @@ for branch in seeds:
                                     "discount": discount,
                                     "stock_status": "unknown",
                                     "stock_source": stock_source,
+                                    "source_page": source_page,
                                     "source": url,
                                     "observed_at": int(time.time()),
                                 }
@@ -297,6 +317,7 @@ for branch in seeds:
                             "stock": stock,
                             "stock_source": stock_source,
                             "source": url,
+                            "source_page": source_page,
                             "branch_matched": True,
                             "delivery_verified": False,
                             "observed_at": int(time.time())

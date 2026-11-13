@@ -157,6 +157,40 @@ export default {async fetch(request,env){
       earliest_observation:rows.length?Math.min(...rows.map(x=>Number(x.observed_at))):null,
       note:'Only observed prices for this SKU and branch; no third-party market comparison.'});
   }
+  // Authenticated repair of already-sent PRIVATE review cards. No publishing.
+  if(path==='/repair-review-buttons' && request.method==='POST') {
+    if(!auth(request,env))return json({ok:false,error:'unauthorized'},401);
+    const offset=Math.max(0,Math.min(240,Number(u.searchParams.get('offset')||0)||0));
+    const q=await env.DB.prepare(`SELECT id,title,price,discount,area,product_url,review_message_id
+      FROM talabat_reviews WHERE status='pending' AND review_message_id IS NOT NULL
+      ORDER BY created_at DESC LIMIT 12 OFFSET ?`).bind(Math.floor(offset)).all();
+    let updated=0,failed=0,skipped=0;
+    for(const rec of (q.results||[])) {
+      if(!isTalabatUrl(rec.product_url,true)){skipped++;continue;}
+      // Conservative pacing to avoid Telegram flood limits.
+      await new Promise(resolve=>setTimeout(resolve,1100));
+      const rejectUrl=await signedReviewUrl(env,u.origin,rec.id,'reject');
+      const markup={inline_keyboard:[
+        [{text:'🛒 فتح المنتج',url:rec.product_url}],
+        [{text:'📍 الفروع والأسعار',url:u.origin+'/branches?key='+rec.id},
+         {text:'❌ رفض العرض',url:rejectUrl}]
+      ]};
+      try {
+        const locs=await recentLocations(env,rec.id);
+        try { await telegram(env,'editMessageCaption',{chat_id:REVIEW_CHAT,
+          message_id:rec.review_message_id,caption:verifiedCaption(rec,locs)}); }
+        catch(err) { if(!String(err).includes('message is not modified'))
+          console.error('CAPTION_REPAIR_FAILED',rec.id,String(err)); }
+        await telegram(env,'editMessageReplyMarkup',{chat_id:REVIEW_CHAT,
+          message_id:rec.review_message_id,reply_markup:markup});
+        updated++;
+      } catch(err) {
+        if(String(err).includes('message is not modified'))updated++;
+        else {failed++;console.error('BUTTON_REPAIR_FAILED',rec.id,String(err));}
+      }
+    }
+    return json({ok:true,updated,failed,skipped,limit:12,offset});
+  }
   if(path==='/seen' && request.method==='POST') {
     if(!auth(request,env))return json({ok:false,error:'unauthorized'},401);
     const o=await request.json().catch(()=>null);

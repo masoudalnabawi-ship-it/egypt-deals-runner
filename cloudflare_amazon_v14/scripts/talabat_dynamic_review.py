@@ -72,7 +72,10 @@ def card_photo(page, item, offer_id):
     out = Path('reports/talabat_review_proofs') / f'{offer_id}.png'
     out.parent.mkdir(parents=True, exist_ok=True)
 
-    for index in range(1, PAGE_LIMIT + 1):
+    # Find products on their observed page first; do not assume page 1-3.
+    recorded_page = max(1, min(int(item.get("source_page") or 1), 100))
+    pages = list(dict.fromkeys([recorded_page, 1, *range(2, PAGE_LIMIT + 1)]))
+    for index in pages:
         p = urlsplit(source)
         query = [(k,v) for k,v in parse_qsl(p.query) if k != 'page']
         if index > 1:
@@ -164,7 +167,12 @@ def send_photo_and_controls(item, photo, product_url, offer_id, branches):
                "⚠️ السعر والتوفر والتوصيل حسب منطقتك")
     with photo.open('rb') as file:
         r = session.post(f'https://api.telegram.org/bot{TOKEN}/sendPhoto',
-                         data={'chat_id': REVIEW_CHAT, 'caption': caption[:1024]},
+                         data={'chat_id': REVIEW_CHAT, 'caption': caption[:1024],
+                               # First message ALWAYS contains a verified direct-product button.
+                               # Additional review controls are attached after /attach.
+                               'reply_markup': json.dumps({'inline_keyboard': [[
+                                   {'text': '🛒 فتح المنتج', 'url': product_url}
+                               ]]}, ensure_ascii=False)},
                          files={'photo': ('real_card.png', file, 'image/png')}, timeout=40)
     r.raise_for_status()
     resp = r.json()
