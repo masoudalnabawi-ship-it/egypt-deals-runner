@@ -40,8 +40,41 @@ def valid_talabat(url, product=False):
     except Exception:
         return False
 
+def canonical_product_url(raw, sku):
+    """Use the documented public Talabat Mart route, not a branch-local deep link."""
+    if not valid_talabat(raw, product=True):
+        return None
+    path = urlsplit(raw).path
+    match = re.search(r'/product/([^/]+)/s/([A-Za-z0-9_-]+)(?:/|$)', path, re.I)
+    if not match or match.group(2).casefold() != str(sku).casefold():
+        return None
+    return ROOT + '/egypt/talabat-mart/product/' + match.group(1) + '/s/' + match.group(2)
+
+
+def offer_department(item):
+    parts = urlsplit(str(item.get('source') or '')).path.strip('/').split('/')
+    return parts[4] if len(parts) > 4 and parts[:2] == ['egypt', 'grocery'] else '_store'
+
+
+def balance_offer_departments(items):
+    from collections import defaultdict, deque
+    queues = defaultdict(deque)
+    for item in items:
+        queues[offer_department(item)].append(item)
+    order = sorted(queues, key=lambda k: (-float(queues[k][0]['live_discount']), k))
+    result = []
+    while any(queues.values()):
+        for key in order:
+            if queues[key]:
+                result.append(queues[key].popleft())
+    print('ELIGIBLE_DEPARTMENTS:', len(order), ','.join(order), flush=True)
+    return result
+
+
 def worker_post(endpoint, payload):
     r = session.post(WORKER + endpoint, json=payload, headers=headers, timeout=25)
+    if r.status_code >= 400:
+        print('REVIEW_WORKER_HTTP_ERROR:', endpoint, r.status_code, flush=True)
     r.raise_for_status()
     x = r.json()
     if not x.get('ok'):
@@ -108,7 +141,10 @@ def card_photo(page, item, offer_id):
                             and 90 <= box['height'] <= 1250):
                             node.screenshot(path=str(out), timeout=10000, animations='disabled')
                             if out.exists() and out.stat().st_size > 4000:
-                                return out, product_url
+                                canonical = canonical_product_url(product_url, sku)
+                                if canonical:
+                                    return out, canonical
+                                print('PRODUCT_LINK_NOT_CANONICAL:', sku, flush=True)
                     except Exception:
                         pass
                     node = node.locator('xpath=..')
@@ -164,15 +200,17 @@ def send_photo_and_controls(item, photo, product_url, offer_id, branches):
                f"📦 {str(item.get('title') or '')[:120]}\n"
                f"💰 {float(item['live_price']):.2f} ج | 🔥 خصم {float(item['live_discount']):.1f}%\n"
                f"📍 {area_line}\n"
-               "⚠️ السعر والتوفر والتوصيل حسب منطقتك")
+               "⚠️ السعر والتوفر والتوصيل حسب منطقتك\n"
+               "📂 لو المنتج مش بيفتح، افتح القسم البديل واضبط منطقتك")
     with photo.open('rb') as file:
         r = session.post(f'https://api.telegram.org/bot{TOKEN}/sendPhoto',
                          data={'chat_id': REVIEW_CHAT, 'caption': caption[:1024],
                                # First message ALWAYS contains a verified direct-product button.
                                # Additional review controls are attached after /attach.
-                               'reply_markup': json.dumps({'inline_keyboard': [[
-                                   {'text': '🛒 فتح المنتج', 'url': product_url}
-                               ]]}, ensure_ascii=False)},
+                               'reply_markup': json.dumps({'inline_keyboard': [
+                                   [{'text': '🛒 المنتج على موقع طلبات', 'url': product_url}],
+                                   [{'text': '📂 صفحة القسم (بديل)', 'url': str(item['source'])}]
+                               ]}, ensure_ascii=False)},
                          files={'photo': ('real_card.png', file, 'image/png')}, timeout=40)
     r.raise_for_status()
     resp = r.json()
@@ -183,7 +221,8 @@ def send_photo_and_controls(item, photo, product_url, offer_id, branches):
     urls = worker_post('/attach', {'id': offer_id, 'message_id': message_id})
     # Direct SKU-linked product URL was verified from the original card.
     markup = {'inline_keyboard': [
-        [{'text': '🛒 فتح المنتج', 'url': product_url}],
+        [{'text': '🛒 المنتج على موقع طلبات', 'url': product_url}],
+        [{'text': '📂 صفحة القسم (بديل)', 'url': str(item['source'])}],
         [{'text': '📍 الفروع والأسعار', 'url': WORKER + '/branches?key=' + offer_id},
          {'text': '❌ رفض العرض', 'url': urls['reject_url']}],
     ]}
@@ -215,6 +254,7 @@ for item in records:
         continue
 
 eligible.sort(key=lambda x: (-float(x['live_discount']), str(x['area']), str(x['sku'])))
+eligible = balance_offer_departments(eligible)
 print('ELIGIBLE_FOR_PRIVATE_REVIEW:', len(eligible), flush=True)
 if not eligible:
     raise SystemExit(0)

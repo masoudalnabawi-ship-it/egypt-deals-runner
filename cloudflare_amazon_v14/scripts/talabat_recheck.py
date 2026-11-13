@@ -25,12 +25,37 @@ for values in groups.values():
     shortlist.extend(sorted(reported, key=lambda x: -float(x["discount"])))
     shortlist.extend(sorted(unknown, key=lambda x: -float(x["discount"])))
 
-# FAST_RECHECK_WINDOW_V1: recheck a small rotating group, two pages per category.
+# BALANCED_RECHECK_DEPARTMENTS_V1: keep all store departments eligible.
+# One bounded selection per five-minute run, rotated across category groups.
 if os.getenv('TALABAT_FAST') == '1' and shortlist:
+    buckets = defaultdict(list)
+    for row in shortlist:
+        path = urllib.parse.urlsplit(row['source']).path.split('/')
+        department = path[5] if len(path) > 5 else '_store'
+        buckets[(str(row['branch_id']), department)].append(row)
+    order = sorted(buckets)
+    slot = int(time.time() // 300)
+    pivot = slot % len(order)
+    order = order[pivot:] + order[:pivot]
+    selected = []
+    lap = 0
     keep = min(12, len(shortlist))
-    start = int(time.time() // 300) % len(shortlist)
-    shortlist = [shortlist[(start + i) % len(shortlist)] for i in range(keep)]
-    print('FAST_RECHECK_GROUPS:', len(shortlist), flush=True)
+    while len(selected) < keep:
+        added = False
+        for key in order:
+            rows = buckets[key]
+            if lap >= len(rows):
+                continue
+            selected.append(rows[(slot + lap) % len(rows)])
+            added = True
+            if len(selected) >= keep:
+                break
+        if not added:
+            break
+        lap += 1
+    shortlist = selected
+    print('FAST_RECHECK_DEPARTMENTS:', len({x[1] for x in order}),
+          'CANDIDATES:', len(shortlist), flush=True)
 
 def fetch(url):
     p = urllib.parse.urlsplit(url)

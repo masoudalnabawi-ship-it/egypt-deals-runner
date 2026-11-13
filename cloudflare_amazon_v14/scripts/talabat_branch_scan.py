@@ -167,18 +167,46 @@ for branch in seeds:
         links.extend(sorted(extra_links - existing))
         added_category_links = len(links) - before
 
-        # FAST_ROTATING_WINDOW_V1
+        # BALANCED_ALL_DEPARTMENTS_V1: one distributed window across all
+        # discovered departments; leaf pages rotate across successive runs.
+        # Never filter departments by type or relax stock/40% rules.
         if os.getenv("TALABAT_FAST") == "1" and links:
-            # Broaden rolling category window without changing branch rotation.
-            # Rotate through every discovered department and subcategory.
-            # Each run is bounded: full coverage happens across successive runs.
-            size = 24 if bid == '1116707' else 18
-            cursor = fair_start(int(time.time() // 300), len(links), size)
-            links = [
-                links[(cursor + i) % len(links)]
-                for i in range(min(size, len(links)))
-            ]
-            print("FAST_WINDOW:", len(links), "START:", cursor)
+            from collections import defaultdict
+            departments = defaultdict(list)
+            for link in links:
+                path = urllib.parse.urlsplit(link).path
+                relative = path[len(prefix):].strip('/') if path.startswith(prefix) else ''
+                department = (relative.split('/', 1)[0] if relative else '_store')
+                departments[department].append(link)
+            keys = sorted(departments)
+            size = min(24 if bid == '1116707' else 18, len(links))
+            slot = int(time.time() // 300) + int(bid)
+            rotation = slot % len(keys)
+            order = keys[rotation:] + keys[:rotation]
+            selected = []
+            round_index = 0
+            while len(selected) < size:
+                added = False
+                for key in order:
+                    pages = departments[key]
+                    if round_index >= len(pages):
+                        continue
+                    start = slot % len(pages)
+                    selected.append(pages[(start + round_index) % len(pages)])
+                    added = True
+                    if len(selected) >= size:
+                        break
+                if not added:
+                    break
+                round_index += 1
+            links = selected
+            observed_departments = {
+                (urllib.parse.urlsplit(link).path[len(prefix):].strip('/').split('/', 1)[0]
+                 or '_store') for link in links
+            }
+            print('FAST_DEPARTMENT_COVERAGE:', len(observed_departments),
+                  'OF', len(departments), 'WINDOW:', len(links),
+                  'DEPARTMENTS:', ','.join(sorted(observed_departments)), flush=True)
 
         print("MAIN_CATEGORIES:", len(catalog))
         print("NEW_CATEGORY_LINKS:", added_category_links)

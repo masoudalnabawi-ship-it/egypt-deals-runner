@@ -5,6 +5,24 @@ function html(body, status=200) { return new Response(body,{status,headers:{'Con
 function esc(s) {return String(s ?? '').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));}
 function safeEqual(a,b) { a=String(a||''); b=String(b||''); if (!a || a.length!==b.length) return false; let n=0; for(let i=0;i<a.length;i++) n|=a.charCodeAt(i)^b.charCodeAt(i); return n===0; }
 function isTalabatUrl(s, product=false) { try {const u=new URL(s); return u.protocol==='https:' && u.hostname==='www.talabat.com' && u.pathname.startsWith('/egypt/') && (!product || u.pathname.includes('/product/'));} catch {return false;} }
+// Canonical Talabat Mart product route plus verified category-page fallback.
+// Product URLs are browser routes, never a promise the mobile app supports deep links.
+function canonicalTalabatProductUrl(raw) {
+  try {
+    if(!isTalabatUrl(raw,true)) return null;
+    const p=new URL(raw).pathname;
+    const m=p.match(/\/product\/([^/]+)\/s\/([A-Za-z0-9_-]+)(?:\/|$)/i);
+    return m?'https://www.talabat.com/egypt/talabat-mart/product/'+m[1]+'/s/'+m[2]:null;
+  } catch {return null;}
+}
+function verifiedLinkRows(rec) {
+  const rows=[];
+  const direct=canonicalTalabatProductUrl(rec.product_url);
+  if(direct) rows.push([{text:'🛒 المنتج على موقع طلبات',url:direct}]);
+  if(isTalabatUrl(rec.source_url))
+    rows.push([{text:'📂 صفحة القسم (بديل)',url:rec.source_url}]);
+  return rows;
+}
 async function hexHmac(secret,msg) { const k=await crypto.subtle.importKey('raw',new TextEncoder().encode(secret),{name:'HMAC',hash:'SHA-256'},false,['sign']);const s=await crypto.subtle.sign('HMAC',k,new TextEncoder().encode(msg)); return Array.from(new Uint8Array(s),x=>x.toString(16).padStart(2,'0')).join(''); }
 function auth(req,env){return safeEqual(req.headers.get('Authorization'),`Bearer ${env.BOT_TOKEN}`);}
 async function telegram(env,method,payload){const r=await fetch(`https://api.telegram.org/bot${env.BOT_TOKEN}/${method}`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)});const x=await r.json().catch(()=>({}));if(!r.ok||!x.ok)throw new Error('telegram_'+method+':'+String(x.description||r.status));return x.result;}
@@ -61,7 +79,7 @@ export default {async fetch(request,env){
     await env.DB.prepare('INSERT INTO talabat_product_locations(offer_key,branch_id,area,sku,title,price,discount,checked_at) VALUES(?,?,?,?,?,?,?,?) ON CONFLICT(offer_key,branch_id) DO UPDATE SET area=excluded.area,sku=excluded.sku,title=excluded.title,price=excluded.price,discount=excluded.discount,checked_at=excluded.checked_at')
       .bind(key,branch,String(o.area).slice(0,110),String(o.sku).slice(0,90),String(o.title).slice(0,400),Number(o.price),Number(o.discount),now).run();
     const locations=await recentLocations(env,key);
-    const rec=await env.DB.prepare('SELECT id,title,status,review_message_id,product_url,price,discount,area FROM talabat_reviews WHERE review_message_id IS NOT NULL AND (id=? OR lower(title)=lower(?)) ORDER BY created_at ASC LIMIT 1')
+    const rec=await env.DB.prepare('SELECT id,title,status,review_message_id,product_url,source_url,price,discount,area FROM talabat_reviews WHERE review_message_id IS NOT NULL AND (id=? OR lower(title)=lower(?)) ORDER BY created_at ASC LIMIT 1')
       .bind(key,String(o.title)).first();
     const changed=!prev||Number(prev.price)!==Number(o.price)||Number(prev.discount)!==Number(o.discount)||prev.area!==String(o.area);
     if(rec && rec.status==='pending') {
@@ -75,9 +93,7 @@ export default {async fetch(request,env){
         await editPrivate('editMessageCaption',{chat_id:REVIEW_CHAT,
           message_id:rec.review_message_id,caption:verifiedCaption(rec,locations)});
         const rejectUrl=await signedReviewUrl(env,u.origin,rec.id,'reject');
-        const buttons=[];
-        if(isTalabatUrl(rec.product_url,true))
-          buttons.push([{text:'🛒 فتح المنتج',url:rec.product_url}]);
+        const buttons=verifiedLinkRows(rec);
         buttons.push([{text:'📍 الفروع والأسعار',url:u.origin+'/branches?key='+key},
           {text:'❌ رفض العرض',url:rejectUrl}]);
         await editPrivate('editMessageReplyMarkup',{chat_id:REVIEW_CHAT,
@@ -161,7 +177,7 @@ export default {async fetch(request,env){
   if(path==='/repair-review-buttons' && request.method==='POST') {
     if(!auth(request,env))return json({ok:false,error:'unauthorized'},401);
     const offset=Math.max(0,Math.min(240,Number(u.searchParams.get('offset')||0)||0));
-    const q=await env.DB.prepare(`SELECT id,title,price,discount,area,product_url,review_message_id
+    const q=await env.DB.prepare(`SELECT id,title,price,discount,area,product_url,source_url,review_message_id
       FROM talabat_reviews WHERE status='pending' AND review_message_id IS NOT NULL
       ORDER BY created_at DESC LIMIT 12 OFFSET ?`).bind(Math.floor(offset)).all();
     let updated=0,failed=0,skipped=0;
@@ -171,7 +187,7 @@ export default {async fetch(request,env){
       await new Promise(resolve=>setTimeout(resolve,1100));
       const rejectUrl=await signedReviewUrl(env,u.origin,rec.id,'reject');
       const markup={inline_keyboard:[
-        [{text:'🛒 فتح المنتج',url:rec.product_url}],
+        ...verifiedLinkRows(rec),
         [{text:'📍 الفروع والأسعار',url:u.origin+'/branches?key='+rec.id},
          {text:'❌ رفض العرض',url:rejectUrl}]
       ]};
@@ -205,8 +221,14 @@ export default {async fetch(request,env){
     const {id,title,area,sku,price,discount,product_url,source_url,proof_at}=o;
     if(!/^[a-z0-9_-]{12,90}$/i.test(String(id)) || !title || !sku || !(Number(price)>0) || !(Number(discount)>=40) || !isTalabatUrl(source_url) || !isTalabatUrl(product_url,true))return json({ok:false,error:'invalid_offer'},400);
     if(Math.abs(Date.now()/1000-Number(proof_at))>900)return json({ok:false,error:'stale_proof'},422);
-    const q=await env.DB.prepare(`INSERT OR IGNORE INTO talabat_reviews(id,status,title,area,sku,price,discount,product_url,source_url,proof_at,created_at) VALUES(?,'reserved',?,?,?,?,?,?,?,?,?)`)
+    let q;
+    try {
+      q=await env.DB.prepare(`INSERT OR IGNORE INTO talabat_reviews(id,status,title,area,sku,price,discount,product_url,source_url,proof_at,created_at) VALUES(?,'reserved',?,?,?,?,?,?,?,?,?)`)
       .bind(id,String(title).slice(0,400),String(area).slice(0,80),String(sku).slice(0,90),Number(price),Number(discount),String(product_url),String(source_url),Number(proof_at),Math.floor(Date.now()/1000)).run();
+    } catch(error) {
+      console.error('TALABAT_RESERVE_DB_FAILED',String(error).slice(0,240));
+      return json({ok:false,error:'review_database_write_failed',stage:'reserve'},503);
+    }
     return json({ok:true,reserved:!!q.meta.changes,id});
   }
   if(path==='/attach' && request.method==='POST') {
