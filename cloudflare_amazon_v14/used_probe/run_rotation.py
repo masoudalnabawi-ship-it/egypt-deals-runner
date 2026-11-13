@@ -5,6 +5,7 @@ from pathlib import Path
 from urllib.parse import urlencode
 from urllib.request import Request, urlopen
 from urllib.error import HTTPError, URLError
+from probe_transport import fetch_json_via_curl
 import json
 import os
 import re
@@ -51,11 +52,10 @@ for pos, asin in enumerate(selected):
     if pos:
         time.sleep(12)   # little load; no retry after a throttle
     path = URL + '?' + urlencode({'asin': asin, 'main_only':'1'})
-    req = Request(path, headers={'Authorization': 'Bearer '+KEY,
-                                 'Accept': 'application/json'})
+    # Use the same authenticated curl transport that previously passed CI.
+    # Do not retry on denial or throttle; never follow redirects.
     try:
-        with urlopen(req, timeout=50) as response:
-            raw = json.load(response)
+        raw = fetch_json_via_curl(path, KEY)
         p = raw.get('product_page') or {}
         status = str(raw.get('status') or 'UNKNOWN')
         record = {'asin': asin, 'status': status,
