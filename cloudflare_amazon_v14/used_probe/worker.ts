@@ -80,7 +80,14 @@ export default {
       result.offer_page = {http: offers.http, blocked: offers.blocked,
         elements: offers.rows, final_url: (offers as any).final_url};
       if (!offers.ok || offers.blocked) {
-        result.status = offers.blocked ? 'BLOCKED_CAPTCHA' : 'OFFER_BROWSER_ERROR';
+        // HTTP 429 is a request-rate limit, not evidence that there are no used offers.
+        // Do not retry, rotate identities, or auto-publish. Keep evidence unavailable.
+        result.status = offers.http === 429 ? 'OFFER_RATE_LIMITED'
+          : (offers.blocked ? 'BLOCKED_CAPTCHA' : 'OFFER_BROWSER_ERROR');
+        result.used_price_verified = false;
+        result.used_price_unavailable_reason = offers.http === 429
+          ? 'Amazon rate-limited the offer-listing request. No retry attempted.'
+          : 'Offer-listing request failed or needs human verification.';
         return Response.json(result);
       }
       result.used_offers = extractUsedOffers(offers.cards, offersUrl);

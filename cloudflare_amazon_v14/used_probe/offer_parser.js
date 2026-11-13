@@ -9,7 +9,7 @@ function normalizeArabicDigits(input) {
 
 export function parseEgyptianMoney(input) {
   const text = normalizeArabicDigits(input).replace(/\s+/g, ' ');
-  const tokens = [...text.matchAll(/(?:\bEGP\b|ج\.?\s?م\.?|جنيه(?:اً|ا)?|ج\.م\.)\s*([\d,.]+)|([\d,.]+)\s*(?:\bEGP\b|ج\.?\s?م\.?|جنيه(?:اً|ا)?|ج\.م\.)/gi)];
+  const tokens = [...text.matchAll(/(?:\bEGP(?=\s*[\d])|ج\.?\s?م\.?|جنيه(?:اً|ا)?|ج\.م\.)\s*([\d,.]+)|([\d,.]+)\s*(?:\bEGP\b|ج\.?\s?م\.?|جنيه(?:اً|ا)?|ج\.م\.)/gi)];
   const values = [];
   for (const m of tokens) {
     let str = m[1] || m[2];

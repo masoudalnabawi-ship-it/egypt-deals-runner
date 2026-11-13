@@ -4,6 +4,9 @@ import {parseEgyptianMoney, classifyUsedCondition, extractUsedOffers} from './of
 
 test('English EGP and Arabic prices', () => {
   assert.deepEqual(parseEgyptianMoney('EGP 2,950.00'), [2950]);
+  assert.deepEqual(parseEgyptianMoney('EGP2,950.00'), [2950]);
+  assert.deepEqual(parseEgyptianMoney('EGP2950'), [2950]);
+  assert.deepEqual(parseEgyptianMoney('2,950.00 EGP'), [2950]);
   assert.deepEqual(parseEgyptianMoney('١٬٢٩٩٫٥٠ جنيه'), [1299.5]);
   assert.deepEqual(parseEgyptianMoney('ج.م. 850.00'), [850]);
 });
