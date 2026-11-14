@@ -29,6 +29,16 @@ jobs:
                   print("API_HTTP_STATUS:", e.code)
                   return None
 
+          verification = get("/user/tokens/verify")
+          if verification:
+              print("TOKEN_VERIFICATION:", json.dumps({
+                  "success": verification.get("success"),
+                  "status": (verification.get("result") or {}).get("status"),
+                  "error_codes": [
+                      e.get("code") for e in verification.get("errors", [])
+                  ]
+              }))
+
           accounts = get("/accounts?per_page=50")
           if not accounts or not accounts.get("success"):
               print("ACCOUNT_DISCOVERY_UNAVAILABLE")
