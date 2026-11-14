@@ -23,7 +23,7 @@ jobs:
     env:
       CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUD_API_KEY }}
       TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
-      AMAZON_USED_REVIEW_CHAT_ID: ${{ secrets.AMAZON_REVIEW_GROUP_ID }}
+      AMAZON_USED_REVIEW_CHAT_ID: ${{ secrets.AMAZON_NORMAL_REVIEW_CHAT_ID }}
       AMAZON_USED_DISCOVERY_FALLBACK: '1'
     defaults:
       run:
