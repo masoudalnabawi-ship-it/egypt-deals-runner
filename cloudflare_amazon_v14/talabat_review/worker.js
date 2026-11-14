@@ -53,6 +53,25 @@ export default {async fetch(request,env){
   const u=new URL(request.url),path=u.pathname;
   if(path==='/health')return json({ok:true,service:'talabat-isolated-review',main_v14_untouched:true});
   if(!env.BOT_TOKEN || !env.CHANNEL_ID || !env.DB)return json({ok:false,error:'missing_secret_or_binding'},503);
+  // TALABAT_D1_ATTACH_RUNTIME_NOOP_V1: private diagnostic, zero matching rows.
+  if(path==='/diagnose/attach-db-noop' && request.method==='POST') {
+    if(!auth(request,env))return json({ok:false,error:'unauthorized'},401);
+    let stage='read';
+    try {
+      const before=await env.DB.prepare('SELECT COUNT(*) AS n FROM talabat_reviews').first();
+      stage='update_zero_rows';
+      // Impossible ID: statement tests Worker D1 UPDATE permission, changes NO record.
+      const result=await env.DB.prepare("UPDATE talabat_reviews SET status=status WHERE id='__talabat_d1_probe_no_such_id__'").run();
+      return json({ok:true,read_ok:true,zero_row_update_ok:true,
+        affected_rows:Number(result?.meta?.changes||0),review_row_count:Number(before?.n||0)});
+    } catch(error) {
+      console.error('TALABAT_D1_NOOP_FAILED',stage,String(error).slice(0,240));
+      const s=String(error?.message||error);
+      const diagnostic=s.slice(0,180).replace(/https?:\/\/\S+/g,'[url]')
+        .replace(/(?:Bearer\s+|bot)[A-Za-z0-9_:-]{12,}/gi,'[redacted]');
+      return json({ok:false,error:'d1_noop_failed',stage,diagnostic},503);
+    }
+  }
   if(path==='/status' && request.method==='GET')
     return documentPage('النشر العام متوقف','مراجعة عروض طلبات مارت','لا يتم نشر العروض في القناة قبل إصلاح رابط المنتج والتحقق من صلاحيات مسؤول المراجعة.',null);
   if(path==='/branches' && request.method==='GET') {
@@ -263,7 +282,11 @@ export default {async fetch(request,env){
       return json({ok:true,publish_url,reject_url});
     } catch(error) {
       console.error('TALABAT_ATTACH_FAILED',stage,String(error).slice(0,240));
-      return json({ok:false,error:'private_attachment_failed',stage},503);
+      // Return only a bounded, sanitized D1 error to the private GitHub job log.
+      const s=String(error?.message||error);
+      const diagnostic=s.slice(0,180).replace(/https?:\/\/\S+/g,'[url]')
+        .replace(/(?:Bearer\s+|bot)[A-Za-z0-9_:-]{12,}/gi,'[redacted]');
+      return json({ok:false,error:'private_attachment_failed',stage,diagnostic},503);
     }
   }
   if(path==='/review' && (request.method==='GET'||request.method==='POST')) {

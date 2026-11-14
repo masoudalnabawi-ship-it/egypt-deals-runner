@@ -79,10 +79,11 @@ def worker_post(endpoint, payload):
             data = r.json()
             stage = str(data.get('stage', 'unknown'))[:48] if isinstance(data, dict) else 'unknown'
             reason = str(data.get('error', 'unknown'))[:60] if isinstance(data, dict) else 'unknown'
+            detail = str(data.get('diagnostic', ''))[:180] if isinstance(data, dict) else ''
         except ValueError:
-            stage, reason = 'unknown', 'non_json_response'
+            stage, reason, detail = 'unknown', 'non_json_response', ''
         print('REVIEW_WORKER_HTTP_ERROR:', endpoint, r.status_code,
-              'STAGE:', stage, 'REASON:', reason, flush=True)
+              'STAGE:', stage, 'REASON:', reason, 'D1_DIAGNOSTIC:', detail, flush=True)
     r.raise_for_status()
     x = r.json()
     if not x.get('ok'):
