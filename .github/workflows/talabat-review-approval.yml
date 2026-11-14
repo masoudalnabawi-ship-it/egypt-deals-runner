@@ -93,6 +93,21 @@ jobs:
           npx wrangler d1 execute talabat-mart-review-db --remote --yes --command "SELECT COUNT(*) AS review_rows FROM talabat_reviews;"
           npx wrangler d1 execute talabat-mart-review-db --remote --yes --command "EXPLAIN INSERT OR IGNORE INTO talabat_reviews(id,status,title,area,sku,price,discount,product_url,source_url,proof_at,created_at) VALUES('probe','reserved','title','area','sku',1,40,'https://www.talabat.com/egypt/talabat-mart/product/probe/s/123','https://www.talabat.com/egypt/grocery/123/area',0,0);"
 
+      # No personal/customer rows, no Telegram posts, NO data changes.
+      # EXPLAIN compiles the attach SQL without executing an UPDATE.
+      - name: Diagnose Talabat attachment table constraints (read only)
+        continue-on-error: true
+        working-directory: cloudflare_amazon_v14
+        run: |
+          echo TALABAT_ATTACH_DDL_TABLE
+          npx wrangler d1 execute talabat-mart-review-db --remote --yes --command "SELECT sql FROM sqlite_master WHERE type='table' AND name='talabat_reviews';"
+          echo TALABAT_ATTACH_DDL_INDEX_AND_TRIGGERS
+          npx wrangler d1 execute talabat-mart-review-db --remote --yes --command "SELECT type,name,sql FROM sqlite_master WHERE tbl_name='talabat_reviews' AND type IN ('index','trigger') ORDER BY type,name;"
+          echo TALABAT_ATTACH_STATUS_COUNTS
+          npx wrangler d1 execute talabat-mart-review-db --remote --yes --command "SELECT status,COUNT(*) AS n FROM talabat_reviews GROUP BY status ORDER BY status;"
+          echo TALABAT_ATTACH_UPDATE_EXPLAIN
+          npx wrangler d1 execute talabat-mart-review-db --remote --yes --command "EXPLAIN UPDATE talabat_reviews SET status='pending',review_message_id=1 WHERE id='__audit_nonexistent__' AND status='reserved';"
+
       - name: Deploy separate approval Worker
         working-directory: cloudflare_amazon_v14
         run: |
