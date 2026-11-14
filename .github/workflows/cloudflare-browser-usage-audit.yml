@@ -1,0 +1,47 @@
+name: Cloudflare Browser Usage Audit
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Inspect Cloudflare Browser Rendering account
+        env:
+          CF_TOKEN: ${{ secrets.CLOUD_API_KEY }}
+        run: |
+          python3 - <<'PY'
+          import json, os, urllib.request, urllib.error
+
+          base = "https://api.cloudflare.com/client/v4"
+          headers = {"Authorization": "Bearer " + os.environ["CF_TOKEN"]}
+
+          def get(path):
+              req = urllib.request.Request(base + path, headers=headers)
+              try:
+                  with urllib.request.urlopen(req, timeout=25) as r:
+                      return json.load(r)
+              except urllib.error.HTTPError as e:
+                  print("API_HTTP_STATUS:", e.code)
+                  return None
+
+          accounts = get("/accounts?per_page=50")
+          if not accounts or not accounts.get("success"):
+              print("ACCOUNT_DISCOVERY_UNAVAILABLE")
+              raise SystemExit(0)
+
+          for account in accounts.get("result", []):
+              aid = account.get("id")
+              print("ACCOUNT:", account.get("name", "UNKNOWN"))
+              result = get(f"/accounts/{aid}/browser-rendering/limits")
+              if result:
+                  print("BROWSER_LIMITS:", json.dumps({
+                      "success": result.get("success"),
+                      "result": result.get("result"),
+                      "errors": result.get("errors")
+                  }, ensure_ascii=False))
+          PY
