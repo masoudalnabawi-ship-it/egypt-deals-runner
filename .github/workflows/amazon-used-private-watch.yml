@@ -24,6 +24,7 @@ jobs:
       CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUD_API_KEY }}
       TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
       AMAZON_USED_REVIEW_CHAT_ID: ${{ secrets.AMAZON_REVIEW_GROUP_ID }}
+      AMAZON_USED_DISCOVERY_FALLBACK: '1'
     defaults:
       run:
         working-directory: cloudflare_amazon_v14
@@ -44,9 +45,11 @@ jobs:
         run: npm ci --no-audit --no-fund
       - name: Check used-only parser tests
         run: node --test used_probe/offer_parser.test.mjs used_probe/resale_link_audit.test.mjs
+      - name: Check isolated used watch Python syntax
+        run: python3 -m py_compile used_probe/auto_used_watch.py
       - name: Deploy only separate Amazon Used probe
         run: npx wrangler deploy -c used_probe/wrangler.jsonc
-      - name: Scan one daily Resale product and notify private review only if used price is visible
+      - name: Check one used offer and privately flag Resale discovery links when price is blocked
         run: |
           set -eu
           KEY="$(openssl rand -hex 24)"
