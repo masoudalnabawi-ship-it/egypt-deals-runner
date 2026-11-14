@@ -174,6 +174,69 @@ def send_private_candidate(item, chat, bot):
     return True
 
 
+
+# AMAZON_USED_DISCOVERY_DIGEST_V1: explicit unverified private leads only.
+# This fallback is for Amazon rate limits / no visible used-specific price.
+# It makes no used-price, stock, condition, savings or seller claim.
+def send_private_resale_links(asins, chat, bot):
+    if not re.fullmatch(r'-100\d{6,20}', chat):
+        raise ValueError('AMAZON_REVIEW_GROUP_NOT_VALID_PRIVATE_CHAT_ID')
+    if not re.fullmatch(r'\d{5,12}:[A-Za-z0-9_-]{30,90}', bot):
+        raise ValueError('TELEGRAM_BOT_TOKEN_INVALID_FORMAT')
+    if not asins or any(not valid_asin(a) for a in asins):
+        raise ValueError('INVALID_RESALE_LINKS')
+    check = json.dumps({'chat_id': chat}).encode('utf-8')
+    verify = Request('https://api.telegram.org/bot' + bot + '/getChat',
+                     data=check, headers={'Content-Type': 'application/json'}, method='POST')
+    with urlopen(verify, timeout=20) as response:
+        info = json.loads(response.read(4000))
+    group = info.get('result') or {}
+    if info.get('ok') is not True or group.get('type') not in ('group', 'supergroup') or group.get('username'):
+        raise ValueError('AMAZON_REVIEW_DESTINATION_NOT_PRIVATE_GROUP')
+    lines = [
+        '♻️ أمازون مصر | روابط من قسم إعادة البيع للفحص اليدوي',
+        '⚠️ هذه روابط منتجات محتملة، وليست عروض مستعمل مؤكدة.',
+        'لم يتم تأكيد حالة المستعمل أو السعر أو المخزون أو إتمام الشراء.',
+        '🔎 افحص المنتج يدويًا وابحث عن خيارات المستعمل:',
+    ]
+    for number, asin in enumerate(asins[:3], 1):
+        lines.append(f'{number}) https://www.amazon.eg/dp/{asin}')
+    lines.append('🔒 للمراجعة الخاصة فقط؛ لا نشر عام.')
+    payload = json.dumps({'chat_id': chat, 'text': '\n'.join(lines),
+                          'disable_web_page_preview': True}, ensure_ascii=False).encode('utf-8')
+    req = Request('https://api.telegram.org/bot' + bot + '/sendMessage',
+                  data=payload, headers={'Content-Type': 'application/json'}, method='POST')
+    with urlopen(req, timeout=25) as response:
+        outcome = json.loads(response.read(2000))
+    if not isinstance(outcome, dict) or outcome.get('ok') is not True:
+        raise ValueError('PRIVATE_RESALE_DIGEST_NOT_CONFIRMED')
+    return True
+
+
+def maybe_send_private_resale_links(record, products):
+    # One digest per executed daily run, not one alert per product.
+    if os.environ.get('AMAZON_USED_DISCOVERY_FALLBACK') != '1':
+        return
+    if not products:
+        return
+    bot = os.environ.get('TELEGRAM_BOT_TOKEN', '').strip()
+    chat = os.environ.get('AMAZON_USED_REVIEW_CHAT_ID', '').strip()
+    if not bot or not chat:
+        record['discovery_digest_status'] = 'PRIVATE_REVIEW_SETTINGS_MISSING'
+        return
+    slot = datetime.now(timezone.utc).date().toordinal() % len(products)
+    leads = (products[slot:] + products[:slot])[:3]
+    try:
+        send_private_resale_links(leads, chat, bot)
+    except (HTTPError, URLError, TimeoutError, ValueError) as ex:
+        record['discovery_digest_status'] = 'SEND_FAILED'
+        record['discovery_digest_error_type'] = type(ex).__name__
+        return
+    record['discovery_digest_status'] = 'UNVERIFIED_RESALE_LINKS_PRIVATE_ONLY'
+    record['private_discovery_digest_sent'] = True
+    record['discovery_links_count'] = len(leads)
+
+
 def main():
     key = os.environ.get('PROBE_KEY', '').strip()
     if not key:
@@ -184,6 +247,7 @@ def main():
         'status': 'NOT_STARTED', 'candidate_product_count': 0,
         'product_pages_requested': 0, 'used_candidate_eligible': False,
         'private_alert_sent': False, 'public_posting_enabled': False,
+        'private_discovery_digest_sent': False,
         'verified_checkout_offers': 0,
     }
     OUT.parent.mkdir(parents=True, exist_ok=True)
@@ -212,14 +276,17 @@ def main():
         except (HTTPError, URLError, ValueError, TimeoutError) as ex:
             record['status'] = 'PRODUCT_REQUEST_UNAVAILABLE'
             record['error_type'] = type(ex).__name__
+            maybe_send_private_resale_links(record, products)
             return record
         record['product_status'] = str(data.get('status', 'UNKNOWN'))[:80]
         if data.get('status') in ('PRODUCT_RATE_LIMITED', 'BLOCKED_CAPTCHA'):
             record['status'] = 'AMAZON_ACCESS_LIMITED_NO_RETRY'
+            maybe_send_private_resale_links(record, products)
             return record
         item = evaluate_product(data, asin)
         if not item:
             record['status'] = 'NO_USED_SPECIFIC_PRICE_EVIDENCE'
+            maybe_send_private_resale_links(record, products)
             return record
         record['used_candidate_eligible'] = True
         record['candidate'] = item
@@ -243,7 +310,8 @@ def main():
               'LINK_CANDIDATES:',record['candidate_product_count'],
               'PRODUCT_PAGES:',record['product_pages_requested'],
               'USED_PRICE_CANDIDATE:',record['used_candidate_eligible'],
-              'PRIVATE_ALERT:',record['private_alert_sent'],flush=True)
+              'PRIVATE_ALERT:',record['private_alert_sent'],
+              'UNVERIFIED_DIGEST:',record['private_discovery_digest_sent'],flush=True)
 
 if __name__ == '__main__':
     main()
