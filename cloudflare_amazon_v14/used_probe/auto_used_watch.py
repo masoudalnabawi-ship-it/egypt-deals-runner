@@ -231,7 +231,17 @@ def maybe_send_private_resale_links(record, products):
     except (HTTPError, URLError, TimeoutError, ValueError) as ex:
         record['discovery_digest_status'] = 'SEND_FAILED'
         record['discovery_digest_error_type'] = type(ex).__name__
-        record['discovery_digest_error_code'] = str(ex) if isinstance(ex, ValueError) else type(ex).__name__
+        safe_codes = {
+            'AMAZON_REVIEW_GROUP_NOT_VALID_PRIVATE_CHAT_ID',
+            'TELEGRAM_BOT_TOKEN_INVALID_FORMAT',
+            'INVALID_RESALE_LINKS',
+            'AMAZON_REVIEW_DESTINATION_NOT_PRIVATE_GROUP',
+            'PRIVATE_RESALE_DIGEST_NOT_CONFIRMED',
+        }
+        record['discovery_digest_error_code'] = (
+            str(ex) if isinstance(ex, ValueError) and str(ex) in safe_codes
+            else type(ex).__name__
+        )
         return
     record['discovery_digest_status'] = 'UNVERIFIED_RESALE_LINKS_PRIVATE_ONLY'
     record['private_discovery_digest_sent'] = True
