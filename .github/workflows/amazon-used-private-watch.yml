@@ -59,6 +59,16 @@ jobs:
 
           if not re.fullmatch(r'-100\d{6,20}', chat):
               print('DIAGNOSIS: INVALID_CHAT_ID_FORMAT')
+              if not chat:
+                  print('CHAT_FORMAT: EMPTY')
+              elif re.fullmatch(r'-\d+', chat):
+                  print('CHAT_FORMAT: NEGATIVE_NUMERIC')
+              elif re.fullmatch(r'\d+', chat):
+                  print('CHAT_FORMAT: POSITIVE_NUMERIC')
+              elif chat.startswith('@'):
+                  print('CHAT_FORMAT: USERNAME')
+              else:
+                  print('CHAT_FORMAT: OTHER')
           elif not re.fullmatch(r'\d{5,12}:[A-Za-z0-9_-]{30,90}', bot):
               print('DIAGNOSIS: INVALID_BOT_TOKEN_FORMAT')
           else:
