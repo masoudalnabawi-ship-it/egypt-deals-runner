@@ -96,6 +96,40 @@ jobs:
               except (URLError, TimeoutError):
                   print('DIAGNOSIS: TELEGRAM_CONNECTION_FAILED')
           PYCODE
+      - name: Diagnose Amazon review group message
+        run: |
+          python3 - <<'PYCODE'
+          import json, os, re
+          from urllib.request import urlopen
+          from urllib.error import HTTPError, URLError
+
+          bot = os.environ.get('TELEGRAM_BOT_TOKEN', '').strip()
+          if not re.fullmatch(r'\d{5,12}:[A-Za-z0-9_-]{30,90}', bot):
+              print('UPDATES_DIAGNOSIS: INVALID_BOT_TOKEN_FORMAT')
+          else:
+              try:
+                  with urlopen('https://api.telegram.org/bot' + bot + '/getUpdates?limit=100&timeout=0', timeout=15) as response:
+                      data = json.load(response)
+                  if data.get('ok') is not True:
+                      print('UPDATES_DIAGNOSIS: API_NOT_OK')
+                  else:
+                      matches = [
+                          (u.get('message') or {}).get('chat', {})
+                          for u in data.get('result', [])
+                          if (u.get('message') or {}).get('text') == 'Amazon V14 test'
+                      ]
+                      if not matches:
+                          print('UPDATES_DIAGNOSIS: TEST_MESSAGE_NOT_FOUND')
+                      else:
+                          chat = matches[-1]
+                          print('UPDATES_DIAGNOSIS: TEST_MESSAGE_FOUND')
+                          print('FOUND_CHAT_TYPE:', chat.get('type', 'unknown'))
+                          print('FOUND_CHAT_ID_FORMAT:', 'NEGATIVE' if str(chat.get('id', '')).startswith('-') else 'OTHER')
+              except HTTPError as ex:
+                  print('UPDATES_DIAGNOSIS: HTTP_' + str(ex.code))
+              except (URLError, TimeoutError):
+                  print('UPDATES_DIAGNOSIS: CONNECTION_FAILED')
+          PYCODE
       - name: Deploy only separate Amazon Used probe
         run: npx wrangler deploy -c used_probe/wrangler.jsonc
       - name: Check one used offer and privately flag Resale discovery links when price is blocked
