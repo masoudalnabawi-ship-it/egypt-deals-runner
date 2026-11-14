@@ -290,6 +290,12 @@ def main():
             maybe_send_private_resale_links(record, products)
             return record
         record['product_status'] = str(data.get('status', 'UNKNOWN'))[:80]
+        page = data.get('product_page') or {}
+        if isinstance(page, dict):
+            for field in ('browser_error_source', 'browser_error_code'):
+                value = page.get(field)
+                if isinstance(value, str) and re.fullmatch(r'[A-Za-z0-9_-]{1,60}', value):
+                    record[field] = value
         if data.get('status') in ('PRODUCT_RATE_LIMITED', 'BLOCKED_CAPTCHA'):
             record['status'] = 'AMAZON_ACCESS_LIMITED_NO_RETRY'
             maybe_send_private_resale_links(record, products)
