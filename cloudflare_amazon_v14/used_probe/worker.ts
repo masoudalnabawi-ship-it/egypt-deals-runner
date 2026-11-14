@@ -295,7 +295,20 @@ async function scrape(env: Env, url: string, selectors: string[]) {
     gotoOptions: {waitUntil: 'domcontentloaded', timeout: 20000},
     waitForTimeout: 900
   });
-  if (!response.ok) return {ok: false, http: response.status, rows: [], cards: [], blocked: false};
+  if (!response.ok) {
+    let errorCode = 'UNKNOWN';
+    try {
+      const body: any = await response.json();
+      const code = body?.code ?? body?.error?.code;
+      if (typeof code === 'string' && /^[A-Z0-9_-]{1,60}$/i.test(code))
+        errorCode = code;
+      else if (typeof code === 'number' && Number.isInteger(code))
+        errorCode = String(code);
+    } catch {}
+    return {ok: false, http: response.status, rows: [], cards: [],
+      blocked: false, browser_error_source: 'CLOUDFLARE_BROWSER_API',
+      browser_error_code: errorCode};
+  }
   const data: any = await response.json();
   const rows = safeRows(data);
   const blocked = rows.some((r: Row) => /captcha/i.test(r.selector) && r.matches > 0);
@@ -353,7 +366,9 @@ export default {
     try {
       const product = await scrape(env, productUrl, PRODUCT_SELECTORS);
       result.product_page = {http: product.http, blocked: product.blocked,
-        elements: product.rows, final_url: (product as any).final_url};
+        elements: product.rows, final_url: (product as any).final_url,
+        browser_error_source: (product as any).browser_error_source,
+        browser_error_code: (product as any).browser_error_code};
       if (!product.ok || product.blocked) {
         result.status = product.http === 429 ? 'PRODUCT_RATE_LIMITED'
           : (product.blocked ? 'BLOCKED_CAPTCHA' : 'PRODUCT_BROWSER_ERROR');
