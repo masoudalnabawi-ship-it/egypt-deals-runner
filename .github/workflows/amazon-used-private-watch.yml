@@ -116,7 +116,7 @@ jobs:
                       matches = [
                           (u.get('message') or {}).get('chat', {})
                           for u in data.get('result', [])
-                          if (u.get('message') or {}).get('text') == 'Amazon V14 test'
+                          if (u.get('message') or {}).get('text') == 'Amazon Used Review Test'
                       ]
                       if not matches:
                           print('UPDATES_DIAGNOSIS: TEST_MESSAGE_NOT_FOUND')
