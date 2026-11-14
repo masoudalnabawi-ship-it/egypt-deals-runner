@@ -231,6 +231,7 @@ def maybe_send_private_resale_links(record, products):
     except (HTTPError, URLError, TimeoutError, ValueError) as ex:
         record['discovery_digest_status'] = 'SEND_FAILED'
         record['discovery_digest_error_type'] = type(ex).__name__
+        record['discovery_digest_error_code'] = str(ex) if isinstance(ex, ValueError) else type(ex).__name__
         return
     record['discovery_digest_status'] = 'UNVERIFIED_RESALE_LINKS_PRIVATE_ONLY'
     record['private_discovery_digest_sent'] = True
