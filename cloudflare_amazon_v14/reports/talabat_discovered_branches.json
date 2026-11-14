@@ -549,8 +549,22 @@
     "discovered_via": "talabat_public_grocery_directory",
     "service_area_id": "8389",
     "first_seen": 1794564096,
-    "last_seen": 1794589324,
+    "last_seen": 1794691560,
     "service_area_ids": [
+      "7009",
+      "7010",
+      "7011",
+      "7015",
+      "7017",
+      "7018",
+      "7019",
+      "7020",
+      "7021",
+      "7022",
+      "7024",
+      "7025",
+      "7026",
+      "7027",
       "8389",
       "8390",
       "8391",
@@ -1444,8 +1458,23 @@
     "discovered_via": "talabat_public_grocery_directory",
     "service_area_id": "8862",
     "first_seen": 1794574989,
-    "last_seen": 1794675721,
+    "last_seen": 1794691560,
     "service_area_ids": [
+      "6963",
+      "6964",
+      "6965",
+      "6967",
+      "6968",
+      "6969",
+      "6970",
+      "6971",
+      "6972",
+      "6973",
+      "6974",
+      "6975",
+      "6976",
+      "6977",
+      "6978",
       "8862",
       "8870",
       "8873",
@@ -1609,8 +1638,12 @@
     "discovered_via": "talabat_public_grocery_directory",
     "service_area_id": "10409",
     "first_seen": 1794589324,
-    "last_seen": 1794599081,
+    "last_seen": 1794691560,
     "service_area_ids": [
+      "7028",
+      "7029",
+      "7030",
+      "7031",
       "10409",
       "10768"
     ]
@@ -1727,6 +1760,25 @@
     "last_seen": 1794553563,
     "service_area_ids": [
       "7988"
+    ]
+  },
+  {
+    "area": "El Fateh Street",
+    "branch_id": "1125287",
+    "branch_name": "talabat mart, Tanta Kohafa",
+    "source": "https://www.talabat.com/egypt/grocery/1125287/el-fateh-street?aid=7008",
+    "prices_verified": false,
+    "discovered_via": "talabat_public_grocery_directory",
+    "service_area_id": "7008",
+    "first_seen": 1794691560,
+    "last_seen": 1794691560,
+    "service_area_ids": [
+      "7008",
+      "7012",
+      "7013",
+      "7014",
+      "7016",
+      "7023"
     ]
   }
 ]
