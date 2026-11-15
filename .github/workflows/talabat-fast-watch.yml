@@ -7,13 +7,13 @@ on:
       - '.github/workflows/talabat-fast-watch.yml'
   workflow_dispatch:
   schedule:
-    - cron: '*/5 * * * *'
+    - cron: '2-59/5 * * * *'
 
 permissions:
   contents: read
 
 concurrency:
-  group: talabat-fast-watch
+  group: talabat-mart-scanner
   cancel-in-progress: false
 
 jobs:
