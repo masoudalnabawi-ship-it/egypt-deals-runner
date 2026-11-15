@@ -33,29 +33,41 @@ if os.getenv('TALABAT_FAST') == '1' and shortlist:
         path = urllib.parse.urlsplit(row['source']).path.split('/')
         department = path[5] if len(path) > 5 else '_store'
         buckets[(str(row['branch_id']), department)].append(row)
-    order = sorted(buckets)
-    slot = int(time.time() // 300)
-    pivot = slot % len(order)
-    order = order[pivot:] + order[:pivot]
+    # HIGHEST_DISCOUNT_RECHECK_V1
+    # Sort within each branch/department by advertised discount.
+    # Then choose the highest remaining candidate across departments.
+    # Every department remains eligible; the 12-candidate limit is unchanged.
+    for rows in buckets.values():
+        rows.sort(key=lambda x: -float(x['discount']))
+
     selected = []
-    lap = 0
     keep = min(12, len(shortlist))
+    positions = {key: 0 for key in buckets}
+
     while len(selected) < keep:
-        added = False
-        for key in order:
-            rows = buckets[key]
-            if lap >= len(rows):
-                continue
-            selected.append(rows[(slot + lap) % len(rows)])
-            added = True
-            if len(selected) >= keep:
-                break
-        if not added:
+        available = [
+            key for key, rows in buckets.items()
+            if positions[key] < len(rows)
+        ]
+        if not available:
             break
-        lap += 1
+
+        key = min(
+            available,
+            key=lambda k: (
+                -float(buckets[k][positions[k]]['discount']),
+                str(k[0]),
+                str(k[1])
+            )
+        )
+        selected.append(buckets[key][positions[key]])
+        positions[key] += 1
+
     shortlist = selected
-    print('FAST_RECHECK_DEPARTMENTS:', len({x[1] for x in order}),
-          'CANDIDATES:', len(shortlist), flush=True)
+    print('FAST_RECHECK_DEPARTMENTS:', len(buckets),
+          'CANDIDATES:', len(shortlist),
+          'TOP_DISCOUNT:', max(float(x['discount']) for x in shortlist),
+          flush=True)
 
 def fetch(url):
     p = urllib.parse.urlsplit(url)
