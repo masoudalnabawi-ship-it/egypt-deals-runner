@@ -263,7 +263,15 @@ for item in records:
         continue
 
 eligible.sort(key=lambda x: (-float(x['live_discount']), str(x['area']), str(x['sku'])))
-eligible = balance_offer_departments(eligible)
+# HIGHEST_CONFIRMED_DISCOUNT_FIRST_V1
+# Preserve every eligible department; prioritize verified live discounts.
+eligible.sort(
+    key=lambda x: (
+        -float(x['live_discount']),
+        str(x['area']),
+        str(x['sku'])
+    )
+)
 print('ELIGIBLE_FOR_PRIVATE_REVIEW:', len(eligible), flush=True)
 if not eligible:
     raise SystemExit(0)
