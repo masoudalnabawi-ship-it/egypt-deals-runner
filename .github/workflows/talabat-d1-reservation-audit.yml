@@ -2,6 +2,10 @@ name: Talabat D1 Reservation Audit
 
 on:
   workflow_dispatch:
+  push:
+    branches: [talabat-d1-audit]
+    paths:
+      - '.github/workflows/talabat-d1-reservation-audit.yml'
 
 permissions:
   contents: read
@@ -54,3 +58,13 @@ jobs:
           npx wrangler d1 execute talabat-mart-review-db --config wrangler.jsonc --remote --yes --command "SELECT status, COUNT(*) AS n FROM talabat_reviews GROUP BY status ORDER BY status;"
           npx wrangler d1 execute talabat-mart-review-db --config wrangler.jsonc --remote --yes --command "SELECT COUNT(*) AS reserved_without_message, MIN(created_at) AS oldest_created_at, MAX(created_at) AS newest_created_at FROM talabat_reviews WHERE status='reserved' AND review_message_id IS NULL;"
           npx wrangler d1 execute talabat-mart-review-db --config wrangler.jsonc --remote --yes --command "SELECT id,sku,status,review_message_id,created_at FROM talabat_reviews WHERE sku='H1CUDH' LIMIT 10;"
+
+      - name: Diagnose attachment SQL without changing records
+        working-directory: cloudflare_amazon_v14
+        run: |
+          echo TALABAT_ATTACH_TABLE_DDL
+          npx wrangler d1 execute talabat-mart-review-db --config wrangler.jsonc --remote --yes --command "SELECT sql FROM sqlite_master WHERE type='table' AND name='talabat_reviews';"
+          echo TALABAT_ATTACH_INDEX_TRIGGER_DDL
+          npx wrangler d1 execute talabat-mart-review-db --config wrangler.jsonc --remote --yes --command "SELECT type,name,sql FROM sqlite_master WHERE tbl_name='talabat_reviews' AND type IN ('index','trigger') ORDER BY type,name;"
+          echo TALABAT_ATTACH_EXPLAIN
+          npx wrangler d1 execute talabat-mart-review-db --config wrangler.jsonc --remote --yes --command "EXPLAIN UPDATE talabat_reviews SET status='pending',review_message_id=1 WHERE id='__audit_nonexistent__' AND status='reserved';"
