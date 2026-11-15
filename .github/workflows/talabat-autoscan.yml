@@ -62,6 +62,17 @@ jobs:
       - name: Recheck prices and stock
         run: python3 -u scripts/talabat_recheck.py
 
+      - name: Install private review dependencies
+        run: |
+          python -m pip install playwright requests
+          python -m playwright install --with-deps chromium
+
+      - name: Run private offer review
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          REVIEW_WORKER_URL: https://egypt-talabat-review.masoud-amazon-eg.workers.dev
+        run: python3 -u scripts/talabat_dynamic_review.py
+
       - name: Save reports
         if: always()
         uses: actions/upload-artifact@v4
