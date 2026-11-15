@@ -1,0 +1,54 @@
+name: Talabat D1 Reservation Audit
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUD_API_KEY }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Install Wrangler
+        working-directory: cloudflare_amazon_v14
+        run: npm ci --no-audit --no-fund
+      - name: Locate existing Talabat D1 (read only)
+        working-directory: cloudflare_amazon_v14
+        run: |
+          test -n "$CLOUDFLARE_API_TOKEN"
+          npx wrangler d1 list --json > /tmp/talabat_dbs.json
+          python3 - <<'PYCODE'
+          import json
+          from pathlib import Path
+          data=json.loads(Path('/tmp/talabat_dbs.json').read_text())
+          if isinstance(data,dict):
+              data=data.get('result',[])
+          db=next((x for x in data if x.get('name')=='talabat-mart-review-db'),None)
+          if not db:
+              raise SystemExit('TALABAT_DATABASE_NOT_FOUND')
+          uuid=db.get('uuid') or db.get('database_id') or db.get('id')
+          if not uuid:
+              raise SystemExit('TALABAT_DATABASE_ID_MISSING')
+          config={'name':'talabat-d1-audit','main':'talabat_review/worker.js',
+                  'compatibility_date':'2026-10-06',
+                  'd1_databases':[{'binding':'DB',
+                                   'database_name':'talabat-mart-review-db',
+                                   'database_id':uuid,'remote':True}]}
+          Path('wrangler.jsonc').write_text(json.dumps(config))
+          print('TALABAT_DATABASE_LOCATED')
+          PYCODE
+      - name: Audit reservations (read only)
+        working-directory: cloudflare_amazon_v14
+        run: |
+          test -n "$CLOUDFLARE_API_TOKEN"
+          npx wrangler d1 execute talabat-mart-review-db --config wrangler.jsonc --remote --yes --command "SELECT status, COUNT(*) AS n FROM talabat_reviews GROUP BY status ORDER BY status;"
+          npx wrangler d1 execute talabat-mart-review-db --config wrangler.jsonc --remote --yes --command "SELECT COUNT(*) AS reserved_without_message, MIN(created_at) AS oldest_created_at, MAX(created_at) AS newest_created_at FROM talabat_reviews WHERE status='reserved' AND review_message_id IS NULL;"
+          npx wrangler d1 execute talabat-mart-review-db --config wrangler.jsonc --remote --yes --command "SELECT id,sku,status,review_message_id,created_at FROM talabat_reviews WHERE sku='H1CUDH' LIMIT 10;"
