@@ -19,7 +19,7 @@ REVIEW_CHAT = '-1004375874566'
 ROOT = 'https://www.talabat.com'
 TOKEN = os.getenv('TELEGRAM_BOT_TOKEN', '').strip()
 WORKER = os.getenv('REVIEW_WORKER_URL', '').rstrip('/')
-MAX_ALERTS = 2 if os.getenv('TALABAT_FAST') == '1' else 5
+MAX_ALERTS = None  # Review all new eligible offers
 PAGE_LIMIT = 3 if os.getenv('TALABAT_FAST') == '1' else 12
 
 if not TOKEN or not WORKER:
@@ -295,7 +295,7 @@ with sync_playwright() as playwright:
     page = browser.new_page(viewport={'width':1080, 'height':900}, device_scale_factor=1.2)
     try:
         for key, choices in groups.items():
-            if sent >= MAX_ALERTS:
+            if MAX_ALERTS is not None and sent >= MAX_ALERTS:
                 break
             status = observed.get(key)
             if status is None:
