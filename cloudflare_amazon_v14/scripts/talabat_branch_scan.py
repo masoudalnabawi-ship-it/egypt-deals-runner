@@ -1,4 +1,4 @@
-import json, re, urllib.request, urllib.parse, time, os
+import json, re, urllib.request, urllib.parse, urllib.error, time, os
 import math
 
 # ROTATION_COPRIME_V2: avoid missing branches/categories when batch and total
@@ -76,12 +76,23 @@ price_observations = {}
 history_stats = Counter()
 
 
+class TalabatRateLimited(BaseException):
+    pass
+
 def fetch(url):
     req = urllib.request.Request(url, headers={
         "User-Agent": "Mozilla/5.0",
         "Accept-Language": "en-EG,en;q=0.9"
     })
-    with urllib.request.urlopen(req, timeout=18) as r:
+    try:
+        response = urllib.request.urlopen(req, timeout=18)
+    except urllib.error.HTTPError as exc:
+        if exc.code == 429:
+            retry_after = exc.headers.get('Retry-After', '60')
+            print('TALABAT_RATE_LIMITED:', retry_after, flush=True)
+            raise TalabatRateLimited('HTTP_429_STOP_SCAN') from exc
+        raise
+    with response as r:
         final = urllib.parse.urlsplit(r.geturl())
         if final.scheme != "https" or final.hostname != "www.talabat.com":
             raise ValueError("UNEXPECTED_REDIRECT")
