@@ -32,6 +32,45 @@ jobs:
           except Exception as e:
               print('ERROR:', repr(e))
           PYCODE
+      - name: Check 2B Cloudflare proxy
+        env:
+          CLOUD_API_URL: ${{ secrets.CLOUD_API_URL }}
+          CLOUD_API_KEY: ${{ secrets.CLOUD_API_KEY }}
+        run: |
+          python - <<'PYCODE'
+          import os
+          import urllib.request
+          import urllib.error
+          import urllib.parse
+
+          base = os.getenv('CLOUD_API_URL', '').strip().rstrip('/')
+          key = os.getenv('CLOUD_API_KEY', '').strip()
+          if base.endswith('/api/deals'):
+              base = base[:-len('/api/deals')]
+
+          if not base or not key:
+              print('PROXY_CONFIG: MISSING')
+          else:
+              url = base + '/api/store-proxy?' + urllib.parse.urlencode({
+                  'url': 'https://2b.com.eg/ar/offer.html'
+              })
+              try:
+                  req = urllib.request.Request(url, headers={
+                      'x-api-key': key,
+                      'Accept': 'text/html'
+                  })
+                  with urllib.request.urlopen(req, timeout=35) as r:
+                      html = r.read(2000000).decode('utf-8', 'replace')
+                      print('PROXY_STATUS:', r.status)
+                      print('PRODUCT_CARDS:', html.count('product-item'))
+                      print('PRICE_DATA:', html.count('data-price-amount'))
+                      print('PROTECTION_PAGE:', 'Attention Required!' in html)
+              except urllib.error.HTTPError as e:
+                  print('PROXY_STATUS:', e.code)
+                  print('PROXY_REQUEST_FAILED')
+              except Exception as e:
+                  print('PROXY_ERROR_TYPE:', type(e).__name__)
+          PYCODE
       - name: Discover device URLs (no publishing)
         run: |
           PYTHONPATH=scripts python scripts/device_store_autodiscover.py --output device_store_targets.json
