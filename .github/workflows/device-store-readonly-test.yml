@@ -32,6 +32,22 @@ jobs:
           except Exception as e:
               print('ERROR:', repr(e))
           PYCODE
+      - name: Check 2B sitemap from GitHub
+        run: |
+          python - <<'PYTEST'
+          import requests
+          from xml.etree import ElementTree as ET
+          url = "https://2b.com.eg/ar_sitemap-2-1.xml"
+          try:
+              r = requests.get(url, timeout=20)
+              print("SITEMAP_STATUS:", r.status_code)
+              if r.ok:
+                  root = ET.fromstring(r.content)
+                  ns = {"s": "http://www.sitemaps.org/schemas/sitemap/0.9"}
+                  print("SITEMAP_URLS:", len(root.findall(".//s:loc", ns)))
+          except Exception as e:
+              print("SITEMAP_ERROR:", type(e).__name__)
+          PYTEST
       - name: Check 2B Cloudflare proxy
         env:
           CLOUD_API_URL: ${{ secrets.CLOUD_API_URL }}
