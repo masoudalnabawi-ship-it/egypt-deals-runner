@@ -93,9 +93,29 @@
     "discovered_via": "talabat_public_grocery_directory",
     "service_area_id": "10121",
     "first_seen": 1794589324,
-    "last_seen": 1794589324,
+    "last_seen": 1794794268,
     "service_area_ids": [
+      "7660",
+      "7667",
+      "7669",
+      "7671",
+      "7675",
       "10121"
+    ]
+  },
+  {
+    "area": "Nasr City El Serag Mall",
+    "branch_id": "619844",
+    "branch_name": "talabat mart, Nasr City - El Tayaran",
+    "source": "https://www.talabat.com/egypt/grocery/619844/nasr-city-el-serag-mall?aid=7684",
+    "prices_verified": false,
+    "discovered_via": "talabat_public_grocery_directory",
+    "service_area_id": "7684",
+    "first_seen": 1794794268,
+    "last_seen": 1794794268,
+    "service_area_ids": [
+      "7682",
+      "7684"
     ]
   },
   {
@@ -151,11 +171,12 @@
     "discovered_via": "talabat_public_grocery_directory",
     "service_area_id": "7555",
     "first_seen": 1794622868,
-    "last_seen": 1794707434,
+    "last_seen": 1794794268,
     "service_area_ids": [
       "7555",
       "7556",
-      "7561"
+      "7561",
+      "7632"
     ]
   },
   {
@@ -215,6 +236,28 @@
       "7125",
       "8322",
       "8412"
+    ]
+  },
+  {
+    "area": "Shobra Victoria Square",
+    "branch_id": "650268",
+    "branch_name": "talabat mart, Shobra - El Sahel",
+    "source": "https://www.talabat.com/egypt/grocery/650268/shobra-victoria-square?aid=7635",
+    "prices_verified": false,
+    "discovered_via": "talabat_public_grocery_directory",
+    "service_area_id": "7635",
+    "first_seen": 1794794268,
+    "last_seen": 1794794268,
+    "service_area_ids": [
+      "7633",
+      "7635",
+      "7636",
+      "7638",
+      "7641",
+      "7646",
+      "7648",
+      "7650",
+      "7651"
     ]
   },
   {
@@ -444,8 +487,10 @@
     "discovered_via": "talabat_public_grocery_directory",
     "service_area_id": "10034",
     "first_seen": 1794585707,
-    "last_seen": 1794585707,
+    "last_seen": 1794794268,
     "service_area_ids": [
+      "7659",
+      "7661",
       "10034"
     ]
   },
@@ -630,6 +675,26 @@
       "9966",
       "9973",
       "9982"
+    ]
+  },
+  {
+    "area": "Shobra St Trez",
+    "branch_id": "742734",
+    "branch_name": "tKiosk by tMart, Shobra - El Sahel",
+    "source": "https://www.talabat.com/egypt/grocery/742734/tkiosk-by-tmart-shobra-el-sahel?aid=7634",
+    "prices_verified": false,
+    "discovered_via": "talabat_public_grocery_directory",
+    "service_area_id": "7634",
+    "first_seen": 1794794268,
+    "last_seen": 1794794268,
+    "service_area_ids": [
+      "7634",
+      "7637",
+      "7640",
+      "7642",
+      "7643",
+      "7644",
+      "7645"
     ]
   },
   {
@@ -1017,6 +1082,20 @@
     ]
   },
   {
+    "area": "Madinaty Collages Area",
+    "branch_id": "753734",
+    "branch_name": "tKiosk by tMart, Madinaty - Work Shops",
+    "source": "https://www.talabat.com/egypt/grocery/753734/tkiosk-by-tmart-madinaty-work-shops?aid=7631",
+    "prices_verified": false,
+    "discovered_via": "talabat_public_grocery_directory",
+    "service_area_id": "7631",
+    "first_seen": 1794794268,
+    "last_seen": 1794794268,
+    "service_area_ids": [
+      "7631"
+    ]
+  },
+  {
     "area": "Tagammoa 5 Emaar Mivida",
     "branch_id": "753735",
     "branch_name": "tKiosk by tMart, Tagammoa 5 - Emaar Mivida",
@@ -1095,8 +1174,9 @@
     "discovered_via": "talabat_public_grocery_directory",
     "service_area_id": "7983",
     "first_seen": 1794553563,
-    "last_seen": 1794553563,
+    "last_seen": 1794794268,
     "service_area_ids": [
+      "7657",
       "7983"
     ]
   },
@@ -1109,8 +1189,13 @@
     "discovered_via": "talabat_public_grocery_directory",
     "service_area_id": "9999",
     "first_seen": 1794585707,
-    "last_seen": 1794585707,
+    "last_seen": 1794794268,
     "service_area_ids": [
+      "7658",
+      "7663",
+      "7664",
+      "7672",
+      "7673",
       "9999",
       "10035"
     ]
@@ -1234,8 +1319,13 @@
     "discovered_via": "talabat_public_grocery_directory",
     "service_area_id": "10088",
     "first_seen": 1794589324,
-    "last_seen": 1794589324,
+    "last_seen": 1794794268,
     "service_area_ids": [
+      "7676",
+      "7679",
+      "7681",
+      "7683",
+      "7685",
       "10088"
     ]
   },
@@ -1548,6 +1638,21 @@
     ]
   },
   {
+    "area": "Nasr City Abo Dawoud El Zahery",
+    "branch_id": "1101530",
+    "branch_name": "tKiosk by tMart, Nasr City - Masaken El Shorouk",
+    "source": "https://www.talabat.com/egypt/grocery/1101530/tkiosk-by-tmart-nasr-city-masaken-el-shorouk?aid=7677",
+    "prices_verified": false,
+    "discovered_via": "talabat_public_grocery_directory",
+    "service_area_id": "7677",
+    "first_seen": 1794794268,
+    "last_seen": 1794794268,
+    "service_area_ids": [
+      "7677",
+      "7678"
+    ]
+  },
+  {
     "area": "6Th Of October Palm Hills",
     "branch_id": "1101536",
     "branch_name": "tKiosk by tMart, 6th of October - Palm Hills",
@@ -1585,6 +1690,22 @@
     "service_area_ids": [
       "8192",
       "8193"
+    ]
+  },
+  {
+    "area": "Kobry El Qobba",
+    "branch_id": "1101538",
+    "branch_name": "tKiosk by tMart, Nasr City - Omarat El Tawfiq",
+    "source": "https://www.talabat.com/egypt/grocery/1101538/tkiosk-by-tmart-nasr-city-omarat-el-tawfiq?aid=7655",
+    "prices_verified": false,
+    "discovered_via": "talabat_public_grocery_directory",
+    "service_area_id": "7655",
+    "first_seen": 1794794268,
+    "last_seen": 1794794268,
+    "service_area_ids": [
+      "7655",
+      "7656",
+      "7680"
     ]
   },
   {
@@ -1783,8 +1904,13 @@
     "discovered_via": "talabat_public_grocery_directory",
     "service_area_id": "9983",
     "first_seen": 1794585707,
-    "last_seen": 1794585707,
+    "last_seen": 1794794268,
     "service_area_ids": [
+      "7662",
+      "7665",
+      "7668",
+      "7670",
+      "7674",
       "9983",
       "10002",
       "10014"
