@@ -9,6 +9,7 @@ import json
 import re
 import sqlite3
 from datetime import datetime, timezone
+from statistics import median
 from pathlib import Path
 from urllib.parse import urlsplit
 
@@ -54,6 +55,46 @@ def extract_product(jsonld_texts):
                 return {'title': title, 'price': price, 'currency': currency, 'sku': str(product.get('sku') or product.get('productID') or '')}
     return None
 
+def store_diagnostic(page):
+    # Evidence only: never turn unverified visible prices into verified offers.
+    try:
+        return {
+            "page_title": page.title()[:120],
+            "jsonld_count": page.locator('script[type="application/ld+json"]').count(),
+            "price_meta_count": page.locator('meta[property="product:price:amount"]').count(),
+            "price_element_count": page.locator('[itemprop="price"], [data-price], .price').count(),
+            "final_url": page.url[:250],
+        }
+    except Exception as exc:
+        return {"diagnostic_error": str(exc)[:100]}
+
+
+def classify_candidate(db, store, sku, current, ultra_min=65):
+    # Strict historical baseline: five observations over at least three days.
+    if not sku:
+        return {"lane": "unclassified", "reason": "missing_sku", "publish": False}
+    history = []
+    for price, observed in db.execute('SELECT price, observed_at FROM observations WHERE store=? AND sku=?', (store, sku)):
+        try:
+            dt = datetime.fromisoformat(observed.replace('Z', '+00:00'))
+            age = (datetime.now(timezone.utc) - dt).total_seconds()
+            if dt.tzinfo and 0 <= age <= 180 * 86400 and 0 < float(price) < 100000000:
+                history.append((float(price), dt.date()))
+        except (ValueError, TypeError, AttributeError):
+            continue
+    if len(history) < 5 or len(set(d for _, d in history)) < 3:
+        return {"lane": "unclassified", "reason": "insufficient_verified_history", "publish": False}
+    baseline = median(price for price, _ in history)
+    discount = round(100 * (baseline - current) / baseline, 2)
+    if discount >= 90:
+        return {"lane": "ultra", "alert_type": "price_crash_pending", "discount_percent": discount,
+                "reason": "needs_two_live_checks_120s_apart_and_manual_review", "publish": False}
+    if discount >= ultra_min:
+        return {"lane": "ultra", "alert_type": "large_discount_review", "discount_percent": discount, "publish": False}
+    if discount >= 10:
+        return {"lane": "normal", "alert_type": "discount_review", "discount_percent": discount, "publish": False}
+    return {"lane": "unclassified", "discount_percent": discount, "publish": False}
+
 def run(targets, db_path):
     from playwright.sync_api import sync_playwright
     db_path.parent.mkdir(parents=True, exist_ok=True)
@@ -70,16 +111,19 @@ def run(targets, db_path):
                 page.goto(url, wait_until='domcontentloaded', timeout=30000)
                 if urlsplit(page.url).hostname not in HOSTS[store]: raise ValueError('cross_store_redirect')
                 data = extract_product(page.locator('script[type="application/ld+json"]').all_text_contents())
-                if data is None: raise ValueError('no_verified_egp_device_product')
+                if data is None:
+                    results.append({'store': store, 'url': url, 'verified': False, 'reason': 'no_verified_egp_device_product', 'diagnostic': store_diagnostic(page)})
+                    continue
+                review = classify_candidate(db, store, data['sku'], data['price'])
                 db.execute('INSERT INTO observations VALUES (?,?,?,?,?,?)', (store, url, data['sku'], data['title'], data['price'], datetime.now(timezone.utc).isoformat()))
                 db.commit()
-                results.append({'store': store, 'url': url, 'verified': True, **data})
+                results.append({'store': store, 'url': url, 'verified': True, **data, 'review': review})
             except Exception as exc:
                 results.append({'store': store, 'url': url, 'verified': False, 'reason': str(exc)[:160]})
             finally: page.close()
         context.close(); browser.close()
     db.close()
-    return {'results': results, 'published': 0}
+    return {'results': results, 'published': 0, 'telegram_sent': 0}
 
 def main():
     ap = argparse.ArgumentParser()
