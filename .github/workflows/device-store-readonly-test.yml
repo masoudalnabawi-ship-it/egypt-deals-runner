@@ -26,8 +26,11 @@ jobs:
           from pathlib import Path
           p=Path('device_store_targets.json')
           rows=json.loads(p.read_text()) if p.exists() else []
-          p.write_text(json.dumps(rows[:25],ensure_ascii=False))
-          print('Scanning up to',len(rows[:25]),'candidate URLs')
+          extra=Path('device_2b_targets.json')
+          if extra.exists():
+              rows.extend(json.loads(extra.read_text(encoding='utf-8')))
+          p.write_text(json.dumps(rows[:45],ensure_ascii=False))
+          print('Scanning up to',len(rows[:45]),'candidate URLs')
           PYCODE
           if [ "$(python -c "import json;print(len(json.load(open('device_store_targets.json'))))")" -gt 0 ]; then
             PYTHONPATH=scripts python scripts/device_store_scanner.py --targets device_store_targets.json --db device_store_history.sqlite3 > device_store_scan.json
