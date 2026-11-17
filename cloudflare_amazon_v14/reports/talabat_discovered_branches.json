@@ -8,7 +8,7 @@
     "discovered_via": "talabat_public_grocery_directory",
     "service_area_id": "7941",
     "first_seen": 1794553563,
-    "last_seen": 1794553563,
+    "last_seen": 1794887219,
     "service_area_ids": [
       "7941"
     ]
@@ -43,8 +43,9 @@
     "discovered_via": "talabat_public_grocery_directory",
     "service_area_id": "7940",
     "first_seen": 1794553563,
-    "last_seen": 1794589324,
+    "last_seen": 1794887219,
     "service_area_ids": [
+      "7939",
       "7940",
       "10106",
       "10107",
@@ -145,6 +146,23 @@
     "service_area_ids": [
       "10114",
       "10115"
+    ]
+  },
+  {
+    "area": "Hadayek El Ahram Area 3",
+    "branch_id": "620010",
+    "branch_name": "talabat mart, Hadayek El Ahram - Area ح",
+    "source": "https://www.talabat.com/egypt/grocery/620010/hadayek-el-ahram-area-3?aid=7950",
+    "prices_verified": false,
+    "discovered_via": "talabat_public_grocery_directory",
+    "service_area_id": "7950",
+    "first_seen": 1794887219,
+    "last_seen": 1794887219,
+    "service_area_ids": [
+      "7950",
+      "7955",
+      "7957",
+      "7961"
     ]
   },
   {
@@ -943,6 +961,22 @@
     ]
   },
   {
+    "area": "6Th Of October 10Th District",
+    "branch_id": "750753",
+    "branch_name": "Tmart, 6th of October - 6th District",
+    "source": "https://www.talabat.com/egypt/grocery/750753/6th-of-october-10th-district?aid=7932",
+    "prices_verified": false,
+    "discovered_via": "talabat_public_grocery_directory",
+    "service_area_id": "7932",
+    "first_seen": 1794887219,
+    "last_seen": 1794887219,
+    "service_area_ids": [
+      "7932",
+      "7933",
+      "7934"
+    ]
+  },
+  {
     "area": "El Mashaya",
     "branch_id": "752616",
     "branch_name": "Tmart, El Mokhtalat",
@@ -1063,7 +1097,7 @@
     "discovered_via": "talabat_public_grocery_directory",
     "service_area_id": "7947",
     "first_seen": 1794553563,
-    "last_seen": 1794553563,
+    "last_seen": 1794887219,
     "service_area_ids": [
       "7947",
       "7948",
@@ -1125,7 +1159,7 @@
     "discovered_via": "talabat_public_grocery_directory",
     "service_area_id": "7932",
     "first_seen": 1794553563,
-    "last_seen": 1794553563,
+    "last_seen": 1794887219,
     "service_area_ids": [
       "7932",
       "7933",
@@ -1165,6 +1199,23 @@
       "9573",
       "9654",
       "9772"
+    ]
+  },
+  {
+    "area": "Zahraa El Maadi El Shatr El Sades",
+    "branch_id": "756952",
+    "branch_name": "talabat mart, Zahraa El Maadi - El Shatr El Sades",
+    "source": "https://www.talabat.com/egypt/grocery/756952/zahraa-el-maadi-el-shatr-el-sades?aid=7943",
+    "prices_verified": false,
+    "discovered_via": "talabat_public_grocery_directory",
+    "service_area_id": "7943",
+    "first_seen": 1794887219,
+    "last_seen": 1794887219,
+    "service_area_ids": [
+      "7942",
+      "7943",
+      "7944",
+      "7945"
     ]
   },
   {
@@ -1248,7 +1299,7 @@
     "discovered_via": "talabat_public_grocery_directory",
     "service_area_id": "7981",
     "first_seen": 1794553563,
-    "last_seen": 1794556920,
+    "last_seen": 1794887219,
     "service_area_ids": [
       "7981",
       "7982",
@@ -1564,8 +1615,14 @@
     "discovered_via": "talabat_public_grocery_directory",
     "service_area_id": "9322",
     "first_seen": 1794574989,
-    "last_seen": 1794574989,
+    "last_seen": 1794887219,
     "service_area_ids": [
+      "7947",
+      "7948",
+      "7949",
+      "7951",
+      "7952",
+      "7962",
       "9322"
     ]
   },
