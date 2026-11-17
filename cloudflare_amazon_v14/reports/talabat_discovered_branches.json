@@ -61,7 +61,7 @@
     "discovered_via": "talabat_public_grocery_directory",
     "service_area_id": "7534",
     "first_seen": 1794622868,
-    "last_seen": 1794707434,
+    "last_seen": 1794953792,
     "service_area_ids": [
       "7532",
       "7533",
@@ -189,7 +189,7 @@
     "discovered_via": "talabat_public_grocery_directory",
     "service_area_id": "7555",
     "first_seen": 1794622868,
-    "last_seen": 1794794268,
+    "last_seen": 1794953792,
     "service_area_ids": [
       "7555",
       "7556",
@@ -350,7 +350,7 @@
     "discovered_via": "talabat_public_grocery_directory",
     "service_area_id": "10074",
     "first_seen": 1794589324,
-    "last_seen": 1794921300,
+    "last_seen": 1794953792,
     "service_area_ids": [
       "7565",
       "7568",
@@ -413,8 +413,9 @@
     "discovered_via": "talabat_public_grocery_directory",
     "service_area_id": "8039",
     "first_seen": 1794556920,
-    "last_seen": 1794556920,
+    "last_seen": 1794953792,
     "service_area_ids": [
+      "7572",
       "8039",
       "8040",
       "8041",
@@ -439,6 +440,37 @@
     "last_seen": 1794560525,
     "service_area_ids": [
       "8177"
+    ]
+  },
+  {
+    "area": "Al Manial",
+    "branch_id": "720677",
+    "branch_name": "tKiosk by tMart, Al-Manial",
+    "source": "https://www.talabat.com/egypt/grocery/720677/tkiosk-by-tmart-al-manial?aid=7583",
+    "prices_verified": false,
+    "discovered_via": "talabat_public_grocery_directory",
+    "service_area_id": "7583",
+    "first_seen": 1794953792,
+    "last_seen": 1794953792,
+    "service_area_ids": [
+      "7583"
+    ]
+  },
+  {
+    "area": "Mohandesin Jazerat El Arab",
+    "branch_id": "720679",
+    "branch_name": "tKiosk by tMart, Mohandesin - Lebanon Square",
+    "source": "https://www.talabat.com/egypt/grocery/720679/tkiosk-by-tmart-mohandesin-lebanon-square?aid=7533",
+    "prices_verified": false,
+    "discovered_via": "talabat_public_grocery_directory",
+    "service_area_id": "7533",
+    "first_seen": 1794953792,
+    "last_seen": 1794953792,
+    "service_area_ids": [
+      "7533",
+      "7534",
+      "7535",
+      "7536"
     ]
   },
   {
@@ -542,7 +574,7 @@
     "discovered_via": "talabat_public_grocery_directory",
     "service_area_id": "7586",
     "first_seen": 1794622868,
-    "last_seen": 1794622868,
+    "last_seen": 1794953792,
     "service_area_ids": [
       "7586"
     ]
@@ -725,7 +757,7 @@
     "discovered_via": "talabat_public_grocery_directory",
     "service_area_id": "10077",
     "first_seen": 1794589324,
-    "last_seen": 1794921300,
+    "last_seen": 1794953792,
     "service_area_ids": [
       "7557",
       "7558",
@@ -891,6 +923,20 @@
     "service_area_ids": [
       "8074",
       "8076"
+    ]
+  },
+  {
+    "area": "El Katameya",
+    "branch_id": "743152",
+    "branch_name": "tKiosk by tMart, Tagammoa 5 - Hay 1",
+    "source": "https://www.talabat.com/egypt/grocery/743152/tkiosk-by-tmart-tagammoa-5-hay-1?aid=7574",
+    "prices_verified": false,
+    "discovered_via": "talabat_public_grocery_directory",
+    "service_area_id": "7574",
+    "first_seen": 1794953792,
+    "last_seen": 1794953792,
+    "service_area_ids": [
+      "7574"
     ]
   },
   {
@@ -1081,8 +1127,9 @@
     "discovered_via": "talabat_public_grocery_directory",
     "service_area_id": "8347",
     "first_seen": 1794564096,
-    "last_seen": 1794574989,
+    "last_seen": 1794953792,
     "service_area_ids": [
+      "7588",
       "8347",
       "9292",
       "9293"
@@ -1181,7 +1228,7 @@
     "discovered_via": "talabat_public_grocery_directory",
     "service_area_id": "7575",
     "first_seen": 1794622868,
-    "last_seen": 1794707434,
+    "last_seen": 1794953792,
     "service_area_ids": [
       "7575"
     ]
@@ -1736,8 +1783,9 @@
     "discovered_via": "talabat_public_grocery_directory",
     "service_area_id": "8182",
     "first_seen": 1794560525,
-    "last_seen": 1794921300,
+    "last_seen": 1794953792,
     "service_area_ids": [
+      "7587",
       "8182",
       "8183",
       "8184",
@@ -1944,8 +1992,9 @@
     "discovered_via": "talabat_public_grocery_directory",
     "service_area_id": "9833",
     "first_seen": 1794582175,
-    "last_seen": 1794583169,
+    "last_seen": 1794953792,
     "service_area_ids": [
+      "7595",
       "9833",
       "9834",
       "9835",
@@ -1961,7 +2010,7 @@
     "discovered_via": "talabat_public_grocery_directory",
     "service_area_id": "8180",
     "first_seen": 1794560525,
-    "last_seen": 1794707434,
+    "last_seen": 1794953792,
     "service_area_ids": [
       "7536",
       "7537",
