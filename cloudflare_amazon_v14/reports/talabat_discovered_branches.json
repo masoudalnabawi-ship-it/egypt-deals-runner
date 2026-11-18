@@ -22,13 +22,15 @@
     "discovered_via": "talabat_public_grocery_directory",
     "service_area_id": "8197",
     "first_seen": 1794560525,
-    "last_seen": 1794560525,
+    "last_seen": 1794975294,
     "service_area_ids": [
       "8196",
       "8197",
       "8198",
+      "8199",
       "8200",
       "8201",
+      "8202",
       "8203",
       "8204",
       "8207"
@@ -279,6 +281,22 @@
     ]
   },
   {
+    "area": "El Shorouk 5Th Area",
+    "branch_id": "650269",
+    "branch_name": "talabat mart, El Shorouk - 1st Area",
+    "source": "https://www.talabat.com/egypt/grocery/650269/el-shorouk-5th-area?aid=8112",
+    "prices_verified": false,
+    "discovered_via": "talabat_public_grocery_directory",
+    "service_area_id": "8112",
+    "first_seen": 1794975294,
+    "last_seen": 1794975294,
+    "service_area_ids": [
+      "8112",
+      "8115",
+      "8118"
+    ]
+  },
+  {
     "area": "Emirates Neighborhood",
     "branch_id": "661094",
     "branch_name": "talabat mart,  Al Sharq District",
@@ -290,6 +308,20 @@
     "last_seen": 1794589324,
     "service_area_ids": [
       "10215"
+    ]
+  },
+  {
+    "area": "6Th Of October Masged El Shorta",
+    "branch_id": "669870",
+    "branch_name": "talabat mart, 6th Of October - Palm Hills",
+    "source": "https://www.talabat.com/egypt/grocery/669870/6th-of-october-masged-el-shorta?aid=8188",
+    "prices_verified": false,
+    "discovered_via": "talabat_public_grocery_directory",
+    "service_area_id": "8188",
+    "first_seen": 1794975294,
+    "last_seen": 1794975294,
+    "service_area_ids": [
+      "8188"
     ]
   },
   {
@@ -553,7 +585,7 @@
     "discovered_via": "talabat_public_grocery_directory",
     "service_area_id": "8132",
     "first_seen": 1794560525,
-    "last_seen": 1794921300,
+    "last_seen": 1794975294,
     "service_area_ids": [
       "7574",
       "8132",
@@ -691,7 +723,7 @@
     "discovered_via": "talabat_public_grocery_directory",
     "service_area_id": "8112",
     "first_seen": 1794560525,
-    "last_seen": 1794585707,
+    "last_seen": 1794975294,
     "service_area_ids": [
       "8112",
       "8113",
@@ -919,10 +951,11 @@
     "discovered_via": "talabat_public_grocery_directory",
     "service_area_id": "8074",
     "first_seen": 1794556920,
-    "last_seen": 1794556920,
+    "last_seen": 1794975294,
     "service_area_ids": [
       "8074",
-      "8076"
+      "8076",
+      "8183"
     ]
   },
   {
@@ -1264,6 +1297,21 @@
       "7943",
       "7944",
       "7945"
+    ]
+  },
+  {
+    "area": "El Shorouk 8Th Area",
+    "branch_id": "758922",
+    "branch_name": "Tmart, El Shorouk - 3rd District",
+    "source": "https://www.talabat.com/egypt/grocery/758922/el-shorouk-8th-area?aid=8111",
+    "prices_verified": false,
+    "discovered_via": "talabat_public_grocery_directory",
+    "service_area_id": "8111",
+    "first_seen": 1794975294,
+    "last_seen": 1794975294,
+    "service_area_ids": [
+      "8111",
+      "8117"
     ]
   },
   {
@@ -1632,8 +1680,9 @@
     "discovered_via": "talabat_public_grocery_directory",
     "service_area_id": "10183",
     "first_seen": 1794589324,
-    "last_seen": 1794921300,
+    "last_seen": 1794975294,
     "service_area_ids": [
+      "8195",
       "10183"
     ]
   },
@@ -1783,7 +1832,7 @@
     "discovered_via": "talabat_public_grocery_directory",
     "service_area_id": "8182",
     "first_seen": 1794560525,
-    "last_seen": 1794953792,
+    "last_seen": 1794975294,
     "service_area_ids": [
       "7587",
       "8182",
@@ -1809,7 +1858,7 @@
     "discovered_via": "talabat_public_grocery_directory",
     "service_area_id": "8192",
     "first_seen": 1794560525,
-    "last_seen": 1794560525,
+    "last_seen": 1794975294,
     "service_area_ids": [
       "8192",
       "8193"
@@ -1992,9 +2041,11 @@
     "discovered_via": "talabat_public_grocery_directory",
     "service_area_id": "9833",
     "first_seen": 1794582175,
-    "last_seen": 1794953792,
+    "last_seen": 1794975294,
     "service_area_ids": [
       "7595",
+      "8177",
+      "8194",
       "9833",
       "9834",
       "9835",
@@ -2010,7 +2061,7 @@
     "discovered_via": "talabat_public_grocery_directory",
     "service_area_id": "8180",
     "first_seen": 1794560525,
-    "last_seen": 1794953792,
+    "last_seen": 1794975294,
     "service_area_ids": [
       "7536",
       "7537",
