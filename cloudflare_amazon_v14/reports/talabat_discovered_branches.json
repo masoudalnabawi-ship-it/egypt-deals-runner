@@ -22,7 +22,7 @@
     "discovered_via": "talabat_public_grocery_directory",
     "service_area_id": "8197",
     "first_seen": 1794560525,
-    "last_seen": 1794975294,
+    "last_seen": 1795058395,
     "service_area_ids": [
       "8196",
       "8197",
@@ -33,7 +33,14 @@
       "8202",
       "8203",
       "8204",
-      "8207"
+      "8205",
+      "8206",
+      "8207",
+      "8208",
+      "8209",
+      "8210",
+      "8211",
+      "8212"
     ]
   },
   {
@@ -289,7 +296,7 @@
     "discovered_via": "talabat_public_grocery_directory",
     "service_area_id": "8112",
     "first_seen": 1794975294,
-    "last_seen": 1794975294,
+    "last_seen": 1795058395,
     "service_area_ids": [
       "8112",
       "8115",
@@ -319,7 +326,7 @@
     "discovered_via": "talabat_public_grocery_directory",
     "service_area_id": "8188",
     "first_seen": 1794975294,
-    "last_seen": 1794975294,
+    "last_seen": 1795058395,
     "service_area_ids": [
       "8188"
     ]
@@ -600,7 +607,7 @@
     "discovered_via": "talabat_public_grocery_directory",
     "service_area_id": "8132",
     "first_seen": 1794560525,
-    "last_seen": 1794975294,
+    "last_seen": 1795058395,
     "service_area_ids": [
       "7574",
       "8132",
@@ -748,7 +755,7 @@
     "discovered_via": "talabat_public_grocery_directory",
     "service_area_id": "8112",
     "first_seen": 1794560525,
-    "last_seen": 1794975294,
+    "last_seen": 1795058395,
     "service_area_ids": [
       "8112",
       "8113",
@@ -989,7 +996,7 @@
     "discovered_via": "talabat_public_grocery_directory",
     "service_area_id": "8074",
     "first_seen": 1794556920,
-    "last_seen": 1794975294,
+    "last_seen": 1795058395,
     "service_area_ids": [
       "8074",
       "8076",
@@ -1374,7 +1381,7 @@
     "discovered_via": "talabat_public_grocery_directory",
     "service_area_id": "8111",
     "first_seen": 1794975294,
-    "last_seen": 1794975294,
+    "last_seen": 1795058395,
     "service_area_ids": [
       "8111",
       "8117"
@@ -1668,8 +1675,9 @@
     "discovered_via": "talabat_public_grocery_directory",
     "service_area_id": "8409",
     "first_seen": 1794564096,
-    "last_seen": 1794585707,
+    "last_seen": 1795058395,
     "service_area_ids": [
+      "8311",
       "8409",
       "9997",
       "10004",
@@ -1772,7 +1780,7 @@
     "discovered_via": "talabat_public_grocery_directory",
     "service_area_id": "10183",
     "first_seen": 1794589324,
-    "last_seen": 1794975294,
+    "last_seen": 1795058395,
     "service_area_ids": [
       "8195",
       "10183"
@@ -1925,7 +1933,7 @@
     "discovered_via": "talabat_public_grocery_directory",
     "service_area_id": "8182",
     "first_seen": 1794560525,
-    "last_seen": 1794975294,
+    "last_seen": 1795058395,
     "service_area_ids": [
       "7587",
       "8182",
@@ -1951,7 +1959,7 @@
     "discovered_via": "talabat_public_grocery_directory",
     "service_area_id": "8192",
     "first_seen": 1794560525,
-    "last_seen": 1794975294,
+    "last_seen": 1795058395,
     "service_area_ids": [
       "8192",
       "8193"
@@ -2134,7 +2142,7 @@
     "discovered_via": "talabat_public_grocery_directory",
     "service_area_id": "9833",
     "first_seen": 1794582175,
-    "last_seen": 1794975294,
+    "last_seen": 1795058395,
     "service_area_ids": [
       "7595",
       "8177",
@@ -2154,7 +2162,7 @@
     "discovered_via": "talabat_public_grocery_directory",
     "service_area_id": "8180",
     "first_seen": 1794560525,
-    "last_seen": 1794975294,
+    "last_seen": 1795058395,
     "service_area_ids": [
       "7536",
       "7537",
@@ -2234,6 +2242,30 @@
       "7081",
       "7085",
       "7086"
+    ]
+  },
+  {
+    "area": "Qonya City",
+    "branch_id": "1298170",
+    "branch_name": "talabat mart, Damnhour",
+    "source": "https://www.talabat.com/egypt/grocery/1298170/qonya-city?aid=8296",
+    "prices_verified": false,
+    "discovered_via": "talabat_public_grocery_directory",
+    "service_area_id": "8296",
+    "first_seen": 1795058395,
+    "last_seen": 1795058395,
+    "service_area_ids": [
+      "8296",
+      "8297",
+      "8298",
+      "8299",
+      "8300",
+      "8301",
+      "8302",
+      "8303",
+      "8304",
+      "8308",
+      "8310"
     ]
   }
 ]
