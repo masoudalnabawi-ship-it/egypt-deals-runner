@@ -348,6 +348,20 @@
     ]
   },
   {
+    "area": "2Nd District Damietta",
+    "branch_id": "716335",
+    "branch_name": "tKiosk by tMart, Downtown - El Sayeda Zeinab",
+    "source": "https://www.talabat.com/egypt/grocery/716335/tkiosk-by-tmart-downtown-el-sayeda-zeinab?aid=8347",
+    "prices_verified": false,
+    "discovered_via": "talabat_public_grocery_directory",
+    "service_area_id": "8347",
+    "first_seen": 1795144095,
+    "last_seen": 1795144095,
+    "service_area_ids": [
+      "8347"
+    ]
+  },
+  {
     "area": "6Th Of October Eskan Gamaet El Qahera",
     "branch_id": "717277",
     "branch_name": "tKiosk by tMart, El Sheikh Zayed - El Hay 9",
@@ -378,6 +392,22 @@
     "last_seen": 1794762156,
     "service_area_ids": [
       "10710"
+    ]
+  },
+  {
+    "area": "Intercontinental District",
+    "branch_id": "717766",
+    "branch_name": "Tmart, Masaken El Nagda",
+    "source": "https://www.talabat.com/egypt/grocery/717766/intercontinental-district?aid=8367",
+    "prices_verified": false,
+    "discovered_via": "talabat_public_grocery_directory",
+    "service_area_id": "8367",
+    "first_seen": 1795144095,
+    "last_seen": 1795144095,
+    "service_area_ids": [
+      "8367",
+      "8373",
+      "8374"
     ]
   },
   {
@@ -704,10 +734,16 @@
     "discovered_via": "talabat_public_grocery_directory",
     "service_area_id": "10030",
     "first_seen": 1794585707,
-    "last_seen": 1794860601,
+    "last_seen": 1795144095,
     "service_area_ids": [
       "7066",
       "7072",
+      "8319",
+      "8320",
+      "8321",
+      "8322",
+      "8323",
+      "8324",
       "10030"
     ]
   },
@@ -781,13 +817,14 @@
     "discovered_via": "talabat_public_grocery_directory",
     "service_area_id": "8326",
     "first_seen": 1794564096,
-    "last_seen": 1794585707,
+    "last_seen": 1795144095,
     "service_area_ids": [
       "8325",
       "8326",
       "8327",
       "8328",
       "8329",
+      "8386",
       "9966",
       "9973",
       "9982"
@@ -1065,10 +1102,14 @@
     "discovered_via": "talabat_public_grocery_directory",
     "service_area_id": "8330",
     "first_seen": 1794564096,
-    "last_seen": 1794860601,
+    "last_seen": 1795144095,
     "service_area_ids": [
       "7074",
+      "8315",
       "8330",
+      "8331",
+      "8332",
+      "8333",
       "9981",
       "9985",
       "10019"
@@ -1113,8 +1154,9 @@
     "discovered_via": "talabat_public_grocery_directory",
     "service_area_id": "8699",
     "first_seen": 1794571304,
-    "last_seen": 1794821544,
+    "last_seen": 1795144095,
     "service_area_ids": [
+      "8387",
       "8699",
       "8702",
       "8703",
@@ -1408,6 +1450,20 @@
     ]
   },
   {
+    "area": "Tagammoa 1 Sharq El Academya",
+    "branch_id": "763762",
+    "branch_name": "talabat mart, Tagammoa 5 - El Banafseg Buildings Buildings",
+    "source": "https://www.talabat.com/egypt/grocery/763762/tagammoa-1-sharq-el-academya?aid=8380",
+    "prices_verified": false,
+    "discovered_via": "talabat_public_grocery_directory",
+    "service_area_id": "8380",
+    "first_seen": 1795144095,
+    "last_seen": 1795144095,
+    "service_area_ids": [
+      "8380"
+    ]
+  },
+  {
     "area": "Haram El Arish 2",
     "branch_id": "763763",
     "branch_name": "talabat mart, Faisal - Maryoteya",
@@ -1416,13 +1472,15 @@
     "discovered_via": "talabat_public_grocery_directory",
     "service_area_id": "9999",
     "first_seen": 1794585707,
-    "last_seen": 1794794268,
+    "last_seen": 1795144095,
     "service_area_ids": [
       "7658",
       "7663",
       "7664",
       "7672",
       "7673",
+      "8351",
+      "8353",
       "9999",
       "10035"
     ]
@@ -1680,9 +1738,10 @@
     "discovered_via": "talabat_public_grocery_directory",
     "service_area_id": "8409",
     "first_seen": 1794564096,
-    "last_seen": 1795058395,
+    "last_seen": 1795144095,
     "service_area_ids": [
       "8311",
+      "8408",
       "8409",
       "9997",
       "10004",
@@ -1763,7 +1822,7 @@
     "discovered_via": "talabat_public_grocery_directory",
     "service_area_id": "8317",
     "first_seen": 1794564096,
-    "last_seen": 1794860601,
+    "last_seen": 1795144095,
     "service_area_ids": [
       "7078",
       "8316",
@@ -1777,6 +1836,21 @@
     ]
   },
   {
+    "area": "Agamy Bianchi",
+    "branch_id": "801246",
+    "branch_name": "talabat mart, Agamy - Hanuvile",
+    "source": "https://www.talabat.com/egypt/grocery/801246/agamy-bianchi?aid=8334",
+    "prices_verified": false,
+    "discovered_via": "talabat_public_grocery_directory",
+    "service_area_id": "8334",
+    "first_seen": 1795144095,
+    "last_seen": 1795144095,
+    "service_area_ids": [
+      "8334",
+      "8336"
+    ]
+  },
+  {
     "area": "Taj City",
     "branch_id": "801405",
     "branch_name": "tmart, Tagammoa 1 - Toya Mall ",
@@ -1785,9 +1859,15 @@
     "discovered_via": "talabat_public_grocery_directory",
     "service_area_id": "10183",
     "first_seen": 1794589324,
-    "last_seen": 1795058395,
+    "last_seen": 1795144095,
     "service_area_ids": [
       "8195",
+      "8379",
+      "8381",
+      "8382",
+      "8383",
+      "8384",
+      "8385",
       "10183"
     ]
   },
@@ -2235,7 +2315,7 @@
     "discovered_via": "talabat_public_grocery_directory",
     "service_area_id": "7008",
     "first_seen": 1794691560,
-    "last_seen": 1794860601,
+    "last_seen": 1795144095,
     "service_area_ids": [
       "7008",
       "7012",
@@ -2246,7 +2326,10 @@
       "7079",
       "7081",
       "7085",
-      "7086"
+      "7086",
+      "8389",
+      "8390",
+      "8391"
     ]
   },
   {
