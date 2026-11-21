@@ -417,8 +417,10 @@
     "discovered_via": "talabat_public_grocery_directory",
     "service_area_id": "8367",
     "first_seen": 1795144095,
-    "last_seen": 1795144095,
+    "last_seen": 1795281954,
     "service_area_ids": [
+      "7401",
+      "7402",
       "8367",
       "8373",
       "8374"
@@ -450,8 +452,13 @@
     "discovered_via": "talabat_public_grocery_directory",
     "service_area_id": "10085",
     "first_seen": 1794589324,
-    "last_seen": 1795254100,
+    "last_seen": 1795281954,
     "service_area_ids": [
+      "7421",
+      "7422",
+      "7424",
+      "7428",
+      "7430",
       "10085"
     ]
   },
@@ -1101,8 +1108,10 @@
     "discovered_via": "talabat_public_grocery_directory",
     "service_area_id": "8374",
     "first_seen": 1794564096,
-    "last_seen": 1794762156,
+    "last_seen": 1795281954,
     "service_area_ids": [
+      "7400",
+      "7403",
       "8367",
       "8373",
       "8374",
@@ -1143,6 +1152,20 @@
     "last_seen": 1794589324,
     "service_area_ids": [
       "10111"
+    ]
+  },
+  {
+    "area": "Mokattam Qatameya Gardens",
+    "branch_id": "745095",
+    "branch_name": "talabat mart, Mokattam - Easy Sport Club",
+    "source": "https://www.talabat.com/egypt/grocery/745095/mokattam-qatameya-gardens?aid=7423",
+    "prices_verified": false,
+    "discovered_via": "talabat_public_grocery_directory",
+    "service_area_id": "7423",
+    "first_seen": 1795281954,
+    "last_seen": 1795281954,
+    "service_area_ids": [
+      "7423"
     ]
   },
   {
@@ -1370,6 +1393,22 @@
       "7937",
       "7938",
       "7998"
+    ]
+  },
+  {
+    "area": "Mokattam Easy Sport Club",
+    "branch_id": "753737",
+    "branch_name": "Tkiosk By Tmart, Mokattam - Easy Sport Club",
+    "source": "https://www.talabat.com/egypt/grocery/753737/tkiosk-by-tmart-mokattam-easy-sport-club?aid=7433",
+    "prices_verified": false,
+    "discovered_via": "talabat_public_grocery_directory",
+    "service_area_id": "7433",
+    "first_seen": 1795281954,
+    "last_seen": 1795281954,
+    "service_area_ids": [
+      "7433",
+      "7434",
+      "7435"
     ]
   },
   {
@@ -1898,8 +1937,11 @@
     "discovered_via": "talabat_public_grocery_directory",
     "service_area_id": "10090",
     "first_seen": 1794589324,
-    "last_seen": 1795254100,
+    "last_seen": 1795281954,
     "service_area_ids": [
+      "7425",
+      "7429",
+      "7431",
       "10090",
       "10093",
       "10098",
@@ -2004,8 +2046,11 @@
     "discovered_via": "talabat_public_grocery_directory",
     "service_area_id": "10102",
     "first_seen": 1794589324,
-    "last_seen": 1795254100,
+    "last_seen": 1795281954,
     "service_area_ids": [
+      "7426",
+      "7427",
+      "7432",
       "10093",
       "10102",
       "10104"
@@ -2352,6 +2397,28 @@
       "8389",
       "8390",
       "8391"
+    ]
+  },
+  {
+    "area": "Sharea El Reyadi",
+    "branch_id": "1129175",
+    "branch_name": "talabat mart, Beni Suef",
+    "source": "https://www.talabat.com/egypt/grocery/1129175/sharea-el-reyadi?aid=7483",
+    "prices_verified": false,
+    "discovered_via": "talabat_public_grocery_directory",
+    "service_area_id": "7483",
+    "first_seen": 1795281954,
+    "last_seen": 1795281954,
+    "service_area_ids": [
+      "7483",
+      "7484",
+      "7485",
+      "7486",
+      "7487",
+      "7489",
+      "7490",
+      "7491",
+      "7492"
     ]
   },
   {
