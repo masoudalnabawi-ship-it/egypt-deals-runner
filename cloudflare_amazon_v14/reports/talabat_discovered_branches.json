@@ -258,10 +258,11 @@
     "discovered_via": "talabat_public_grocery_directory",
     "service_area_id": "8695",
     "first_seen": 1794571304,
-    "last_seen": 1795254100,
+    "last_seen": 1795316764,
     "service_area_ids": [
       "8695",
       "8696",
+      "8698",
       "8701",
       "8707",
       "8708",
@@ -339,6 +340,25 @@
     "last_seen": 1794589324,
     "service_area_ids": [
       "10215"
+    ]
+  },
+  {
+    "area": "Suez Canal University",
+    "branch_id": "662683",
+    "branch_name": "talabat mart - Downtown - Champollion",
+    "source": "https://www.talabat.com/egypt/grocery/662683/suez-canal-university?aid=8564",
+    "prices_verified": false,
+    "discovered_via": "talabat_public_grocery_directory",
+    "service_area_id": "8564",
+    "first_seen": 1795316764,
+    "last_seen": 1795316764,
+    "service_area_ids": [
+      "8560",
+      "8564",
+      "8565",
+      "8566",
+      "8567",
+      "8568"
     ]
   },
   {
@@ -928,7 +948,7 @@
     "discovered_via": "talabat_public_grocery_directory",
     "service_area_id": "8565",
     "first_seen": 1794571304,
-    "last_seen": 1794821544,
+    "last_seen": 1795316764,
     "service_area_ids": [
       "8560",
       "8561",
@@ -1206,10 +1226,12 @@
     "discovered_via": "talabat_public_grocery_directory",
     "service_area_id": "8699",
     "first_seen": 1794571304,
-    "last_seen": 1795144095,
+    "last_seen": 1795316764,
     "service_area_ids": [
       "8387",
+      "8697",
       "8699",
+      "8700",
       "8702",
       "8703",
       "8704",
