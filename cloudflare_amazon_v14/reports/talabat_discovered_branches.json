@@ -108,13 +108,15 @@
     "discovered_via": "talabat_public_grocery_directory",
     "service_area_id": "10121",
     "first_seen": 1794589324,
-    "last_seen": 1795372291,
+    "last_seen": 1795499901,
     "service_area_ids": [
       "7660",
       "7667",
       "7669",
       "7671",
       "7675",
+      "9962",
+      "9970",
       "10121"
     ]
   },
@@ -321,11 +323,13 @@
     "discovered_via": "talabat_public_grocery_directory",
     "service_area_id": "8112",
     "first_seen": 1794975294,
-    "last_seen": 1795224451,
+    "last_seen": 1795499901,
     "service_area_ids": [
       "8112",
       "8115",
-      "8118"
+      "8118",
+      "9974",
+      "9979"
     ]
   },
   {
@@ -677,10 +681,16 @@
     "discovered_via": "talabat_public_grocery_directory",
     "service_area_id": "10034",
     "first_seen": 1794585707,
-    "last_seen": 1794794268,
+    "last_seen": 1795499901,
     "service_area_ids": [
       "7659",
       "7661",
+      "9987",
+      "9995",
+      "10010",
+      "10021",
+      "10022",
+      "10025",
       "10034"
     ]
   },
@@ -851,7 +861,7 @@
     "discovered_via": "talabat_public_grocery_directory",
     "service_area_id": "8112",
     "first_seen": 1794560525,
-    "last_seen": 1795224451,
+    "last_seen": 1795499901,
     "service_area_ids": [
       "8112",
       "8113",
@@ -876,7 +886,7 @@
     "discovered_via": "talabat_public_grocery_directory",
     "service_area_id": "8326",
     "first_seen": 1794564096,
-    "last_seen": 1795392935,
+    "last_seen": 1795499901,
     "service_area_ids": [
       "8325",
       "8326",
@@ -885,8 +895,11 @@
       "8329",
       "8386",
       "9966",
+      "9968",
       "9973",
-      "9982"
+      "9978",
+      "9982",
+      "9992"
     ]
   },
   {
@@ -1067,7 +1080,7 @@
     "discovered_via": "talabat_public_grocery_directory",
     "service_area_id": "8348",
     "first_seen": 1794564096,
-    "last_seen": 1795392935,
+    "last_seen": 1795499901,
     "service_area_ids": [
       "7659",
       "7661",
@@ -1165,7 +1178,7 @@
     "discovered_via": "talabat_public_grocery_directory",
     "service_area_id": "8330",
     "first_seen": 1794564096,
-    "last_seen": 1795392935,
+    "last_seen": 1795499901,
     "service_area_ids": [
       "7074",
       "8315",
@@ -1173,8 +1186,12 @@
       "8331",
       "8332",
       "8333",
+      "9972",
+      "9975",
       "9981",
       "9985",
+      "10012",
+      "10016",
       "10019"
     ]
   },
@@ -1571,7 +1588,7 @@
     "discovered_via": "talabat_public_grocery_directory",
     "service_area_id": "9999",
     "first_seen": 1794585707,
-    "last_seen": 1795372291,
+    "last_seen": 1795499901,
     "service_area_ids": [
       "7658",
       "7663",
@@ -1580,6 +1597,7 @@
       "7673",
       "8351",
       "8353",
+      "9976",
       "9999",
       "10035"
     ]
@@ -1768,7 +1786,7 @@
     "discovered_via": "talabat_public_grocery_directory",
     "service_area_id": "8320",
     "first_seen": 1794564096,
-    "last_seen": 1795254100,
+    "last_seen": 1795499901,
     "service_area_ids": [
       "8315",
       "8319",
@@ -1839,14 +1857,15 @@
     "discovered_via": "talabat_public_grocery_directory",
     "service_area_id": "8409",
     "first_seen": 1794564096,
-    "last_seen": 1795392935,
+    "last_seen": 1795499901,
     "service_area_ids": [
       "8311",
       "8408",
       "8409",
       "9997",
       "10004",
-      "10009"
+      "10009",
+      "10024"
     ]
   },
   {
@@ -2264,6 +2283,23 @@
     ]
   },
   {
+    "area": "Mandara Qebly 2",
+    "branch_id": "1115840",
+    "branch_name": "tKiosk by tMart, Montazah",
+    "source": "https://www.talabat.com/egypt/grocery/1115840/tkiosk-by-tmart-montazah?aid=9994",
+    "prices_verified": false,
+    "discovered_via": "talabat_public_grocery_directory",
+    "service_area_id": "9994",
+    "first_seen": 1795499901,
+    "last_seen": 1795499901,
+    "service_area_ids": [
+      "9994",
+      "10003",
+      "10008",
+      "10015"
+    ]
+  },
+  {
     "area": "La Fontain Elsharbatly Compound",
     "branch_id": "1116287",
     "branch_name": "tKiosk by tMart, Tagammoa 5 - El Lotus El Shamaleya",
@@ -2388,7 +2424,7 @@
     "discovered_via": "talabat_public_grocery_directory",
     "service_area_id": "9983",
     "first_seen": 1794585707,
-    "last_seen": 1795372291,
+    "last_seen": 1795499901,
     "service_area_ids": [
       "7662",
       "7665",
@@ -2397,7 +2433,8 @@
       "7674",
       "9983",
       "10002",
-      "10014"
+      "10014",
+      "10029"
     ]
   },
   {
