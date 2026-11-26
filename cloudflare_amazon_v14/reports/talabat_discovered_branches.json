@@ -152,6 +152,20 @@
     ]
   },
   {
+    "area": "Maadi Cournich Tura",
+    "branch_id": "619848",
+    "branch_name": "talabat mart, Maadi Old",
+    "source": "https://www.talabat.com/egypt/grocery/619848/maadi-cournich-tura?aid=9374",
+    "prices_verified": false,
+    "discovered_via": "talabat_public_grocery_directory",
+    "service_area_id": "9374",
+    "first_seen": 1795736868,
+    "last_seen": 1795736868,
+    "service_area_ids": [
+      "9374"
+    ]
+  },
+  {
     "area": "Downtown Esaaf",
     "branch_id": "619850",
     "branch_name": "talabat mart,Downtown - El Sayeda Zeinab",
@@ -824,10 +838,11 @@
     "discovered_via": "talabat_public_grocery_directory",
     "service_area_id": "8698",
     "first_seen": 1794571304,
-    "last_seen": 1795424269,
+    "last_seen": 1795736868,
     "service_area_ids": [
       "8698",
       "8714",
+      "9373",
       "10498",
       "10644"
     ]
@@ -867,7 +882,7 @@
     "discovered_via": "talabat_public_grocery_directory",
     "service_area_id": "8389",
     "first_seen": 1794564096,
-    "last_seen": 1795392935,
+    "last_seen": 1795736868,
     "service_area_ids": [
       "7009",
       "7010",
@@ -890,6 +905,9 @@
       "8390",
       "8391",
       "9366",
+      "9367",
+      "9368",
+      "9369",
       "9370",
       "10175"
     ]
@@ -1037,8 +1055,14 @@
     "discovered_via": "talabat_public_grocery_directory",
     "service_area_id": "10533",
     "first_seen": 1794592895,
-    "last_seen": 1795424269,
+    "last_seen": 1795736868,
     "service_area_ids": [
+      "8833",
+      "8834",
+      "8835",
+      "8836",
+      "8837",
+      "8839",
       "10533",
       "10534",
       "10535"
@@ -1310,8 +1334,11 @@
     "discovered_via": "talabat_public_grocery_directory",
     "service_area_id": "10111",
     "first_seen": 1794589324,
-    "last_seen": 1794589324,
+    "last_seen": 1795736868,
     "service_area_ids": [
+      "9288",
+      "9290",
+      "9291",
       "10111"
     ]
   },
@@ -1379,7 +1406,7 @@
     "discovered_via": "talabat_public_grocery_directory",
     "service_area_id": "8387",
     "first_seen": 1794564096,
-    "last_seen": 1795424269,
+    "last_seen": 1795736868,
     "service_area_ids": [
       "8387",
       "8697",
@@ -1451,8 +1478,9 @@
     "discovered_via": "talabat_public_grocery_directory",
     "service_area_id": "10075",
     "first_seen": 1794589324,
-    "last_seen": 1795669133,
+    "last_seen": 1795736868,
     "service_area_ids": [
+      "8886",
       "10075",
       "10190",
       "10191",
@@ -1469,7 +1497,7 @@
     "discovered_via": "talabat_public_grocery_directory",
     "service_area_id": "8347",
     "first_seen": 1794564096,
-    "last_seen": 1795705498,
+    "last_seen": 1795736868,
     "service_area_ids": [
       "7588",
       "7753",
@@ -1501,7 +1529,7 @@
     "discovered_via": "talabat_public_grocery_directory",
     "service_area_id": "7947",
     "first_seen": 1794553563,
-    "last_seen": 1794887219,
+    "last_seen": 1795736868,
     "service_area_ids": [
       "7947",
       "7948",
@@ -1518,7 +1546,8 @@
       "7959",
       "7960",
       "7961",
-      "7962"
+      "7962",
+      "9322"
     ]
   },
   {
@@ -2288,7 +2317,7 @@
     "discovered_via": "talabat_public_grocery_directory",
     "service_area_id": "8862",
     "first_seen": 1794574989,
-    "last_seen": 1795424269,
+    "last_seen": 1795736868,
     "service_area_ids": [
       "6963",
       "6964",
@@ -2306,12 +2335,30 @@
       "6977",
       "6978",
       "8415",
+      "8858",
+      "8859",
+      "8860",
+      "8861",
       "8862",
+      "8863",
+      "8864",
+      "8865",
+      "8866",
+      "8867",
+      "8868",
+      "8869",
       "8870",
+      "8871",
+      "8872",
       "8873",
+      "8874",
       "8875",
+      "8876",
+      "8877",
       "8878",
       "8879",
+      "8881",
+      "8882",
       "8883",
       "10536"
     ]
@@ -2388,14 +2435,16 @@
     "discovered_via": "talabat_public_grocery_directory",
     "service_area_id": "8192",
     "first_seen": 1794560525,
-    "last_seen": 1795224451,
+    "last_seen": 1795736868,
     "service_area_ids": [
       "8132",
       "8133",
       "8134",
       "8135",
       "8192",
-      "8193"
+      "8193",
+      "9287",
+      "9289"
     ]
   },
   {
@@ -2475,8 +2524,25 @@
     "discovered_via": "talabat_public_grocery_directory",
     "service_area_id": "10494",
     "first_seen": 1794592895,
-    "last_seen": 1795424269,
+    "last_seen": 1795736868,
     "service_area_ids": [
+      "8840",
+      "8841",
+      "8842",
+      "8843",
+      "8844",
+      "8845",
+      "8846",
+      "8847",
+      "8848",
+      "8849",
+      "8850",
+      "8851",
+      "8852",
+      "8854",
+      "8855",
+      "8856",
+      "8857",
       "10494"
     ]
   },
