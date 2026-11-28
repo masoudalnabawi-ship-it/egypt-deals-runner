@@ -507,7 +507,7 @@
     "discovered_via": "talabat_public_grocery_directory",
     "service_area_id": "8367",
     "first_seen": 1795144095,
-    "last_seen": 1795610628,
+    "last_seen": 1795861082,
     "service_area_ids": [
       "7337",
       "7401",
@@ -543,7 +543,7 @@
     "discovered_via": "talabat_public_grocery_directory",
     "service_area_id": "10085",
     "first_seen": 1794589324,
-    "last_seen": 1795669133,
+    "last_seen": 1795861082,
     "service_area_ids": [
       "7421",
       "7422",
@@ -1290,7 +1290,7 @@
     "discovered_via": "talabat_public_grocery_directory",
     "service_area_id": "8374",
     "first_seen": 1794564096,
-    "last_seen": 1795610628,
+    "last_seen": 1795861082,
     "service_area_ids": [
       "7327",
       "7330",
@@ -1361,9 +1361,10 @@
     "discovered_via": "talabat_public_grocery_directory",
     "service_area_id": "7423",
     "first_seen": 1795281954,
-    "last_seen": 1795281954,
+    "last_seen": 1795861082,
     "service_area_ids": [
-      "7423"
+      "7423",
+      "7435"
     ]
   },
   {
@@ -1624,8 +1625,9 @@
     "discovered_via": "talabat_public_grocery_directory",
     "service_area_id": "7433",
     "first_seen": 1795281954,
-    "last_seen": 1795281954,
+    "last_seen": 1795861082,
     "service_area_ids": [
+      "7423",
       "7433",
       "7434",
       "7435"
@@ -2253,7 +2255,7 @@
     "discovered_via": "talabat_public_grocery_directory",
     "service_area_id": "10090",
     "first_seen": 1794589324,
-    "last_seen": 1795669133,
+    "last_seen": 1795861082,
     "service_area_ids": [
       "7425",
       "7429",
@@ -2383,10 +2385,11 @@
     "discovered_via": "talabat_public_grocery_directory",
     "service_area_id": "10102",
     "first_seen": 1794589324,
-    "last_seen": 1795669133,
+    "last_seen": 1795861082,
     "service_area_ids": [
       "7426",
       "7427",
+      "7429",
       "7432",
       "10093",
       "10102",
@@ -2801,7 +2804,7 @@
     "discovered_via": "talabat_public_grocery_directory",
     "service_area_id": "7483",
     "first_seen": 1795281954,
-    "last_seen": 1795281954,
+    "last_seen": 1795861082,
     "service_area_ids": [
       "7483",
       "7484",
